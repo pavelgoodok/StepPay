@@ -25,6 +25,17 @@ export interface Stage {
   /** голоса спонсоров (только краудфандинг) */
   votes: Record<UserId, "accept" | "reject">;
   disputeReason?: string;
+  /** переписка по спору: причина, ответы сторон, пояснения приёмщика */
+  messages?: DisputeMessage[];
+  /** как этап был закрыт */
+  resolution?: { by: "owner" | "votes" | "auto" | "arbiter"; decision: "accepted" | "failed"; comment?: string; at: number };
+}
+
+export interface DisputeMessage {
+  by: UserId;
+  text: string;
+  photos?: string[];
+  at: number;
 }
 
 export interface Deal {

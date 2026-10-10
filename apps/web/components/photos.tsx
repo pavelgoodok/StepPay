@@ -1,0 +1,69 @@
+"use client";
+import { useRef, useState } from "react";
+import { photoSrc, uploadPhoto } from "@/lib/api";
+import { useSession } from "@/lib/session";
+import { Icon } from "./ui";
+
+/** Выбор до `max` фото: с камеры или из галереи. Возвращает ссылки через onChange. */
+export function PhotoPicker({ value, onChange, max = 6 }: { value: string[]; onChange(v: string[]): void; max?: number }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useSession();
+
+  async function add(files: FileList | null) {
+    if (!files) return;
+    setBusy(true);
+    try {
+      const urls: string[] = [];
+      for (const f of Array.from(files).slice(0, max - value.length)) urls.push(await uploadPhoto(f));
+      onChange([...value, ...urls]);
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <div className="photos">
+      {value.map((u) => (
+        <div key={u} className="ph">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoSrc(u)} alt="" />
+          <button aria-label="Убрать фото" onClick={() => onChange(value.filter((x) => x !== u))}><Icon name="x" size={14} /></button>
+        </div>
+      ))}
+      {value.length < max && (
+        <button className="ph add" disabled={busy} onClick={() => input.current?.click()}>
+          <Icon name="camera" size={24} />
+          <span>{busy ? "Загрузка…" : "Фото"}</span>
+        </button>
+      )}
+      <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => void add(e.target.files)} />
+    </div>
+  );
+}
+
+export function PhotoGrid({ photos }: { photos?: string[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  if (!photos?.length) return null;
+  return (
+    <>
+      <div className="photos">
+        {photos.map((u) => (
+          <button key={u} className="ph" onClick={() => setOpen(u)} aria-label="Открыть фото">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoSrc(u)} alt="" />
+          </button>
+        ))}
+      </div>
+      {open && (
+        <div className="lightbox" onClick={() => setOpen(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoSrc(open)} alt="" />
+        </div>
+      )}
+    </>
+  );
+}

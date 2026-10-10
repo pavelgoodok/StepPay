@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { IMG, Icon, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
@@ -9,7 +10,14 @@ import { MODE_LABEL, STAGE_LABEL, dealChip, nameOf } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
 type Stage = DealFull["stages"][number];
-type Ask = { kind: "submit" | "reject" | "dispute"; stage: Stage } | null;
+type Ask = { kind: "submit" | "reject" | "dispute" | "reply" | "pay" | "refund"; stage: Stage } | null;
+
+const CLOSED_BY: Record<string, string> = {
+  owner: "Принят заказчиком",
+  votes: "Решение спонсоров",
+  auto: "Принят автоматически: ответа не было 3 дня",
+  arbiter: "Решение независимого приёмщика",
+};
 
 export default function DealPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +28,7 @@ export default function DealPage() {
   const [text, setText] = useState("");
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -51,6 +60,7 @@ export default function DealPage() {
       if (ok) toast(ok);
       setAsk(null);
       setText("");
+      setPhotos([]);
       setAmount("");
       await Promise.all([reload(), refresh()]);
     } catch (e) {
@@ -145,8 +155,30 @@ export default function DealPage() {
                 </div>
                 <div className="small muted" style={{ marginTop: 2 }}>{STAGE_LABEL[s.status]}</div>
                 {s.criteria.length > 0 && <ul className="crit">{s.criteria.map((c) => <li key={c}>{c}</li>)}</ul>}
-                {s.evidence?.note && <div className="note"><b>От исполнителя:</b> {s.evidence.note}</div>}
-                {s.disputeReason && <div className="note bad"><b>Причина:</b> {s.disputeReason}</div>}
+                {(s.evidence?.note || s.evidence?.photos?.length) && (
+                  <div className="note">
+                    {s.evidence?.note && <div><b>От исполнителя:</b> {s.evidence.note}</div>}
+                    <PhotoGrid photos={s.evidence?.photos} />
+                  </div>
+                )}
+                {s.messages && s.messages.length > 0 && (
+                  <div className="thread">
+                    <div className="small muted"><b>Спор</b></div>
+                    {s.messages.map((m, k) => (
+                      <div key={k} className={`msg ${m.by === me ? "me" : ""}`}>
+                        <div className="who">{nameOf(users, m.by)}{m.by === d.arbiterId ? " · приёмщик" : ""}</div>
+                        {m.text}
+                        <PhotoGrid photos={m.photos} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {s.resolution && (s.resolution.by !== "owner" || s.resolution.comment || s.status === "failed") && (
+                  <div className={`verdict ${s.resolution.decision === "failed" ? "bad" : ""}`}>
+                    <b>{s.resolution.decision === "failed" && s.resolution.by === "owner" ? "Этап не принят" : CLOSED_BY[s.resolution.by]}</b>
+                    {s.resolution.comment && <div style={{ marginTop: 4 }}>{s.resolution.comment}</div>}
+                  </div>
+                )}
 
                 {s.status === "active" && isExec && d.status === "active" && (
                   <button className="btn" style={{ marginTop: 12 }} onClick={() => { setAsk({ kind: "submit", stage: s }); setText(""); }}>
@@ -178,10 +210,15 @@ export default function DealPage() {
                   </div>
                 )}
 
+                {s.status === "disputed" && (isOwner || isExec || isArbiter) && (
+                  <button className="btn soft" style={{ marginTop: 12 }} onClick={() => { setAsk({ kind: "reply", stage: s }); setText(""); setPhotos([]); }}>
+                    <Icon name="camera" size={18} /> {isArbiter ? "Задать вопрос сторонам" : "Ответить / добавить фото"}
+                  </button>
+                )}
                 {s.status === "disputed" && isArbiter && (
-                  <div className="btns" style={{ marginTop: 12 }}>
-                    <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/resolve`, { decision: "pay" }, "Решено: выплатить исполнителю")}>Выплатить</button>
-                    <button className="btn danger" disabled={busy} onClick={() => run(`/stages/${s.id}/resolve`, { decision: "refund" }, "Решено: вернуть заказчику")}>Вернуть</button>
+                  <div className="btns" style={{ marginTop: 10 }}>
+                    <button className="btn green" disabled={busy} onClick={() => { setAsk({ kind: "pay", stage: s }); setText(""); }}>Выплатить</button>
+                    <button className="btn danger" disabled={busy} onClick={() => { setAsk({ kind: "refund", stage: s }); setText(""); }}>Вернуть</button>
                   </div>
                 )}
                 {s.status === "disputed" && !isArbiter && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приёмщика</div>}
@@ -206,29 +243,31 @@ export default function DealPage() {
         </button>
       )}
 
-      {ask && (
-        <Sheet onClose={() => setAsk(null)}>
-          <h2 style={{ fontSize: 22, textAlign: "left" }}>
-            {ask.kind === "submit" ? `Сдать этап «${ask.stage.title}»` : ask.kind === "reject" ? "Причина отказа" : "Причина спора"}
-          </h2>
-          <div className="stack" style={{ marginTop: 14 }}>
-            <textarea className="input" autoFocus placeholder={ask.kind === "submit" ? "Что сделано, на что обратить внимание" : "Опишите причину"} value={text} onChange={(e) => setText(e.target.value)} />
-            <button
-              className={`btn ${ask.kind === "submit" ? "" : "danger"}`}
-              disabled={busy || (ask.kind !== "submit" && !text.trim())}
-              onClick={() =>
-                run(
-                  `/stages/${ask.stage.id}/${ask.kind}`,
-                  ask.kind === "submit" ? { note: text.trim() || undefined } : { reason: text },
-                  ask.kind === "submit" ? "Этап сдан, ждём приёмки" : ask.kind === "reject" && d.mode === "grant" ? "Этап отклонён, остаток возвращён" : "Спор открыт",
-                )
-              }
-            >
-              {ask.kind === "submit" ? "Сдать на приёмку" : ask.kind === "reject" ? "Отправить отказ" : "Открыть спор"}
-            </button>
-          </div>
-        </Sheet>
-      )}
+      {ask && (() => {
+        const k = ask.kind;
+        const title = { submit: `Сдать этап «${ask.stage.title}»`, reject: "Причина отказа", dispute: "Причина спора", reply: "Сообщение в споре", pay: "Выплатить исполнителю", refund: "Вернуть деньги заказчику" }[k];
+        const needText = k === "reject" || k === "dispute";
+        const hasPhotos = k === "submit" || k === "reply";
+        const label = { submit: "Сдать на приёмку", reject: "Отправить отказ", dispute: "Открыть спор", reply: "Отправить", pay: "Подтвердить выплату", refund: "Подтвердить возврат" }[k];
+        const base = `/stages/${ask.stage.id}`;
+        const go = () => {
+          if (k === "submit") return run(`${base}/submit`, { note: text.trim() || undefined, photos }, "Этап сдан, ждём приёмки");
+          if (k === "reject") return run(`${base}/reject`, { reason: text }, d.mode === "grant" ? "Этап отклонён, остаток возвращён" : "Отказ отправлен, открыт спор");
+          if (k === "dispute") return run(`${base}/dispute`, { reason: text }, "Спор открыт");
+          if (k === "reply") return run(`${base}/reply`, { text, photos }, "Сообщение отправлено");
+          return run(`${base}/resolve`, { decision: k, comment: text.trim() || undefined }, k === "pay" ? "Решено: выплатить исполнителю" : "Решено: вернуть заказчику");
+        };
+        return (
+          <Sheet onClose={() => setAsk(null)}>
+            <h2 style={{ fontSize: 22, textAlign: "left" }}>{title}</h2>
+            <div className="stack" style={{ marginTop: 14 }}>
+              <textarea className="input" autoFocus placeholder={k === "submit" ? "Что сделано, на что обратить внимание" : k === "pay" || k === "refund" ? "Пояснение к решению (необязательно)" : "Опишите"} value={text} onChange={(e) => setText(e.target.value)} />
+              {hasPhotos && <PhotoPicker value={photos} onChange={setPhotos} />}
+              <button className={`btn ${k === "submit" || k === "reply" || k === "pay" ? "" : "danger"}`} disabled={busy || (needText && !text.trim()) || (k === "reply" && !text.trim() && photos.length === 0)} onClick={go}>{label}</button>
+            </div>
+          </Sheet>
+        );
+      })()}
     </div>
   );
 }

@@ -201,9 +201,12 @@ function refundAll(s: State, d: Deal, at: number, note: string) {
   }
 }
 
-function acceptStage(s: State, d: Deal, stage: Stage, at: number) {
+type ClosedBy = NonNullable<Stage["resolution"]>["by"];
+
+function acceptStage(s: State, d: Deal, stage: Stage, at: number, by: ClosedBy, comment?: string) {
   payout(s, d, stage, at);
   stage.status = "accepted";
+  stage.resolution = { by, decision: "accepted", comment, at };
   const next = d.stages.find((x) => x.status === "pending");
   if (next) next.status = "active";
   else {
@@ -212,8 +215,9 @@ function acceptStage(s: State, d: Deal, stage: Stage, at: number) {
   }
 }
 
-function failDeal(s: State, d: Deal, stage: Stage, at: number, note: string) {
+function failDeal(s: State, d: Deal, stage: Stage, at: number, note: string, by: ClosedBy, comment?: string) {
   stage.status = "failed";
+  stage.resolution = { by, decision: "failed", comment, at };
   d.status = "cancelled";
   refundAll(s, d, at, note);
 }
@@ -247,7 +251,7 @@ export const approveStage = mutate((s, dealId: string, stageId: string, userId: 
   if (d.mode === "crowdfunding") fail("В краудфандинге этап принимают голосованием");
   if (userId !== d.ownerId) fail("Принять этап может только заказчик");
   if (st.status !== "submitted") fail("Этап не ожидает приёмки");
-  acceptStage(s, d, st, at);
+  acceptStage(s, d, st, at, "owner");
 });
 
 /**
@@ -264,10 +268,11 @@ export const rejectStage = mutate(
     if (!reason.trim()) fail("Отказ возможен только с причиной");
     if (d.mode === "grant") {
       st.disputeReason = reason;
-      failDeal(s, d, st, at, "Этап не принят грантодателем");
+      failDeal(s, d, st, at, "Этап не принят грантодателем", "owner", reason);
     } else {
       st.status = "disputed";
       st.disputeReason = reason;
+      st.messages = [{ by: userId, text: reason, at }];
     }
   },
 );
@@ -293,14 +298,14 @@ export const voteStage = mutate(
       Object.entries(st.votes)
         .filter(([, x]) => x === v)
         .reduce((a, [uid]) => a + (d.contributed[uid] ?? 0), 0);
-    if (weight("accept") * 2 > total) acceptStage(s, d, st, at);
-    else if (weight("reject") * 2 >= total) failDeal(s, d, st, at, "Спонсоры не приняли этап");
+    if (weight("accept") * 2 > total) acceptStage(s, d, st, at, "votes");
+    else if (weight("reject") * 2 >= total) failDeal(s, d, st, at, "Спонсоры не приняли этап", "votes");
   },
 );
 
 /** Исполнитель/заказчик открывают спор по сданному этапу (для own). */
 export const openDispute = mutate(
-  (s, dealId: string, stageId: string, userId: UserId, reason: string) => {
+  (s, dealId: string, stageId: string, userId: UserId, reason: string, at: number) => {
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
     if (d.mode !== "own") fail("Споры по приёмщику есть только в режиме «Свой проект»");
@@ -309,6 +314,19 @@ export const openDispute = mutate(
     if (!reason.trim()) fail("Укажите причину");
     st.status = "disputed";
     st.disputeReason = reason;
+    st.messages = [{ by: userId, text: reason, at }];
+  },
+);
+
+/** Реплика в споре: стороны сделки добавляют аргументы и фото, приёмщик — вопросы. */
+export const replyDispute = mutate(
+  (s, dealId: string, stageId: string, userId: UserId, text: string, photos: string[], at: number) => {
+    const d = getDeal(s, dealId);
+    const st = getStage(d, stageId);
+    if (st.status !== "disputed") fail("Этап не в споре");
+    if (userId !== d.ownerId && userId !== d.executorId && userId !== d.arbiterId) fail("Нет доступа к спору");
+    if (!text.trim() && photos.length === 0) fail("Напишите сообщение или приложите фото");
+    (st.messages ??= []).push({ by: userId, text: text.trim(), photos: photos.length ? photos : undefined, at });
   },
 );
 
@@ -321,13 +339,15 @@ export const resolveDispute = mutate(
     userId: UserId,
     decision: "pay" | "refund",
     at: number,
+    comment?: string,
   ) => {
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
     if (!d.arbiterId || userId !== d.arbiterId) fail("Решить спор может только приёмщик");
     if (st.status !== "disputed") fail("Этап не в споре");
-    if (decision === "pay") acceptStage(s, d, st, at);
-    else failDeal(s, d, st, at, "Спор решён в пользу заказчика");
+    const note = comment?.trim() || undefined;
+    if (decision === "pay") acceptStage(s, d, st, at, "arbiter", note);
+    else failDeal(s, d, st, at, "Спор решён в пользу заказчика", "arbiter", note);
   },
 );
 
@@ -353,7 +373,7 @@ export const tick = mutate((s, now: number) => {
         st.submittedAt !== undefined &&
         now - st.submittedAt >= d.autoAcceptMs
       ) {
-        acceptStage(s, d, st, now);
+        acceptStage(s, d, st, now, "auto");
         break; // один этап за тик, следующий начнёт новый круг
       }
     }

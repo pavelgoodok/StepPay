@@ -79,3 +79,23 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST"; body
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? "Ошибка", res.status);
   return data as T;
 }
+
+export const photoSrc = (url: string) => (url.startsWith("/") ? API_URL + url : url);
+
+/** Уменьшает фото на устройстве (до 1280px, JPEG) и загружает; возвращает ссылку вида /uploads/… */
+export async function uploadPhoto(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new ApiError("Не удалось прочитать фото", 0);
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k);
+  c.height = Math.round(bmp.height * k);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  let q = 0.82;
+  let dataUrl = c.toDataURL("image/jpeg", q);
+  while (dataUrl.length > 1_100_000 && q > 0.4) {
+    q -= 0.12;
+    dataUrl = c.toDataURL("image/jpeg", q);
+  }
+  return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl } })).url;
+}

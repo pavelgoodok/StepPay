@@ -9,6 +9,7 @@ import {
   freeBalance,
   fund,
   openDispute,
+  replyDispute,
   rejectStage,
   reservedBalance,
   resolveDispute,
@@ -121,8 +122,8 @@ describe("режим «Свой проект» (демо из презентац
     s = bathroom(s);
     s = fund(s, "d1", "anna", 300_000 * R, T0);
     s = submitStage(s, "d1", "s1", "ivan", {}, T0);
-    expect(() => openDispute(s, "d1", "s1", "stranger", "x")).toThrow(EngineError);
-    expect(openDispute(s, "d1", "s1", "ivan", "Заказчик придирается").deals.d1!.stages[0]!.status).toBe("disputed");
+    expect(() => openDispute(s, "d1", "s1", "stranger", "x", T0)).toThrow(EngineError);
+    expect(openDispute(s, "d1", "s1", "ivan", "Заказчик придирается", T0).deals.d1!.stages[0]!.status).toBe("disputed");
   });
 
   it("отмена возвращает резерв; нельзя резервировать без денег; нельзя принять чужой этап", () => {
@@ -240,5 +241,53 @@ describe("режим «Грант»", () => {
     expect(freeBalance(s, "ngo")).toBe(0);
     expect(freeBalance(s, "fund")).toBe(500_000 * R);
     expect(s.deals.g1!.status).toBe("cancelled");
+  });
+});
+
+describe("переписка по спору и причина закрытия", () => {
+  const disputed = () => {
+    let s = createState();
+    s = topUp(s, "anna", 300_000 * R, T0);
+    s = bathroom(s);
+    s = fund(s, "d1", "anna", 300_000 * R, T0);
+    s = submitStage(s, "d1", "s1", "ivan", {}, T0);
+    return rejectStage(s, "d1", "s1", "anna", "Не вывезен мусор", T0 + 1);
+  };
+
+  it("причина отказа становится первой репликой; стороны и приёмщик отвечают, чужие — нет", () => {
+    let s = disputed();
+    expect(s.deals.d1!.stages[0]!.messages).toEqual([{ by: "anna", text: "Не вывезен мусор", at: T0 + 1 }]);
+    s = replyDispute(s, "d1", "s1", "ivan", "Вывезли, вот фото", ["/uploads/a"], T0 + 2);
+    s = replyDispute(s, "d1", "s1", "expert", "Уточните объём", [], T0 + 3);
+    expect(s.deals.d1!.stages[0]!.messages).toHaveLength(3);
+    expect(s.deals.d1!.stages[0]!.messages![1]!.photos).toEqual(["/uploads/a"]);
+    expect(() => replyDispute(s, "d1", "s1", "stranger", "я тоже", [], T0)).toThrow(EngineError);
+    expect(() => replyDispute(s, "d1", "s1", "ivan", "  ", [], T0)).toThrow(EngineError);
+  });
+
+  it("решение приёмщика сохраняет комментарий и автора решения", () => {
+    const s = resolveDispute(disputed(), "d1", "s1", "expert", "pay", T0 + 5, "  Фото подтверждают  ");
+    expect(s.deals.d1!.stages[0]!.resolution).toEqual({ by: "arbiter", decision: "accepted", comment: "Фото подтверждают", at: T0 + 5 });
+  });
+
+  it("фиксируется, кто принял этап: заказчик или автоприёмка", () => {
+    let s = createState();
+    s = topUp(s, "anna", 300_000 * R, T0);
+    s = bathroom(s);
+    s = fund(s, "d1", "anna", 300_000 * R, T0);
+    s = submitStage(s, "d1", "s1", "ivan", {}, T0);
+    s = approveStage(s, "d1", "s1", "anna", T0);
+    s = submitStage(s, "d1", "s2", "ivan", {}, T0);
+    s = tick(s, T0 + 3 * DAY_MS);
+    expect(s.deals.d1!.stages[0]!.resolution?.by).toBe("owner");
+    expect(s.deals.d1!.stages[1]!.resolution?.by).toBe("auto");
+  });
+
+  it("реплика возможна только по этапу в споре", () => {
+    let s = createState();
+    s = topUp(s, "anna", 300_000 * R, T0);
+    s = bathroom(s);
+    s = fund(s, "d1", "anna", 300_000 * R, T0);
+    expect(() => replyDispute(s, "d1", "s1", "anna", "x", [], T0)).toThrow(/не в споре/);
   });
 });

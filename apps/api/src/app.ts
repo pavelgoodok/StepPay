@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
@@ -9,6 +10,7 @@ import {
   freeBalance,
   fund,
   openDispute,
+  replyDispute,
   rejectStage,
   reservedBalance,
   resolveDispute,
@@ -33,6 +35,7 @@ export interface AppOptions {
   corsOrigin?: string;
 }
 
+const photoUrl = z.string().regex(/^\/uploads\/[\w-]{8,64}$/);
 const money = z.number().int().positive().max(100_000_000 * RUB);
 
 const createBody = z.object({
@@ -57,7 +60,7 @@ function involved(d: Deal, userId: string) {
 }
 
 export async function buildApp(opts: AppOptions) {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
   await app.register(cors, { origin: opts.corsOrigin ?? true });
   const now = opts.now ?? Date.now;
 
@@ -215,7 +218,7 @@ export async function buildApp(opts: AppOptions) {
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()));
   act(
     "/deals/:id/stages/:stageId/submit",
-    z.object({ note: z.string().max(2000).optional(), photos: z.array(z.string().max(500)).max(10).optional() }),
+    z.object({ note: z.string().max(2000).optional(), photos: z.array(photoUrl).max(6).optional() }),
     (s, p, me, b) => submitStage(s, p.id, p.stageId, me, b, now()),
   );
   act("/deals/:id/stages/:stageId/approve", none, (s, p, me) => approveStage(s, p.id, p.stageId, me, now()));
@@ -226,11 +229,40 @@ export async function buildApp(opts: AppOptions) {
     voteStage(s, p.id, p.stageId, me, b.vote, now()),
   );
   act("/deals/:id/stages/:stageId/dispute", z.object({ reason: z.string() }), (s, p, me, b) =>
-    openDispute(s, p.id, p.stageId, me, b.reason),
+    openDispute(s, p.id, p.stageId, me, b.reason, now()),
   );
-  act("/deals/:id/stages/:stageId/resolve", z.object({ decision: z.enum(["pay", "refund"]) }), (s, p, me, b) =>
-    resolveDispute(s, p.id, p.stageId, me, b.decision, now()),
+  act("/deals/:id/stages/:stageId/reply", z.object({ text: z.string().max(2000).default(""), photos: z.array(photoUrl).max(6).default([]) }), (s, p, me, b) =>
+    replyDispute(s, p.id, p.stageId, me, b.text, b.photos, now()),
   );
+  act(
+    "/deals/:id/stages/:stageId/resolve",
+    z.object({ decision: z.enum(["pay", "refund"]), comment: z.string().max(2000).optional() }),
+    (s, p, me, b) => resolveDispute(s, p.id, p.stageId, me, b.decision, now(), b.comment),
+  );
+
+  // фото: клиент уменьшает картинку и присылает data URL, в сделках хранится только ссылка
+  const MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+  app.post("/uploads", async (req, reply) => {
+    if (!authed(req, reply)) return;
+    const { dataUrl } = z.object({ dataUrl: z.string() }).parse(req.body);
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!m) return reply.code(400).send({ error: "Нужна картинка JPEG, PNG или WebP" });
+    const data = Buffer.from(m[2]!, "base64");
+    if (data.length > 900 * 1024) return reply.code(413).send({ error: "Фото слишком большое" });
+    const id = randomUUID();
+    await opts.store.putFile(id, { mime: m[1]!, data });
+    return { url: `/uploads/${id}` };
+  });
+  app.get("/uploads/:id", async (req, reply) => {
+    const { id } = z.object({ id: z.string().regex(/^[\w-]{8,64}$/) }).parse(req.params);
+    const f = await opts.store.getFile(id);
+    if (!f) return reply.code(404).send({ error: "Файл не найден" });
+    return reply
+      .header("content-type", f.mime)
+      .header("cache-control", "public, max-age=31536000, immutable")
+      .header("cross-origin-resource-policy", "cross-origin")
+      .send(f.data);
+  });
 
   // часы автоприёмки: вызывается по таймеру сервера, а также вручную для демо
   const runTick = () => transact((s) => ({ state: tick(s, now()), result: true }));

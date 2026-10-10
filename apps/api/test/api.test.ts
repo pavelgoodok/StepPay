@@ -49,7 +49,7 @@ describe("API", () => {
 
     // чужой не может сдать этап
     expect((await call("anna", "POST", `/deals/${id}/stages/s1/submit`, {})).status).toBe(400);
-    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { photos: ["x.jpg"] });
+    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { note: "готово" });
     const ok = await call("anna", "POST", `/deals/${id}/stages/s1/approve`);
     expect(ok.status).toBe(200);
     expect((await call("ivan", "GET", "/me")).body.wallet.free).toBe(30_000 * R);
@@ -98,6 +98,33 @@ describe("API", () => {
     expect(bad.status).toBe(400);
     await call("fond", "POST", `/deals/${id}/stages/s1/reject`, { reason: "Нет отчёта" });
     expect((await call("fond", "GET", "/me")).body.wallet.free).toBe(2_000_000 * R);
+  });
+
+  it("фото: загрузка, выдача, отсев чужих ссылок; спор с перепиской и решением", async () => {
+    const { app, call } = await setup();
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    expect((await call("ivan", "POST", "/uploads", { dataUrl: "data:text/html;base64,PGI+" })).status).toBe(400);
+    const up = await call("ivan", "POST", "/uploads", { dataUrl: png });
+    expect(up.status).toBe(200);
+    const img = await app.inject({ method: "GET", url: up.body.url });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers["content-type"]).toBe("image/png");
+
+    const id = (await call("anna", "POST", "/deals", {
+      mode: "own", title: "Ванная", executorId: "ivan", stages: [{ title: "Плитка", amount: 10_000 * R }],
+    })).body.id;
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    const evil = await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { photos: ["https://evil.example/x.jpg"] });
+    expect(evil.status).toBe(400);
+    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { photos: [up.body.url] });
+    await call("anna", "POST", `/deals/${id}/stages/s1/reject`, { reason: "Швы кривые" });
+    await call("ivan", "POST", `/deals/${id}/stages/s1/reply`, { text: "Переделал", photos: [up.body.url] });
+    expect((await call("olga", "POST", `/deals/${id}/stages/s1/reply`, { text: "я вмешаюсь" })).status).toBe(400);
+    await call("expert", "POST", `/deals/${id}/stages/s1/resolve`, { decision: "pay", comment: "Фото подтверждают" });
+    const d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.stages[0].messages).toHaveLength(2);
+    expect(d.stages[0].resolution).toMatchObject({ by: "arbiter", decision: "accepted", comment: "Фото подтверждают" });
+    expect((await call("ivan", "GET", "/me")).body.wallet.free).toBe(10_000 * R);
   });
 
   it("валидация: нужен шаблон или этапы", async () => {
