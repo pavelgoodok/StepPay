@@ -14,7 +14,7 @@ if (process.env.DATABASE_URL) {
   store = new MemoryStore();
 }
 
-const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN });
+const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off" });
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
 console.log(`StepPay API on :${port}`);

@@ -32,12 +32,14 @@ export class MemoryStore implements Store {
 }
 
 export class PgStore implements Store {
-  private pool: pg.Pool;
-  constructor(url: string) {
-    this.pool = new pg.Pool({
-      connectionString: url,
-      ssl: url.includes("railway.internal") || url.includes("localhost") ? false : { rejectUnauthorized: false },
-    });
+  private pool: Pick<pg.Pool, "query">;
+  constructor(url: string, pool?: Pick<pg.Pool, "query">) {
+    this.pool =
+      pool ??
+      new pg.Pool({
+        connectionString: url,
+        ssl: url.includes("railway.internal") || url.includes("localhost") ? false : { rejectUnauthorized: false },
+      });
   }
   async init() {
     await this.pool.query(
@@ -62,6 +64,6 @@ export class PgStore implements Store {
   }
   async getFile(id: string): Promise<StoredFile | null> {
     const r = await this.pool.query("select mime, data from files where id = $1", [id]);
-    return r.rows[0] ? { mime: r.rows[0].mime as string, data: r.rows[0].data as Buffer } : null;
+    return r.rows[0] ? { mime: r.rows[0].mime as string, data: Buffer.from(r.rows[0].data as Uint8Array) } : null;
   }
 }

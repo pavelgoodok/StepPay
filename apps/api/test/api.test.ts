@@ -235,3 +235,48 @@ describe("репутация, чеки, события", () => {
   });
 });
 
+describe("демо для жюри", () => {
+  it("сценарий проигрывается целиком, деньги сходятся, фото доступно", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t });
+    const post = (url: string, payload?: object) => app.inject({ method: "POST", url, payload });
+    const bal = async (u: string) => {
+      const tok = (await post("/auth/demo", { userId: u })).json().token;
+      return (await app.inject({ method: "GET", url: "/wallet", headers: { authorization: `Bearer ${tok}` } })).json();
+    };
+    expect((await app.inject({ method: "GET", url: "/demo/script" })).json()).toHaveLength(8);
+    expect((await post("/demo/reset")).statusCode).toBe(200);
+    const proj = (await app.inject({ method: "GET", url: "/projects?mode=crowdfunding" })).json();
+    expect(proj.map((p: { title: string }) => p.title)).toContain("Детская площадка во дворе");
+    expect((await app.inject({ method: "GET", url: "/projects?mode=grant" })).json()).toHaveLength(2);
+
+    expect((await post("/demo/step", { step: 2 })).statusCode).toBe(400); // нельзя пропускать шаги
+    const steps: Record<string, unknown>[] = [];
+    for (let i = 1; i <= 8; i++) {
+      const r = await post("/demo/step", { step: i });
+      expect(r.statusCode).toBe(200);
+      steps.push(r.json());
+      if (i === 4) expect((await bal("ivan")).free).toBe(120_000 * R);
+    }
+    expect(steps[3]).toMatchObject({ viewAs: "ivan", path: "/wallet" });
+    expect((await bal("games")).free).toBe(100_000 * R);
+    expect((await bal("anna")).reserved).toBe(180_000 * R);
+    const olga = await bal("olga"), max = await bal("max");
+    expect(olga.free).toBe(540_000 * R);
+    expect(max.free).toBe(540_000 * R);
+    expect(olga.reserved).toBe(410_000 * R); // в резерве остаются только взносы в каталожные проекты
+    const photo = await app.inject({ method: "GET", url: "/uploads/demo-tile-photo-0001" });
+    expect(photo.statusCode).toBe(200);
+    expect(photo.headers["content-type"]).toBe("image/jpeg");
+    // повторный сброс возвращает чистое состояние
+    await new Promise((r) => setTimeout(r, 2100));
+    await post("/demo/reset");
+    expect((await bal("ivan")).free).toBe(0);
+    expect((await bal("olga")).free).toBe(590_000 * R);
+  }, 15000);
+
+  it("в продакшене демо можно отключить", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", demoMode: false });
+    expect((await app.inject({ method: "POST", url: "/demo/reset" })).statusCode).toBe(404);
+  });
+});
+

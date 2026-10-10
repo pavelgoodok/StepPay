@@ -213,3 +213,5 @@ textarea.input { min-height: 84px; resize: vertical; }
 .stars { color: #ffb400; letter-spacing: 2px; font-size: 22px; }
 .receipt { background: var(--card); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); border-left: 5px solid var(--blue); }
 @media print { body * { visibility: hidden; } .printable, .printable * { visibility: visible; } .printable { position: absolute; inset: 0; padding: 24px; background: #fff; color: #000; } }
+
+.demo-pill { position: fixed; z-index: 30; right: max(12px, calc(50% - 228px)); bottom: 104px; padding: 10px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(135deg, #7a3cff, #0a5cff); box-shadow: 0 8px 22px rgba(60,40,200,.45); }

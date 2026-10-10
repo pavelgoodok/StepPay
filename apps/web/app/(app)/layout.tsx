@@ -19,6 +19,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
+  const [demo, setDemo] = useState(false);
+  useEffect(() => {
+    try { setDemo(localStorage.getItem("steppay.demo") !== null); } catch { /* ignore */ }
+  }, [path]);
 
   useEffect(() => {
     if (ready && !user) router.replace("/login");
@@ -29,6 +33,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       {children}
+      {demo && (
+        <Link href="/demo" className="demo-pill" aria-label="Вернуться к демо-сценарию">▶ Демо</Link>
+      )}
       <nav className="tabbar">
         {TABS.map((t) =>
           t ? (

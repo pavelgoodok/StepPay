@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IMG, Initials } from "@/components/ui";
@@ -44,7 +45,11 @@ export default function Login() {
         <p style={{ marginTop: 10 }}>Деньги уходят только за принятый этап. В цифровых рублях.</p>
       </div>
       <div style={{ flex: 1, minHeight: 20 }} />
-      <p className="small" style={{ opacity: 0.85 }}>Демо-режим: выберите роль и войдите в один клик</p>
+      <Link href="/demo" className="who" style={{ background: "#fff", color: "var(--blue)", fontWeight: 800 }}>
+        <div className="grow">▶ Демо-сценарий для жюри · 3 минуты</div>
+        <span>→</span>
+      </Link>
+      <p className="small" style={{ opacity: 0.85 }}>Или выберите роль и войдите в один клик</p>
       <div className="stack">
         {users.length === 0 && <p className="small">Подключаемся к серверу…</p>}
         {users.map((u) => (

@@ -24,6 +24,8 @@ import {
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
+import { DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
+import { DEMO_SCRIPT, freshDemoState, runDemoStep, seedCatalog, seedUsers } from "./demo";
 import { executorStats, receiptsFor } from "./stats";
 import type { Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
@@ -37,6 +39,10 @@ export interface AppOptions {
   secret: string;
   now?: () => number;
   corsOrigin?: string;
+  /** заполнить каталог проектов демо-данными при пустой базе */
+  seedCatalog?: boolean;
+  /** публичные демо-эндпоинты (сценарий для жюри и сброс данных); по умолчанию включены */
+  demoMode?: boolean;
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -67,16 +73,19 @@ function involved(d: Deal, userId: string) {
 
 export async function buildApp(opts: AppOptions) {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
-  await app.register(cors, { origin: opts.corsOrigin ?? true });
+  const origins = opts.corsOrigin?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
+  await app.register(cors, { origin: origins.length ? origins : true });
   const now = opts.now ?? Date.now;
   const planner = opts.planner ?? createPlanner();
   const hub = new Hub();
 
   let state: State = await opts.store.load();
   if (state.ledger.length === 0 && Object.keys(state.deals).length === 0) {
-    for (const u of DEMO_USERS) if (u.startBalance > 0) state = topUp(state, u.id, u.startBalance * RUB, now());
+    state = opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now());
     await opts.store.save(state);
   }
+
+  await opts.store.putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
 
   /** Все изменения последовательны: чтение-изменение-запись без гонок. */
   let queue: Promise<unknown> = Promise.resolve();
@@ -279,6 +288,30 @@ export async function buildApp(opts: AppOptions) {
     "resolve",
   );
 
+  // демо для жюри: без входа, действует только на демо-пользователях и демо-сделках
+  if (opts.demoMode ?? true) {
+    const everyone = DEMO_USERS.map((u) => u.id);
+    let lastReset = 0;
+    app.get("/demo/script", async () => DEMO_SCRIPT);
+    app.post("/demo/reset", async (_req, reply) => {
+      if (Date.now() - lastReset < 2000) return reply.code(429).send({ error: "Подождите пару секунд" });
+      lastReset = Date.now();
+      await transact(() => ({ state: freshDemoState(now()), result: true }));
+      hub.send(everyone, "changed", {});
+      return { ok: true };
+    });
+    app.post("/demo/step", async (req) => {
+      const { step } = z.object({ step: z.number().int().min(1).max(DEMO_SCRIPT.length) }).parse(req.body);
+      const narration = await transact((s) => {
+        const out = runDemoStep(s, step, now());
+        return { state: out.state, result: out.narration };
+      });
+      hub.send(everyone, "changed", {});
+      hub.send([narration.viewAs], "notify", { dealId: "", text: narration.title });
+      return { step, total: DEMO_SCRIPT.length, ...narration };
+    });
+  }
+
   // AI-помощник: описание работы -> этапы с долями и критериями приёмки
   const lastAi = new Map<string, number[]>();
   app.post("/ai/plan", async (req, reply) => {
@@ -311,7 +344,8 @@ export async function buildApp(opts: AppOptions) {
     const id = verifyToken(opts.secret, token);
     if (!id || !userById(id)) return reply.code(401).send({ error: "Требуется вход" });
     reply.hijack();
-    const origin = typeof opts.corsOrigin === "string" ? opts.corsOrigin : (req.headers.origin ?? "*");
+    const reqOrigin = req.headers.origin;
+    const origin = !origins.length ? (reqOrigin ?? "*") : reqOrigin && origins.includes(reqOrigin) ? reqOrigin : origins[0]!;
     reply.raw.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-transform",
