@@ -1,8 +1,9 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon, Initials } from "@/components/ui";
-import { api, type WalletView } from "@/lib/api";
+import { api, type PublicUser } from "@/lib/api";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приёмщик споров" };
@@ -10,12 +11,21 @@ const ROLE: Record<string, string> = { customer: "Заказчик", executor: "
 export default function Profile() {
   const { user, users, login, logout, toast } = useSession();
   const router = useRouter();
-  const { data } = usePoll(() => api<WalletView>("/wallet"), [user?.id]);
+  const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number } & PublicUser>(`/users/${user?.id}/public`), [user?.id]);
   const [dark, setDark] = useState(false);
-  useEffect(() => setDark(document.documentElement.dataset.theme === "dark"), []);
+  const [notif, setNotif] = useState<NotificationPermission | "none">("none");
+  useEffect(() => {
+    setDark(document.documentElement.dataset.theme === "dark");
+    if (typeof Notification !== "undefined") setNotif(Notification.permission);
+  }, []);
   if (!user) return null;
 
-  const payouts = data?.history.filter((h) => h.type === "payout").length ?? 0;
+  async function enableNotifications() {
+    if (typeof Notification === "undefined") return toast("Браузер не поддерживает уведомления", "err");
+    const r = await Notification.requestPermission();
+    setNotif(r);
+    toast(r === "granted" ? "Уведомления включены" : "Уведомления отключены в браузере");
+  }
 
   function theme() {
     const next = dark ? "light" : "dark";
@@ -35,8 +45,20 @@ export default function Profile() {
       </div>
 
       <div className="card row" style={{ justifyContent: "space-around", textAlign: "center" }}>
-        <div><div className="h1">{payouts}</div><div className="small muted">получено выплат</div></div>
-        <div><div className="h1">0</div><div className="small muted">споров</div></div>
+        <div><div className="h1">{data?.rating != null ? data.rating.toFixed(1).replace(".", ",") : "—"}</div><div className="small muted">рейтинг</div></div>
+        <div><div className="h1">{data?.acceptedStages ?? 0}</div><div className="small muted">принято этапов</div></div>
+        <div><div className="h1">{data?.disputes ?? 0}</div><div className="small muted">споров</div></div>
+      </div>
+
+      <div className="card stack" style={{ gap: 0 }}>
+        <Link href={`/u/${user.id}`} className="row between" style={{ padding: "12px 0" }}>
+          <span className="row"><Icon name="user" size={22} /> Моя публичная карточка</span><Icon name="arrow" size={18} />
+        </Link>
+        {user.role === "executor" && (
+          <Link href="/receipts" className="row between" style={{ padding: "12px 0" }}>
+            <span className="row"><Icon name="check" size={22} /> Мои чеки</span><Icon name="arrow" size={18} />
+          </Link>
+        )}
       </div>
 
       <h2 className="title">Сменить пользователя (демо)</h2>
@@ -55,11 +77,14 @@ export default function Profile() {
         <button className="row between" style={{ padding: "12px 0" }} onClick={theme}>
           <span className="row"><Icon name="moon" size={22} /> Тёмная тема</span><span className="chip">{dark ? "Вкл" : "Выкл"}</span>
         </button>
+        <button className="row between" style={{ padding: "12px 0" }} onClick={enableNotifications}>
+          <span className="row"><Icon name="clock" size={22} /> Уведомления на устройстве</span><span className="chip">{notif === "granted" ? "Вкл" : "Включить"}</span>
+        </button>
         <button className="row between" style={{ padding: "12px 0" }} onClick={() => { logout(); router.replace("/login"); }}>
           <span className="row"><Icon name="logout" size={22} /> Выйти</span><Icon name="arrow" size={18} />
         </button>
       </div>
-      <p className="small muted" style={{ textAlign: "center" }}>StepPay · оплата по шагам в цифровых рублях · Версия 0.3</p>
+      <p className="small muted" style={{ textAlign: "center" }}>StepPay · оплата по шагам в цифровых рублях · Версия 0.5</p>
     </div>
   );
 }

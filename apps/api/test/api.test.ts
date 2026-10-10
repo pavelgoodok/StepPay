@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import http from "node:http";
+import { normalizePlan, templatePlan, createPlanner } from "../src/ai";
 import { buildApp } from "../src/app";
 import { MemoryStore } from "../src/store";
 
@@ -133,3 +135,103 @@ describe("API", () => {
     expect(r.status).toBe(400);
   });
 });
+
+describe("AI-планировщик", () => {
+  it("без ключа подбирает шаблон по словам и не падает", async () => {
+    const p = templatePlan({ description: "Нужно переделать ванную и положить плитку", mode: "own" });
+    expect(p.source).toBe("template");
+    expect(p.title).toBe("Ремонт ванной");
+    expect(p.stages.reduce((a, s) => a + s.share, 0)).toBe(100);
+    const generic = templatePlan({ description: "Сделать что-то неопределённое", mode: "own" });
+    expect(generic.stages).toHaveLength(3);
+    expect((await createPlanner("").plan({ description: "Сайт для пекарни", mode: "own" })).source).toBe("template");
+  });
+
+  it("normalizePlan приводит доли к 100 и отсеивает мусор", () => {
+    const s = normalizePlan({ title: "x", stages: [
+      { title: "А", share: 30, criteria: ["ок"] }, { title: "Б", share: 50, criteria: [] }, { title: "В", share: 10, criteria: [] },
+    ] })!;
+    expect(s.reduce((a, x) => a + x.share, 0)).toBe(100);
+    expect(s.find((x) => x.title === "Б")!.share).toBe(60);
+    expect(normalizePlan({ title: "x", stages: [{ title: "Один", share: 100, criteria: [] }] })).toBeNull();
+    expect(normalizePlan({ title: "x", stages: [{ title: "", share: 50, criteria: [] }, { title: "Б", share: 0, criteria: [] }] })).toBeNull();
+  });
+
+  it("/ai/plan: нужен вход, валидация, подмена планировщика, лимит запросов", async () => {
+    const calls: unknown[] = [];
+    const planner = { plan: async (i: unknown) => (calls.push(i), { title: "Т", stages: [{ title: "А", share: 100, criteria: [] }], source: "claude" as const }) };
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t, planner });
+    const token = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "anna" } })).json().token;
+    const h = { authorization: `Bearer ${token}` };
+    expect((await app.inject({ method: "POST", url: "/ai/plan", payload: { description: "ремонт кухни" } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/ai/plan", headers: h, payload: { description: "?" } })).statusCode).toBe(400);
+    const ok = await app.inject({ method: "POST", url: "/ai/plan", headers: h, payload: { description: "ремонт кухни", mode: "own", total: 100000 } });
+    expect(ok.json().source).toBe("claude");
+    expect(calls).toHaveLength(1);
+    for (let i = 0; i < 7; i++) await app.inject({ method: "POST", url: "/ai/plan", headers: h, payload: { description: "ремонт кухни" } });
+    expect((await app.inject({ method: "POST", url: "/ai/plan", headers: h, payload: { description: "ремонт кухни" } })).statusCode).toBe(429);
+  });
+});
+
+describe("репутация, чеки, события", () => {
+  it("публичная карточка считает рейтинг по закрытым этапам; чеки по выплатам", async () => {
+    const { app, call } = await setup();
+    const fresh = await app.inject({ method: "GET", url: "/users/ivan/public" });
+    expect(fresh.json()).toMatchObject({ name: "Иван Петров", rating: null, acceptedStages: 0 });
+
+    const id = (await call("anna", "POST", "/deals", {
+      mode: "own", title: "Сайт", executorId: "ivan",
+      stages: [{ title: "Дизайн", amount: 10_000 * R }, { title: "Вёрстка", amount: 20_000 * R }],
+    })).body.id;
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, {});
+    await call("anna", "POST", `/deals/${id}/stages/s1/approve`);
+    await call("ivan", "POST", `/deals/${id}/stages/s2/submit`, {});
+    await call("anna", "POST", `/deals/${id}/stages/s2/approve`);
+
+    const pub = (await app.inject({ method: "GET", url: "/users/ivan/public" })).json();
+    expect(pub).toMatchObject({ acceptedStages: 2, failedStages: 0, dealsCompleted: 1, received: 30_000 * R });
+    expect(pub.rating).toBe(5);
+    expect((await app.inject({ method: "GET", url: "/users/nobody/public" })).statusCode).toBe(404);
+
+    const rc = await call("ivan", "GET", "/receipts");
+    expect(rc.body).toHaveLength(2);
+    expect(rc.body[0]).toMatchObject({ amount: 20_000 * R, payer: "Анна Смирнова", executor: "Иван Петров" });
+    expect(rc.body[0].service).toContain("Вёрстка");
+    expect((await call("anna", "GET", "/receipts")).body).toHaveLength(0);
+  });
+
+  it("SSE: участник сделки получает уведомление, посторонний — нет", async () => {
+    const { app, call } = await setup();
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const port = (app.server.address() as { port: number }).port;
+    const tok = async (u: string) => (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: u } })).json().token as string;
+    const reqs: http.ClientRequest[] = [];
+    const listen = async (u: string) => {
+      const chunks: string[] = [];
+      const t = await tok(u);
+      await new Promise<void>((resolve) => {
+        const req = http.get(`http://127.0.0.1:${port}/events?token=${t}`, (res) => {
+          res.setEncoding("utf8");
+          res.on("data", (c: string) => { chunks.push(c); if (chunks.join("").includes(": connected")) resolve(); });
+        });
+        req.on("error", () => undefined);
+        reqs.push(req);
+      });
+      return chunks;
+    };
+    const ivan = await listen("ivan");
+    const olga = await listen("olga");
+    const id = (await call("anna", "POST", "/deals", { mode: "own", title: "Сайт", executorId: "ivan", stages: [{ title: "Дизайн", amount: 10_000 * R }] })).body.id;
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    await new Promise((r) => setTimeout(r, 150));
+    const got = ivan.join("");
+    expect(got).toContain("event: notify");
+    expect(got).toContain("зарезервировал");
+    expect(olga.join("")).not.toContain("event: notify");
+    expect((await app.inject({ method: "GET", url: "/events?token=bad.token" })).statusCode).toBe(401);
+    reqs.forEach((r) => r.destroy());
+    await app.close();
+  });
+});
+

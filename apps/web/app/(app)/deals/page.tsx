@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { IMG, Icon, Initials, Logo, StageBars } from "@/components/ui";
+import { IMG, Icon, Initials, Logo, Money, StageBars } from "@/components/ui";
 import { api, type DealSummary } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { dealChip, nameOf } from "@/lib/labels";
@@ -31,7 +31,7 @@ export default function Deals() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
         <div className="label">Кошелёк цифрового рубля</div>
-        <div className="big mono">{rub(wallet?.free ?? 0)}</div>
+        <div className="big"><Money value={wallet?.free ?? 0} /></div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(wallet?.reserved ?? 0)} в резерве</span>
       </div>
 

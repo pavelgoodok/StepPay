@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, getToken, setToken, type PublicUser, type Wallet } from "./api";
+import { API_URL, api, getToken, setToken, type PublicUser, type Wallet } from "./api";
 import { rub } from "./format";
 
 interface Session {
@@ -13,6 +13,13 @@ interface Session {
   logout(): void;
   toast(text: string, tone?: "ok" | "err"): void;
 }
+
+/** Шина обновлений: SSE-сигнал «сделка изменилась» будит экраны, которые показывают данные. */
+const listeners = new Set<() => void>();
+const onChanged = (cb: () => void) => {
+  listeners.add(cb);
+  return () => void listeners.delete(cb);
+};
 
 const Ctx = createContext<Session | null>(null);
 export const useSession = () => {
@@ -62,9 +69,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })();
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
-    }, 4000);
+    }, 20_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // живые обновления: сервер сам сообщает об изменениях; опрос остаётся запасным
+  const uid = user?.id;
+  useEffect(() => {
+    const token = getToken();
+    if (!uid || !token || typeof EventSource === "undefined") return;
+    const es = new EventSource(`${API_URL}/events?token=${encodeURIComponent(token)}`);
+    es.addEventListener("changed", () => {
+      void refresh();
+      listeners.forEach((cb) => cb());
+    });
+    es.addEventListener("notify", (e) => {
+      const { text } = JSON.parse((e as MessageEvent).data) as { text: string };
+      toast(text);
+      try {
+        if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") new Notification("StepPay", { body: text, icon: "/logo.png" });
+      } catch {
+        /* уведомления недоступны — остаётся тост */
+      }
+    });
+    return () => es.close();
+  }, [uid, refresh, toast]);
 
   const login = useCallback(
     async (userId: string) => {
@@ -98,7 +127,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 }
 
 /** Периодическое обновление данных экрана («живая» картина без перезагрузки). */
-export function usePoll<T>(fn: () => Promise<T>, deps: unknown[], ms = 4000) {
+export function usePoll<T>(fn: () => Promise<T>, deps: unknown[], ms = 15_000) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const run = useCallback(async () => {
@@ -113,7 +142,11 @@ export function usePoll<T>(fn: () => Promise<T>, deps: unknown[], ms = 4000) {
   useEffect(() => {
     void run();
     const t = setInterval(() => document.visibilityState === "visible" && void run(), ms);
-    return () => clearInterval(t);
+    const off = onChanged(() => void run());
+    return () => {
+      clearInterval(t);
+      off();
+    };
   }, [run, ms]);
   return { data, error, reload: run };
 }

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { IMG, Icon, Sheet, StageBars } from "@/components/ui";
+import { IMG, Icon, Money, Sheet, StageBars } from "@/components/ui";
 import { api, type WalletView } from "@/lib/api";
 import { dayLabel, rub, toKopecks } from "@/lib/format";
 import { LEDGER_LABEL } from "@/lib/labels";
@@ -40,7 +40,7 @@ export default function WalletPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
         <div className="label">Цифровой рубль</div>
-        <div className="big mono">{rub(data?.free ?? 0)}</div>
+        <div className="big"><Money value={data?.free ?? 0} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(data?.reserved ?? 0)} зарезервировано в сделках</span>
       </div>

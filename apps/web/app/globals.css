@@ -201,3 +201,15 @@ textarea.input { min-height: 84px; resize: vertical; }
 .msg .who { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 .verdict { margin-top: 10px; padding: 12px; border-radius: 14px; font-size: 14px; background: var(--green-soft); color: var(--green); }
 .verdict.bad { background: var(--red-soft); color: var(--red); }
+
+.money { position: relative; display: inline-block; }
+.coins { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.coins i { position: absolute; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #fff, #ffd76a 55%, #f0a500); box-shadow: 0 0 10px rgba(255,200,60,.8); animation: coin .95s cubic-bezier(.15,.8,.3,1) forwards; opacity: 0; }
+@keyframes coin { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(.6); } 70% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1)) scale(1.1); } }
+.ai { border-radius: 20px; padding: 14px; background: linear-gradient(135deg, var(--blue-soft), var(--card)); border: 1.5px solid var(--blue); display: flex; flex-direction: column; gap: 10px; }
+.ai .tag { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 800; color: var(--blue); }
+.spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #fff; animation: rot .7s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.stars { color: #ffb400; letter-spacing: 2px; font-size: 22px; }
+.receipt { background: var(--card); border-radius: 18px; padding: 16px; box-shadow: var(--shadow); border-left: 5px solid var(--blue); }
+@media print { body * { visibility: hidden; } .printable, .printable * { visibility: visible; } .printable { position: absolute; inset: 0; padding: 24px; background: #fff; color: #000; } }

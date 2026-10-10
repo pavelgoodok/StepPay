@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { rub } from "@/lib/format";
 
 export const IMG = {
   card: "/3d/card.webp",
@@ -100,5 +101,43 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={P[name] ?? P.check} />
     </svg>
+  );
+}
+
+/** Сумма с плавным пересчётом; при росте вылетают «монеты» — деньги дошли. */
+export function Money({ value, burst = true }: { value: number; burst?: boolean }) {
+  const [shown, setShown] = useState(value);
+  const [pop, setPop] = useState(0);
+  const from = useRef(value);
+  useEffect(() => {
+    const start = from.current;
+    if (start === value) return;
+    if (value > start && burst) setPop((n) => n + 1);
+    const t0 = performance.now();
+    let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / 1100);
+      const e = 1 - Math.pow(1 - k, 3);
+      setShown(Math.round(start + (value - start) * e));
+      if (k < 1) raf = requestAnimationFrame(step);
+      else from.current = value;
+    };
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+      from.current = value;
+    };
+  }, [value, burst]);
+  return (
+    <span className="money mono">
+      {rub(shown)}
+      {pop > 0 && (
+        <span key={pop} className="coins" aria-hidden>
+          {Array.from({ length: 10 }, (_, i) => (
+            <i key={i} style={{ ["--a" as string]: `${i * 36}deg`, ["--d" as string]: `${50 + (i % 3) * 18}px`, animationDelay: `${i * 20}ms` }} />
+          ))}
+        </span>
+      )}
+    </span>
   );
 }

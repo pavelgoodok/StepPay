@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
-import { IMG, Icon, Sheet } from "@/components/ui";
+import { IMG, Icon, Money, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
 import { MODE_LABEL, STAGE_LABEL, dealChip, nameOf } from "@/lib/labels";
@@ -92,7 +92,7 @@ export default function DealPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={d.status === "completed" ? IMG.terminal : IMG.safe} alt="" />
         <div className="label">Выплачено исполнителю</div>
-        <div className="big mono">{rub(paid)}</div>
+        <div className="big"><Money value={paid} /></div>
         <div style={{ maxWidth: 190 }}>
           <div className="meter" style={{ background: "rgba(255,255,255,.28)" }}>
             <b style={{ width: `${d.target ? (paid / d.target) * 100 : 0}%`, background: "#fff" }} />
@@ -155,7 +155,7 @@ export default function DealPage() {
                 </div>
                 <div className="small muted" style={{ marginTop: 2 }}>{STAGE_LABEL[s.status]}</div>
                 {s.criteria.length > 0 && <ul className="crit">{s.criteria.map((c) => <li key={c}>{c}</li>)}</ul>}
-                {(s.evidence?.note || s.evidence?.photos?.length) && (
+                {(!!s.evidence?.note || (s.evidence?.photos?.length ?? 0) > 0) && (
                   <div className="note">
                     {s.evidence?.note && <div><b>От исполнителя:</b> {s.evidence.note}</div>}
                     <PhotoGrid photos={s.evidence?.photos} />

@@ -21,18 +21,24 @@ import {
   type Deal,
   type State,
 } from "@steppay/engine";
+import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
+import { Hub } from "./hub";
+import { executorStats, receiptsFor } from "./stats";
 import type { Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { DEMO_USERS, userById } from "./users";
 
 const RUB = 100;
+const rub = (k: number) => `${new Intl.NumberFormat("ru-RU").format(Math.round(k / 100))}\u00a0₽`;
 
 export interface AppOptions {
   store: Store;
   secret: string;
   now?: () => number;
   corsOrigin?: string;
+  /** подмена AI-планировщика (в тестах) */
+  planner?: Planner;
 }
 
 const photoUrl = z.string().regex(/^\/uploads\/[\w-]{8,64}$/);
@@ -63,6 +69,8 @@ export async function buildApp(opts: AppOptions) {
   const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
   await app.register(cors, { origin: opts.corsOrigin ?? true });
   const now = opts.now ?? Date.now;
+  const planner = opts.planner ?? createPlanner();
+  const hub = new Hub();
 
   let state: State = await opts.store.load();
   if (state.ledger.length === 0 && Object.keys(state.deals).length === 0) {
@@ -193,20 +201,45 @@ export async function buildApp(opts: AppOptions) {
   });
 
   // ── действия по сделке ──
+  /** Кому и что сообщить после действия: остальным участникам сделки приходит уведомление, всем — сигнал обновиться. */
+  const announce = (d: Deal, actor: string, kind: string, stageTitle: string, amount: number) => {
+    const people = new Set([d.executorId, d.ownerId, d.arbiterId, ...Object.keys(d.contributed)].filter((x): x is string => !!x));
+    const who = userById(actor)?.name ?? "Участник";
+    const q = `«${stageTitle}»`;
+    const text: Record<string, string> = {
+      fund: `${who} зарезервировал(а) деньги по «${d.title}»`,
+      submit: `${who} сдал(а) этап ${q} — проверьте`,
+      approve: `Этап ${q} принят: ${rub(amount)} уже у исполнителя`,
+      reject: d.mode === "grant" ? `Этап ${q} отклонён, остаток возвращён` : `Отказ по этапу ${q}: открыт спор`,
+      vote: `${who} проголосовал(а) по этапу ${q}`,
+      dispute: `Открыт спор по этапу ${q}`,
+      reply: `${who} написал(а) в споре по этапу ${q}`,
+      resolve: `Спор по этапу ${q} решён`,
+      cancel: `Сделка «${d.title}» отменена, остаток возвращён`,
+    };
+    const others = [...people].filter((p) => p !== actor && (kind !== "reply" && kind !== "dispute" ? p !== d.arbiterId : true));
+    hub.send(others, "notify", { dealId: d.id, text: text[kind] ?? "Сделка обновлена" });
+    hub.send(people, "changed", { dealId: d.id });
+  };
+
   const act = <B extends z.ZodTypeAny>(
     path: string,
     body: B,
     fn: (s: State, p: { id: string; stageId: string }, me: string, b: z.infer<B>) => State,
+    kind = "update",
   ) =>
     app.post(path, async (req, reply) => {
       const me = authed(req, reply);
       if (!me) return;
       const params = z.object({ id: z.string(), stageId: z.string().default("") }).parse(req.params);
       const b = body.parse(req.body ?? {});
-      return transact((s) => {
+      const out = await transact((s) => {
         const next = fn(s, params, me, b);
         return { state: next, result: { deal: next.deals[params.id]!, wallet: walletOf(next, me) } };
       });
+      const stage = out.deal.stages.find((x) => x.id === params.stageId);
+      announce(out.deal, me, kind, stage?.title ?? "", stage?.amount ?? 0);
+      return out;
     });
 
   const none = z.object({}).passthrough();
@@ -214,31 +247,81 @@ export async function buildApp(opts: AppOptions) {
     const d = s.deals[p.id];
     if (!d) throw new EngineError("Сделка не найдена");
     return fund(s, p.id, me, b.amount ?? d.target, now());
-  });
-  act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()));
+  }, "fund");
+  act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(
     "/deals/:id/stages/:stageId/submit",
     z.object({ note: z.string().max(2000).optional(), photos: z.array(photoUrl).max(6).optional() }),
     (s, p, me, b) => submitStage(s, p.id, p.stageId, me, b, now()),
+    "submit",
   );
-  act("/deals/:id/stages/:stageId/approve", none, (s, p, me) => approveStage(s, p.id, p.stageId, me, now()));
+  act("/deals/:id/stages/:stageId/approve", none, (s, p, me) => approveStage(s, p.id, p.stageId, me, now()), "approve");
   act("/deals/:id/stages/:stageId/reject", z.object({ reason: z.string() }), (s, p, me, b) =>
     rejectStage(s, p.id, p.stageId, me, b.reason, now()),
+    "reject",
   );
   act("/deals/:id/stages/:stageId/vote", z.object({ vote: z.enum(["accept", "reject"]) }), (s, p, me, b) =>
     voteStage(s, p.id, p.stageId, me, b.vote, now()),
+    "vote",
   );
   act("/deals/:id/stages/:stageId/dispute", z.object({ reason: z.string() }), (s, p, me, b) =>
     openDispute(s, p.id, p.stageId, me, b.reason, now()),
+    "dispute",
   );
   act("/deals/:id/stages/:stageId/reply", z.object({ text: z.string().max(2000).default(""), photos: z.array(photoUrl).max(6).default([]) }), (s, p, me, b) =>
     replyDispute(s, p.id, p.stageId, me, b.text, b.photos, now()),
+    "reply",
   );
   act(
     "/deals/:id/stages/:stageId/resolve",
     z.object({ decision: z.enum(["pay", "refund"]), comment: z.string().max(2000).optional() }),
     (s, p, me, b) => resolveDispute(s, p.id, p.stageId, me, b.decision, now(), b.comment),
+    "resolve",
   );
+
+  // AI-помощник: описание работы -> этапы с долями и критериями приёмки
+  const lastAi = new Map<string, number[]>();
+  app.post("/ai/plan", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const b = z.object({ description: z.string().trim().min(5).max(1500), mode: z.enum(["own", "crowdfunding", "grant"]).default("own"), total: money.optional() }).parse(req.body);
+    const recent = (lastAi.get(me) ?? []).filter((t) => Date.now() - t < 60_000);
+    if (recent.length >= 8) return reply.code(429).send({ error: "Слишком много запросов, подождите минуту" });
+    lastAi.set(me, [...recent, Date.now()]);
+    return planner.plan(b);
+  });
+
+  // публичная карточка исполнителя: без входа, только репутация
+  app.get("/users/:id/public", async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const u = userById(id);
+    if (!u) return reply.code(404).send({ error: "Пользователь не найден" });
+    return { id: u.id, name: u.name, role: u.role, ...executorStats(state, id) };
+  });
+
+  app.get("/receipts", async (req, reply) => {
+    const id = authed(req, reply);
+    if (!id) return;
+    return receiptsFor(state, id).map((r) => ({ ...r, payer: r.payerId ? userById(r.payerId)?.name ?? null : null, executor: userById(id)!.name }));
+  });
+
+  // события в реальном времени (SSE). Токен в query: EventSource не умеет заголовки.
+  app.get("/events", async (req, reply) => {
+    const { token } = z.object({ token: z.string() }).parse(req.query);
+    const id = verifyToken(opts.secret, token);
+    if (!id || !userById(id)) return reply.code(401).send({ error: "Требуется вход" });
+    reply.hijack();
+    const origin = typeof opts.corsOrigin === "string" ? opts.corsOrigin : (req.headers.origin ?? "*");
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+      "access-control-allow-origin": origin,
+    });
+    reply.raw.write("retry: 3000\n: connected\n\n");
+    hub.add(id, reply.raw);
+  });
 
   // фото: клиент уменьшает картинку и присылает data URL, в сделках хранится только ссылка
   const MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -265,7 +348,15 @@ export async function buildApp(opts: AppOptions) {
   });
 
   // часы автоприёмки: вызывается по таймеру сервера, а также вручную для демо
-  const runTick = () => transact((s) => ({ state: tick(s, now()), result: true }));
+  const runTick = async () => {
+    const before = state;
+    await transact((s) => ({ state: tick(s, now()), result: true }));
+    for (const d of Object.values(state.deals)) {
+      d.stages.forEach((st, i) => {
+        if (before.deals[d.id]?.stages[i]?.status === "submitted" && st.status === "accepted") announce(d, "", "approve", st.title, st.amount);
+      });
+    }
+  };
   app.post("/system/tick", async (req, reply) => {
     if (!authed(req, reply)) return;
     await runTick();
@@ -273,8 +364,14 @@ export async function buildApp(opts: AppOptions) {
   });
 
   const timer = setInterval(() => void runTick().catch(() => undefined), 60_000);
+  const beat = setInterval(() => hub.heartbeat(), 25_000);
   timer.unref();
-  app.addHook("onClose", async () => clearInterval(timer));
+  beat.unref();
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+    clearInterval(beat);
+    hub.closeAll();
+  });
 
   return app;
 }

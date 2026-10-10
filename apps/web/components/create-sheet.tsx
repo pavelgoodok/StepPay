@@ -30,6 +30,10 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
   const [executor, setExecutor] = useState("");
   const [rows, setRows] = useState<Row[]>([{ title: "", rub: "" }]);
   const [busy, setBusy] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [aiTotal, setAiTotal] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiSource, setAiSource] = useState<"claude" | "template" | null>(null);
 
   useEffect(() => {
     api<Template[]>("/templates").then(setTemplates).catch(() => undefined);
@@ -50,6 +54,33 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
   function pickTemplate(t: Template | null) {
     setTpl(t?.id ?? null);
     if (t && !title) setTitle(t.title);
+  }
+
+  async function askAi() {
+    if (!mode) return;
+    setAiBusy(true);
+    try {
+      const plan = await api<{ title: string; source: "claude" | "template"; stages: { title: string; share: number; criteria: string[] }[] }>("/ai/plan", {
+        method: "POST",
+        body: { description: aiText.trim(), mode, total: Number(aiTotal) > 0 ? toKopecks(Number(aiTotal)) : undefined },
+      });
+      const budget = Number(aiTotal) || 0;
+      let left = budget;
+      setRows(
+        plan.stages.map((st, i) => {
+          const part = i === plan.stages.length - 1 ? left : Math.round((budget * st.share) / 100);
+          left -= part;
+          return { title: st.title, rub: budget ? String(part) : "" };
+        }),
+      );
+      setTpl(null);
+      if (!title.trim()) setTitle(plan.title);
+      setAiSource(plan.source);
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   async function submit() {
@@ -110,6 +141,21 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       </button>
       <h2 style={{ textAlign: "left", fontSize: 24 }}>{m.title}</h2>
       <div className="stack" style={{ marginTop: 14, gap: 16 }}>
+        <div className="ai">
+          <span className="tag"><Icon name="bolt" size={14} /> AI-ПОМОЩНИК · CLAUDE</span>
+          <textarea className="input" placeholder="Опишите задачу своими словами: «Переделать ванную 4 м², плитка, замена труб, установка душевой»" value={aiText} onChange={(e) => setAiText(e.target.value)} style={{ minHeight: 76 }} />
+          <div className="row">
+            <input className="input" inputMode="numeric" placeholder="Бюджет, ₽" value={aiTotal} onChange={(e) => setAiTotal(e.target.value.replace(/[^\d]/g, ""))} />
+            <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={aiBusy || aiText.trim().length < 5} onClick={askAi}>
+              {aiBusy ? <span className="spin" /> : "Разбить на этапы"}
+            </button>
+          </div>
+          {aiSource && (
+            <div className="small muted">
+              {aiSource === "claude" ? "Этапы составлены Claude. Проверьте и поправьте при необходимости." : "AI сейчас недоступен — подобран ближайший шаблон. Этапы можно изменить."}
+            </div>
+          )}
+        </div>
         <div className="field">
           <label>Что нужно сделать</label>
           <div className="chips">
