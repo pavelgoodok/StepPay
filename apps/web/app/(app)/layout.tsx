@@ -1,0 +1,49 @@
+"use client";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { CreateSheet } from "@/components/create-sheet";
+import { Icon } from "@/components/ui";
+import { useSession } from "@/lib/session";
+
+const TABS = [
+  { href: "/deals", label: "Сделки", icon: "deals" },
+  { href: "/projects", label: "Проекты", icon: "sprout" },
+  null,
+  { href: "/wallet", label: "Кошелёк", icon: "wallet" },
+  { href: "/profile", label: "Профиль", icon: "user" },
+];
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  const { user, ready } = useSession();
+  const router = useRouter();
+  const path = usePathname();
+  const [create, setCreate] = useState(false);
+
+  useEffect(() => {
+    if (ready && !user) router.replace("/login");
+  }, [ready, user, router]);
+
+  if (!user) return <div className="shell"><div className="page"><div className="skeleton" /><div className="skeleton" /></div></div>;
+
+  return (
+    <div className="shell">
+      {children}
+      <nav className="tabbar">
+        {TABS.map((t) =>
+          t ? (
+            <Link key={t.href} href={t.href} className={`tab ${path.startsWith(t.href) ? "on" : ""}`}>
+              <Icon name={t.icon} />
+              {t.label}
+            </Link>
+          ) : (
+            <button key="plus" className="plus" onClick={() => setCreate(true)} aria-label="Создать">
+              <Icon name="plus" />
+            </button>
+          ),
+        )}
+      </nav>
+      {create && <CreateSheet onClose={() => setCreate(false)} />}
+    </div>
+  );
+}

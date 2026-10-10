@@ -1,0 +1,172 @@
+"use client";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { api, type DealFull, type Template } from "@/lib/api";
+import { rub, toKopecks } from "@/lib/format";
+import { useSession } from "@/lib/session";
+import { IMG, Icon, Sheet } from "./ui";
+
+type Mode = "own" | "crowdfunding" | "grant";
+const MODES: { id: Mode; title: string; text: string; icon: string }[] = [
+  { id: "own", title: "Свой проект", text: "Ремонт, сайт, свадьба: платите исполнителю по этапам", icon: "hammer" },
+  { id: "crowdfunding", title: "Краудфандинг", text: "Соберите деньги на идею, спонсоры защищены", icon: "crowd" },
+  { id: "grant", title: "Грант", text: "Выдайте деньги по этапам с готовой отчётностью", icon: "award" },
+];
+const TPL_ICON: Record<string, string> = { bath: "bath", kitchen: "kitchen", bolt: "bolt", laptop: "laptop", ring: "ring" };
+
+interface Row {
+  title: string;
+  rub: string;
+}
+
+export function CreateSheet({ onClose }: { onClose(): void }) {
+  const { users, toast, refresh } = useSession();
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [tpl, setTpl] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [total, setTotal] = useState("");
+  const [executor, setExecutor] = useState("");
+  const [rows, setRows] = useState<Row[]>([{ title: "", rub: "" }]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api<Template[]>("/templates").then(setTemplates).catch(() => undefined);
+  }, []);
+  const executors = users.filter((u) => u.role === "executor");
+  useEffect(() => {
+    if (!executor && executors[0]) setExecutor(executors[0].id);
+  }, [executors, executor]);
+
+  const custom = tpl === null;
+  const sum = custom ? rows.reduce((a, r) => a + (Number(r.rub) || 0), 0) : Number(total) || 0;
+  const preview = useMemo(() => {
+    const t = templates.find((x) => x.id === tpl);
+    if (!t || !sum) return [];
+    return t.stages.map((s) => ({ title: s.title, amount: toKopecks((sum * s.share) / 100) }));
+  }, [templates, tpl, sum]);
+
+  function pickTemplate(t: Template | null) {
+    setTpl(t?.id ?? null);
+    if (t && !title) setTitle(t.title);
+  }
+
+  async function submit() {
+    if (!mode) return;
+    setBusy(true);
+    try {
+      const body = {
+        mode,
+        title: title.trim(),
+        executorId: mode === "crowdfunding" ? undefined : executor,
+        ...(custom
+          ? { stages: rows.filter((r) => r.title.trim() && Number(r.rub) > 0).map((r) => ({ title: r.title.trim(), amount: toKopecks(Number(r.rub)) })) }
+          : { templateId: tpl, total: toKopecks(Number(total)) }),
+      };
+      const d = await api<DealFull>("/deals", { method: "POST", body });
+      await refresh();
+      onClose();
+      router.push(`/deals/${d.id}`);
+    } catch (e) {
+      toast((e as Error).message, "err");
+      setBusy(false);
+    }
+  }
+
+  const valid = title.trim().length > 0 && sum > 0 && (mode === "crowdfunding" || !!executor) && (!custom || rows.some((r) => r.title.trim() && Number(r.rub) > 0));
+
+  if (!mode) {
+    return (
+      <Sheet onClose={onClose}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="art" src={IMG.receipt} alt="" />
+        <h2>Что создаём?</h2>
+        <p className="sub" style={{ textAlign: "center", marginBottom: 16 }}>Деньги уходят только за принятые этапы</p>
+        <div className="stack">
+          {MODES.map((m) => (
+            <button key={m.id} className="mode" onClick={() => setMode(m.id)}>
+              <div className="ico"><Icon name={m.icon} size={26} /></div>
+              <div className="grow">
+                <div className="title">{m.title}</div>
+                <div className="sub">{m.text}</div>
+              </div>
+              <Icon name="arrow" size={20} />
+            </button>
+          ))}
+        </div>
+        <p className="small muted" style={{ textAlign: "center", marginTop: 16 }}>
+          <Icon name="lock" size={14} /> Цифровые рубли — без комиссии для граждан
+        </p>
+      </Sheet>
+    );
+  }
+
+  const m = MODES.find((x) => x.id === mode)!;
+  return (
+    <Sheet onClose={onClose}>
+      <button className="btn ghost sm" onClick={() => setMode(null)} style={{ marginBottom: 4 }}>
+        <Icon name="back" size={18} /> Назад
+      </button>
+      <h2 style={{ textAlign: "left", fontSize: 24 }}>{m.title}</h2>
+      <div className="stack" style={{ marginTop: 14, gap: 16 }}>
+        <div className="field">
+          <label>Что нужно сделать</label>
+          <div className="chips">
+            {templates.map((t) => (
+              <button key={t.id} className={`opt ${tpl === t.id ? "on" : ""}`} onClick={() => pickTemplate(t)}>
+                {t.title}
+              </button>
+            ))}
+            <button className={`opt ${custom ? "on" : ""}`} onClick={() => pickTemplate(null)}>Свои этапы</button>
+          </div>
+        </div>
+        <div className="field">
+          <label>Название</label>
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={mode === "crowdfunding" ? "Например, настольная игра" : "Ремонт ванной"} />
+        </div>
+        {mode !== "crowdfunding" && (
+          <div className="field">
+            <label>{mode === "grant" ? "Кому выдаём грант" : "Исполнитель"}</label>
+            <select className="input" value={executor} onChange={(e) => setExecutor(e.target.value)}>
+              {executors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+        {custom ? (
+          <div className="field">
+            <label>Этапы</label>
+            {rows.map((r, i) => (
+              <div key={i} className="row">
+                <input className="input" style={{ flex: 2 }} placeholder={`Этап ${i + 1}`} value={r.title} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+                <input className="input" style={{ flex: 1 }} inputMode="numeric" placeholder="₽" value={r.rub} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, rub: e.target.value.replace(/[^\d]/g, "") } : x)))} />
+              </div>
+            ))}
+            <button className="btn soft sm" onClick={() => setRows([...rows, { title: "", rub: "" }])}>+ Добавить этап</button>
+          </div>
+        ) : (
+          <>
+            <div className="field">
+              <label>{mode === "crowdfunding" ? "Цель сбора, ₽" : "Общая сумма, ₽"}</label>
+              <input className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))} placeholder="300000" />
+            </div>
+            {preview.length > 0 && (
+              <div className="card" style={{ boxShadow: "none", background: "var(--card)" }}>
+                <div className="small muted" style={{ marginBottom: 6 }}>Этапы по шаблону</div>
+                {preview.map((p, i) => (
+                  <div key={i} className="row between" style={{ padding: "6px 0" }}>
+                    <span>{i + 1}. {p.title}</span>
+                    <b className="mono">{rub(p.amount)}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        <button className="btn" disabled={!valid || busy} onClick={submit}>
+          {busy ? "Создаём…" : `Создать${sum ? ` · ${rub(toKopecks(sum))}` : ""}`}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
