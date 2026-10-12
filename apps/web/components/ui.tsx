@@ -149,7 +149,8 @@ export function Money({ value, burst = true }: { value: number; burst?: boolean 
     const step = (t: number) => {
       const k = Math.min(1, (t - t0) / 1100);
       const e = 1 - Math.pow(1 - k, 3);
-      setShown(Math.round(start + (value - start) * e));
+      // пока считаем, показываем целые рубли; точное значение только в конце
+      setShown(k < 1 ? Math.round((start + (value - start) * e) / 100) * 100 : value);
       if (k < 1) raf = requestAnimationFrame(step);
       else from.current = value;
     };
