@@ -2,14 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { DealCard } from "@/components/deal-card";
-import { IMG, Icon, Initials, Logo, Money } from "@/components/ui";
+import { Ava, IMG, Icon, Logo, Money } from "@/components/ui";
 import { api, type DealSummary } from "@/lib/api";
 import { rub } from "@/lib/format";
-import { nameOf } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
 export default function Deals() {
-  const { user, wallet, users } = useSession();
+  const { user, wallet } = useSession();
   const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" ? "exec" : "payer");
   const { data, error } = usePoll(() => api<DealSummary[]>("/deals"), []);
   if (!user) return null;
@@ -25,7 +24,7 @@ export default function Deals() {
     <div className="page">
       <div className="top">
         <Logo />
-        <Link href="/profile"><Initials name={user.name} /></Link>
+        <Link href="/profile"><Ava name={user.name} src={user.avatar} /></Link>
       </div>
 
       <div className="hero">
@@ -53,7 +52,7 @@ export default function Deals() {
         <Link key={d.id} href={`/deals/${d.id}`} className="card tap row" style={{ background: "var(--amber-soft)" }}>
           <Icon name="clock" size={26} />
           <div className="grow">
-            <div className="title">{d.currentStage?.status === "disputed" ? "Нужно решение по спору" : `${nameOf(users, d.executorId)} сдал(а) этап`}</div>
+            <div className="title">{d.currentStage?.status === "disputed" ? "Нужно решение по спору" : `${d.executor.name} сдал(а) этап`}</div>
             <div className="sub ellipsis">«{d.currentStage?.title}» · {d.title}</div>
           </div>
           <span className="chip amber">Проверить</span>
@@ -77,7 +76,7 @@ export default function Deals() {
       )}
       <div className="grid2">
         {mine.map((d) => (
-          <DealCard key={d.id} d={d} who={view === "exec" ? nameOf(users, d.ownerId ?? "Спонсоры") : nameOf(users, d.executorId)} />
+          <DealCard key={d.id} d={d} who={view === "exec" ? (d.owner ?? { id: "crowd", name: "Спонсоры" }) : d.executor} />
         ))}
       </div>
     </div>

@@ -147,7 +147,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       <h2 style={{ textAlign: "left", fontSize: 24 }}>{m.title}</h2>
       <div className="stack" style={{ marginTop: 14, gap: 16 }}>
         <div className="ai">
-          <span className="tag"><Icon name="bolt" size={14} /> AI-ПОМОЩНИК · CLAUDE</span>
+          <span className="tag"><Icon name="bolt" size={14} /> ПОМОЩНИК ПО ЭТАПАМ</span>
           <textarea className="input" placeholder="Опишите задачу своими словами: «Переделать ванную 4 м², плитка, замена труб, установка душевой»" value={aiText} onChange={(e) => setAiText(e.target.value)} style={{ minHeight: 76 }} />
           <div className="row">
             <input className="input" inputMode="numeric" placeholder="Бюджет, ₽" value={aiTotal} onChange={(e) => setAiTotal(e.target.value.replace(/[^\d]/g, ""))} />

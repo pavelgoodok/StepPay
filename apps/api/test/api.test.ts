@@ -418,3 +418,34 @@ describe("настройки профиля", () => {
     expect((await app.inject({ method: "POST", url: "/me/profile", headers: { authorization: `Bearer ${demo.token}` }, payload: { name: "Взлом" } })).statusCode).toBe(400);
   });
 });
+
+describe("аватарки и данные участников", () => {
+  it("аватарка ставится и снимается, видна в сделках; чужой и несуществующий файл не принимаются", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t });
+    const reg = async (phone: string, name: string) => {
+      const r = (await app.inject({ method: "POST", url: "/auth/otp/request", payload: { phone } })).json();
+      return (await app.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone, code: r.demoCode, name } })).json();
+    };
+    const a = await reg("+79990000030", "Заказчик Один"), b = await reg("+79990000031", "Исполнитель Два");
+    const ha = { authorization: `Bearer ${a.token}` }, hb = { authorization: `Bearer ${b.token}` };
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const up = (await app.inject({ method: "POST", url: "/uploads", headers: hb, payload: { dataUrl: png } })).json();
+
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: hb, payload: { avatar: "/uploads/net-takogo-fayla" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: hb, payload: { avatar: "https://evil.example/x.png" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: hb, payload: { avatar: up.url } })).json()).toMatchObject({ ok: true, avatar: up.url });
+    expect((await app.inject({ method: "GET", url: "/me", headers: hb })).json().user.avatar).toBe(up.url);
+
+    const deal = (await app.inject({ method: "POST", url: "/deals", headers: ha, payload: { mode: "own", title: "Кран", executorId: b.user.id, stages: [{ title: "Замена", amount: 5_000 * R }] } })).json();
+    const list = (await app.inject({ method: "GET", url: "/deals", headers: ha })).json();
+    expect(list[0].executor).toEqual({ id: b.user.id, name: "Исполнитель Два", avatar: up.url });
+    expect(list[0].owner).toMatchObject({ name: "Заказчик Один" });
+    const full = (await app.inject({ method: "GET", url: `/deals/${deal.id}`, headers: ha })).json();
+    expect(full.people[b.user.id].avatar).toBe(up.url);
+    expect(full.people[a.user.id].name).toBe("Заказчик Один");
+
+    await app.inject({ method: "POST", url: "/me/profile", headers: hb, payload: { avatar: null } });
+    expect((await app.inject({ method: "GET", url: "/me", headers: hb })).json().user.avatar).toBeUndefined();
+  });
+});
+

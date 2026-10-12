@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { photoSrc } from "@/lib/api";
 import { rub } from "@/lib/format";
 
 export const IMG = {
@@ -56,8 +57,17 @@ export function StageBars({ done, total, working }: { done: number; total: numbe
   );
 }
 
-export function Ava({ name, size }: { name: string; size?: "sm" | "lg" }) {
-  return <div className={`ava ${size ?? ""}`}>{initialsOf(name)}</div>;
+export function Ava({ name, src, size }: { name: string; src?: string; size?: "sm" | "lg" }) {
+  return (
+    <div className={`ava ${size ?? ""}`}>
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photoSrc(src)} alt="" />
+      ) : (
+        initialsOf(name)
+      )}
+    </div>
+  );
 }
 
 function initialsOf(name: string) {
@@ -87,15 +97,8 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange(v: boole
   return <button type="button" role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? "on" : ""}`} onClick={() => onChange(!on)} />;
 }
 
-export function Initials({ name }: { name: string }) {
-  const t = name
-    .replace(/[«»"]/g, "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join("");
-  return <div className="avatar">{t}</div>;
+export function Initials({ name, src }: { name: string; src?: string }) {
+  return <Ava name={name} src={src} />;
 }
 
 const P: Record<string, string> = {
@@ -136,14 +139,12 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
 }
 
 /** Сумма с плавным пересчетом; при росте вылетают «монеты» - деньги дошли. */
-export function Money({ value, burst = true }: { value: number; burst?: boolean }) {
+export function Money({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
-  const [pop, setPop] = useState(0);
   const from = useRef(value);
   useEffect(() => {
     const start = from.current;
     if (start === value) return;
-    if (value > start && burst) setPop((n) => n + 1);
     const t0 = performance.now();
     let raf = 0;
     const step = (t: number) => {
@@ -159,17 +160,10 @@ export function Money({ value, burst = true }: { value: number; burst?: boolean 
       cancelAnimationFrame(raf);
       from.current = value;
     };
-  }, [value, burst]);
+  }, [value]);
   return (
     <span className="money mono">
       {rub(shown)}
-      {pop > 0 && (
-        <span key={pop} className="coins" aria-hidden>
-          {Array.from({ length: 10 }, (_, i) => (
-            <i key={i} style={{ ["--a" as string]: `${i * 36}deg`, ["--d" as string]: `${50 + (i % 3) * 18}px`, animationDelay: `${i * 20}ms` }} />
-          ))}
-        </span>
-      )}
     </span>
   );
 }

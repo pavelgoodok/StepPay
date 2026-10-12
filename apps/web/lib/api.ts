@@ -9,6 +9,12 @@ export interface PublicUser {
   role: Role;
   /** маскированный номер, только у зарегистрированных */
   phone?: string;
+  avatar?: string;
+}
+export interface Person {
+  id: string;
+  name: string;
+  avatar?: string;
 }
 export interface FoundUser {
   id: string;
@@ -26,6 +32,8 @@ export interface DealSummary {
   status: Deal["status"];
   executorId: string;
   ownerId?: string;
+  executor: Person;
+  owner?: Person;
   target: number;
   raised: number;
   sponsors: number;
@@ -42,7 +50,7 @@ export interface Template {
   icon: string;
   stages: { title: string; share: number; criteria: string[] }[];
 }
-export type DealFull = Deal & { summary: DealSummary };
+export type DealFull = Deal & { summary: DealSummary; people: Record<string, Person> };
 
 const TOKEN_KEY = "steppay.token";
 export const getToken = () => {
@@ -105,4 +113,15 @@ export async function uploadPhoto(file: File): Promise<string> {
     dataUrl = c.toDataURL("image/jpeg", q);
   }
   return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl } })).url;
+}
+
+/** Аватарка: обрезаем по центру до квадрата 256 px, сжимаем и загружаем; возвращает ссылку /uploads/... */
+export async function uploadAvatar(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new ApiError("Не удалось прочитать фото", 0);
+  const side = Math.min(bmp.width, bmp.height);
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  c.getContext("2d")!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
+  return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl: c.toDataURL("image/jpeg", 0.86) } })).url;
 }

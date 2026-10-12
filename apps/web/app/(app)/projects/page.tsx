@@ -4,11 +4,9 @@ import { useState } from "react";
 import { DealCard } from "@/components/deal-card";
 import { IMG, Logo } from "@/components/ui";
 import { api, type DealSummary } from "@/lib/api";
-import { nameOf } from "@/lib/labels";
-import { useSession, usePoll } from "@/lib/session";
+import { usePoll } from "@/lib/session";
 
 export default function Projects() {
-  const { users } = useSession();
   const [tab, setTab] = useState<"crowdfunding" | "grant">("crowdfunding");
   const { data } = usePoll(() => api<DealSummary[]>(`/projects?mode=${tab}`), [tab]);
   const crowd = tab === "crowdfunding";
@@ -44,7 +42,7 @@ export default function Projects() {
       )}
       <div className="grid2">
         {data?.map((d) => (
-          <DealCard key={d.id} d={d} crowd={crowd} who={nameOf(users, crowd ? d.executorId : d.ownerId)} />
+          <DealCard key={d.id} d={d} crowd={crowd} who={crowd ? d.executor : (d.owner ?? d.executor)} />
         ))}
       </div>
     </div>

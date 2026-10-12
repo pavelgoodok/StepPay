@@ -185,17 +185,30 @@ export async function buildApp(opts: AppOptions) {
   app.post("/me/profile", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
-    const patch = z.object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60) }).parse(req.body);
+    const patch = z
+      .object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60).optional(), avatar: z.string().regex(/^\/uploads\/[\w-]{8,64}$/).nullable().optional() })
+      .parse(req.body);
+    if (patch.avatar) {
+      const f = await opts.store.getFile(patch.avatar.slice("/uploads/".length));
+      if (!f) return reply.code(400).send({ error: "Фото не найдено, загрузите его заново" });
+    }
     if (!(await dir.updateProfile(me, patch))) return reply.code(400).send({ error: "Профиль демо-аккаунта изменить нельзя" });
-    return { ok: true, name: dir.get(me)!.name };
+    return { ok: true, name: dir.get(me)!.name, avatar: dir.get(me)!.avatar ?? null };
   });
+
+  /** Краткие данные участника: имя и аватарка, чтобы клиенту не искать их самому. */
+  const brief = (id: string) => {
+    const a = dir.get(id);
+    return { id, name: a?.name ?? "Участник", avatar: a?.avatar };
+  };
+  const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
   // каталог проектов: краудфандинг и гранты
   app.get("/projects", async (req) => {
     const { mode } = z.object({ mode: z.enum(["crowdfunding", "grant"]).optional() }).parse(req.query);
     return Object.values(state.deals)
       .filter((d) => d.mode !== "own" && (!mode || d.mode === mode))
-      .map((d) => summary(d));
+      .map(sum);
   });
 
   // ── личное ──
@@ -233,14 +246,19 @@ export async function buildApp(opts: AppOptions) {
   app.get("/deals", async (req, reply) => {
     const id = authed(req, reply);
     if (!id) return;
-    return Object.values(state.deals).filter((d) => involved(d, id)).map(summary).reverse();
+    return Object.values(state.deals).filter((d) => involved(d, id)).map(sum).reverse();
   });
 
   app.get("/deals/:id", async (req, reply) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const d = state.deals[id];
     if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
-    return { ...d, summary: summary(d) };
+    const ids = new Set<string>([d.executorId, ...(d.ownerId ? [d.ownerId] : []), ...(d.arbiterId ? [d.arbiterId] : []), ...Object.keys(d.contributed)]);
+    for (const st of d.stages) {
+      for (const u of Object.keys(st.votes)) ids.add(u);
+      for (const m of st.messages ?? []) ids.add(m.by);
+    }
+    return { ...d, summary: sum(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
   });
 
   app.post("/deals", async (req, reply) => {

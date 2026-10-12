@@ -6,7 +6,7 @@ import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { IMG, Icon, Money, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
-import { MODE_LABEL, STAGE_LABEL, dealChip, nameOf } from "@/lib/labels";
+import { MODE_LABEL, STAGE_LABEL, dealChip } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
 type Stage = DealFull["stages"][number];
@@ -21,7 +21,7 @@ const CLOSED_BY: Record<string, string> = {
 
 export default function DealPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, wallet, users, toast, refresh } = useSession();
+  const { user, wallet, toast, refresh } = useSession();
   const { data: d, error, reload } = usePoll(() => api<DealFull>(`/deals/${id}`), [id]);
   const [now, setNow] = useState(() => Date.now());
   const [ask, setAsk] = useState<Ask>(null);
@@ -83,8 +83,8 @@ export default function DealPage() {
         <div className="small muted">{MODE_LABEL[d.mode]}</div>
         <h1 className="h1" style={{ fontSize: 28 }}>{d.title}</h1>
         <div className="sub">
-          Исполнитель: {nameOf(users, d.executorId)}
-          {d.ownerId && <> · {d.mode === "grant" ? "Грантодатель" : "Заказчик"}: {nameOf(users, d.ownerId)}</>}
+          Исполнитель: {d.people[d.executorId]?.name}
+          {d.ownerId && <> · {d.mode === "grant" ? "Грантодатель" : "Заказчик"}: {d.people[d.ownerId]?.name}</>}
         </div>
       </div>
 
@@ -166,7 +166,7 @@ export default function DealPage() {
                     <div className="small muted"><b>Спор</b></div>
                     {s.messages.map((m, k) => (
                       <div key={k} className={`msg ${m.by === me ? "me" : ""}`}>
-                        <div className="who">{nameOf(users, m.by)}{m.by === d.arbiterId ? " · приемщик" : ""}</div>
+                        <div className="who">{d.people[m.by]?.name ?? "Участник"}{m.by === d.arbiterId ? " · приемщик" : ""}</div>
                         {m.text}
                         <PhotoGrid photos={m.photos} />
                       </div>
@@ -232,7 +232,7 @@ export default function DealPage() {
         <div className="card stack">
           <div className="title">Спонсоры</div>
           {Object.entries(d.contributed).map(([uid, v]) => (
-            <div key={uid} className="row between"><span>{nameOf(users, uid)}</span><b className="mono">{rub(v)}</b></div>
+            <div key={uid} className="row between"><span>{d.people[uid]?.name ?? "Участник"}</span><b className="mono">{rub(v)}</b></div>
           ))}
         </div>
       )}

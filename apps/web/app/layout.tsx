@@ -7,7 +7,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "StepPay - оплата по шагам",
   description: "Деньги резервируются в цифровых рублях и уходят исполнителю только за принятый этап",
-  icons: { icon: "/logo.png" },
 };
 export const viewport: Viewport = { themeColor: "#0a5cff", width: "device-width", initialScale: 1 };
 

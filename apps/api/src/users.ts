@@ -26,6 +26,8 @@ export interface RegisteredUser {
   id: string;
   phone: string;
   name: string;
+  /** ссылка вида /uploads/... на аватарку */
+  avatar?: string;
   createdAt: number;
 }
 
@@ -33,6 +35,7 @@ export interface PublicAccount {
   id: string;
   name: string;
   role: Role;
+  avatar?: string;
 }
 
 /** Приводит российский номер к виду +79991234567; null, если это не номер. */
@@ -61,7 +64,7 @@ export class Directory {
     const d = DEMO_USERS.find((x) => x.id === id);
     if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role };
     const r = this.registered.get(id);
-    return r ? { id: r.id, name: r.name, role: "user" } : undefined;
+    return r ? { id: r.id, name: r.name, role: "user", avatar: r.avatar } : undefined;
   }
 
   demoUsers(): PublicAccount[] {
@@ -87,10 +90,11 @@ export class Directory {
     return user;
   }
 
-  async updateProfile(id: string, patch: { name?: string }) {
+  async updateProfile(id: string, patch: { name?: string; avatar?: string | null }) {
     const r = this.registered.get(id);
     if (!r) return false;
     if (patch.name !== undefined) r.name = patch.name;
+    if (patch.avatar !== undefined) r.avatar = patch.avatar ?? undefined;
     await this.persist([...this.registered.values()]);
     return true;
   }

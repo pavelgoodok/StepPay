@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CreateSheet } from "@/components/create-sheet";
-import { Icon, Initials, Logo } from "@/components/ui";
+import { Ava, Icon, Logo } from "@/components/ui";
 import { useSession } from "@/lib/session";
 
 const TABS = [
@@ -59,7 +59,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ),
         )}
         <Link href="/profile" className="side-user">
-          <Initials name={user.name} />
+          <Ava name={user.name} src={user.avatar} />
           <div className="grow">
             <div style={{ fontWeight: 700 }} className="ellipsis">{user.name}</div>
             <div className="small muted">{user.phone ?? "Демо-аккаунт"}</div>

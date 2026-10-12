@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ava, Icon, Initials, Sheet, Switch } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, uploadAvatar } from "@/lib/api";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", user: "Участник StepPay" };
@@ -17,6 +17,7 @@ export default function Profile() {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
@@ -40,6 +41,31 @@ export default function Profile() {
     toast(r === "granted" ? "Уведомления включены" : "Уведомления запрещены в браузере", r === "granted" ? "ok" : "err");
   }
 
+  async function pickAvatar(file: File | undefined) {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await uploadAvatar(file);
+      await api("/me/profile", { method: "POST", body: { avatar: url } });
+      await refresh();
+      toast("Фото обновлено");
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function removeAvatar() {
+    try {
+      await api("/me/profile", { method: "POST", body: { avatar: null } });
+      await refresh();
+    } catch (e) {
+      toast((e as Error).message, "err");
+    }
+  }
+
   async function save() {
     setBusy(true);
     try {
@@ -57,7 +83,14 @@ export default function Profile() {
   return (
     <div className="page">
       <div className="card pcard">
-        <Ava name={user.name} size="lg" />
+        <div className="ava-edit">
+          <Ava name={user.name} src={user.avatar} size="lg" />
+          {registered && (
+            <button className="ava-btn" aria-label="Сменить фото" disabled={busy} onClick={() => fileRef.current?.click()}><Icon name="camera" size={18} /></button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickAvatar(e.target.files?.[0])} />
+        </div>
+        {registered && user.avatar && <button className="btn ghost sm" onClick={removeAvatar}>Удалить фото</button>}
         <h1 className="h1" style={{ fontSize: 28, marginTop: 8 }}>{user.name}</h1>
         <div className="muted">{ROLE[user.role]}{user.phone ? ` · ${user.phone}` : ""}</div>
         {registered && (
@@ -96,7 +129,7 @@ export default function Profile() {
           <div className="sec"><h2>Демо-аккаунты</h2></div>
           <div className="card stack" style={{ gap: 6, padding: 12 }}>
             {users.map((u) => (
-              <button key={u.id} className="row" style={{ padding: 8, borderRadius: 16, textAlign: "left", boxShadow: u.id === user.id ? "var(--inset-sm)" : "none" }}
+              <button key={u.id} className="row" style={{ padding: 8, borderRadius: 16, textAlign: "left", background: u.id === user.id ? "var(--surface2)" : "transparent" }}
                 onClick={async () => { if (u.id === user.id) return; await login(u.id); toast(`Вы вошли как ${u.name}`); router.push("/deals"); }}>
                 <Initials name={u.name} />
                 <div className="grow"><b>{u.name}</b><div className="small muted">{ROLE[u.role]}</div></div>
