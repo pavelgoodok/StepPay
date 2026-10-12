@@ -97,6 +97,7 @@ export function registerPlatformRoutes(c: Ctx) {
       category: p.category,
       cover: p.docs.find((d) => d.kind === "photo")?.url,
       goal: projectGoal(p),
+      stageCount: p.stages.length,
       raised: deal?.raised ?? 0,
       sponsors: deal?.sponsors ?? 0,
       dealId: p.dealId,

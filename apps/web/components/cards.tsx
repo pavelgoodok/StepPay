@@ -4,10 +4,9 @@ import type { ProjectItem, ServiceItem } from "@/lib/api";
 import { photoSrc } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { KIND_LABEL, PROJECT_STATUS } from "@/lib/labels";
-import { Ava } from "./ui";
+import { Ava, SegBar } from "./ui";
 
 export function ProjectCard({ p, href, showStatus }: { p: ProjectItem; href?: string; showStatus?: boolean }) {
-  const pct = p.goal ? Math.min(100, Math.round((p.raised / p.goal) * 100)) : 0;
   const st = p.status ? PROJECT_STATUS[p.status] : null;
   return (
     <Link href={href ?? `/projects/${p.id}`} className="card tap lcard">
@@ -27,7 +26,7 @@ export function ProjectCard({ p, href, showStatus }: { p: ProjectItem; href?: st
         {p.kind === "crowdfunding" && p.dealId ? (
           <div>
             <div className="dc-money"><b className="mono">{rub(p.raised)}</b><span>из {rub(p.goal)}</span></div>
-            <div className="meter" style={{ marginTop: 8 }}><b style={{ width: `${pct}%` }} /></div>
+            <div style={{ marginTop: 8 }}><SegBar count={p.stageCount} filled={p.goal ? (p.raised / p.goal) * p.stageCount : 0} label="Сбор средств по этапам" /></div>
           </div>
         ) : (
           <div className="dc-money"><b className="mono">{rub(p.goal)}</b><span>{p.kind === "grant" ? (p.dealId ? "грант выдан" : "ищет финансирование") : "цель"}</span></div>

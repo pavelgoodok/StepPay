@@ -46,15 +46,26 @@ export function Sheet({ onClose, children }: { onClose(): void; children: ReactN
   );
 }
 
-/** Сегменты этапов: заполненные = принятые, мерцающий = текущий */
-export function StageBars({ done, total, working }: { done: number; total: number; working?: boolean }) {
+/** Полоса прогресса, разделенная на этапы. filled считается в этапах и может быть дробным (сбор денег), cur подсвечивает текущий этап. Без цифр. */
+export function SegBar({ count, filled, cur, onDark, label }: { count: number; filled: number; cur?: number; onDark?: boolean; label?: string }) {
+  const n = Math.max(1, count);
   return (
-    <div className="bars" aria-label={`Этапов принято ${done} из ${total}`}>
-      {Array.from({ length: total }, (_, i) => (
-        <i key={i} className={i < done ? "done" : i === done && working ? "cur" : ""} />
-      ))}
+    <div className={`segbar ${onDark ? "on-dark" : ""}`} role="img" aria-label={label ?? "Прогресс по этапам"}>
+      {Array.from({ length: n }, (_, i) => {
+        const f = Math.min(1, Math.max(0, filled - i));
+        return (
+          <i key={i} className={cur === i && f === 0 ? "cur" : ""}>
+            <b style={{ width: `${f * 100}%` }} />
+          </i>
+        );
+      })}
     </div>
   );
+}
+
+/** Прогресс сделки по принятым этапам. */
+export function StageBars({ done, total, working }: { done: number; total: number; working?: boolean }) {
+  return <SegBar count={total} filled={done} cur={working ? done : undefined} label={`Принято этапов: ${done} из ${total}`} />;
 }
 
 export function Ava({ name, src, size }: { name: string; src?: string; size?: "sm" | "lg" }) {
@@ -78,19 +89,6 @@ function initialsOf(name: string) {
     .slice(0, 2)
     .map((w) => w[0]!.toUpperCase())
     .join("");
-}
-
-/** Этапы кружками: принятые закрашены, текущий обведен */
-export function StageDots({ done, total, working }: { done: number; total: number; working?: boolean }) {
-  return (
-    <div className="dots" aria-label={`Этапов принято ${done} из ${total}`}>
-      {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`dot-i ${i < done ? "done" : i === done && working ? "cur" : ""}`}>
-          {i < done ? <Icon name="check" size={12} /> : i + 1}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 export function Switch({ on, onChange, label }: { on: boolean; onChange(v: boolean): void; label: string }) {

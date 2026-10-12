@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { PhotoGrid } from "@/components/photos";
-import { Ava, Icon } from "@/components/ui";
+import { Ava, Icon, SegBar } from "@/components/ui";
 import { api, docSrc, type ProjectFull } from "@/lib/api";
 import { dayLabel, rub } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL, PROJECT_STATUS } from "@/lib/labels";
@@ -25,7 +25,6 @@ export default function ProjectPage() {
   const admin = user.role === "admin";
   const mine = p.owner.id === user.id;
   const st = PROJECT_STATUS[p.status]!;
-  const pct = p.goal ? Math.min(100, Math.round((p.raised / p.goal) * 100)) : 0;
 
   async function act(fn: () => Promise<void>) {
     setBusy(true);
@@ -74,7 +73,7 @@ export default function ProjectPage() {
       {p.dealId && p.kind === "crowdfunding" ? (
         <div className="card stack">
           <div className="dc-money"><b className="mono" style={{ fontSize: 24 }}>{rub(p.raised)}</b><span>из {rub(p.goal)}</span></div>
-          <div className="meter"><b style={{ width: `${pct}%` }} /></div>
+          <SegBar count={p.stageCount} filled={p.goal ? (p.raised / p.goal) * p.stageCount : 0} label="Сбор средств по этапам" />
           <div className="small muted">{p.sponsors} поддержали. Автор получает деньги только за принятые этапы.</div>
           <Link href={`/deals/${p.dealId}`} className="btn">{mine ? "Открыть сбор" : "Поддержать"}</Link>
         </div>

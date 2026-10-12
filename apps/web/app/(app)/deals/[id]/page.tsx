@@ -6,7 +6,7 @@ import { ContractCard } from "@/components/contract-card";
 import { JournalCard } from "@/components/journal-card";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
-import { IMG, Icon, Money, MoneyInput, Sheet } from "@/components/ui";
+import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
 import { MODE_LABEL, STAGE_LABEL, dealChip } from "@/lib/labels";
@@ -101,9 +101,7 @@ export default function DealPage() {
         <div className="label">Выплачено исполнителю</div>
         <div className="big"><Money value={paid} /></div>
         <div style={{ maxWidth: 190 }}>
-          <div className="meter" style={{ background: "rgba(255,255,255,.28)" }}>
-            <b style={{ width: `${d.target ? (paid / d.target) * 100 : 0}%`, background: "#fff" }} />
-          </div>
+          <SegBar onDark count={d.stages.length} filled={d.stages.filter((x) => x.status === "accepted").length} cur={d.status === "active" ? d.stages.filter((x) => x.status === "accepted").length : undefined} label="Принятые этапы" />
           <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>из {rub(d.target)}</div>
         </div>
         {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
@@ -149,7 +147,7 @@ export default function DealPage() {
           {crowd ? (
             <>
               <div className="row between"><b>Собрано {rub(raised)}</b><span className="muted">из {rub(d.target)}</span></div>
-              <div className="meter"><b style={{ width: `${(raised / d.target) * 100}%` }} /></div>
+              <SegBar count={d.stages.length} filled={d.target ? (raised / d.target) * d.stages.length : 0} label="Сбор средств по этапам" />
               <div className="small muted">Поддержали {d.summary.sponsors}. Не сдан этап: остаток вернется вам.</div>
               {!isExec && (
                 <>

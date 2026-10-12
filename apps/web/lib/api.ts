@@ -167,6 +167,7 @@ export interface ProjectItem {
   category: string;
   cover?: string;
   goal: number;
+  stageCount: number;
   raised: number;
   sponsors: number;
   dealId?: string;

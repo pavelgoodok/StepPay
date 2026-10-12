@@ -3,12 +3,14 @@ import Link from "next/link";
 import type { DealSummary, Person } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { dealChip } from "@/lib/labels";
-import { Ava, Icon, StageDots } from "./ui";
+import { Ava, Icon, SegBar } from "./ui";
 
 /** Карточка сделки или проекта: кто, сколько, на каком этапе. Без декоративных полос, статус в тексте. */
 export function DealCard({ d, who, crowd }: { d: DealSummary; who: Person; crowd?: boolean }) {
   const chip = dealChip(d);
-  const pct = d.target ? Math.min(100, Math.round(((crowd ? d.raised : (d.stages.done / d.stages.total) * d.target) / d.target) * 100)) : 0;
+  const total = d.stages.total;
+  const funding = d.status === "funding" && crowd;
+  const filled = funding ? (d.target ? (d.raised / d.target) * total : 0) : d.stages.done;
   return (
     <Link href={`/deals/${d.id}`} className="card tap dcard">
       <div className="dc-top">
@@ -19,21 +21,16 @@ export function DealCard({ d, who, crowd }: { d: DealSummary; who: Person; crowd
         </div>
         <span className={`chip ${chip.tone}`}>{chip.text}</span>
       </div>
-      <div>
-        <div className="dc-money">
-          <b className="mono">{rub(crowd ? d.raised : d.target)}</b>
-          <span>{crowd ? `из ${rub(d.target)}` : "сумма сделки"}</span>
-        </div>
-        <div className="meter" style={{ marginTop: 10 }}><b style={{ width: `${pct}%` }} /></div>
+      <div className="dc-money">
+        <b className="mono">{rub(crowd ? d.raised : d.target)}</b>
+        <span>{crowd ? `из ${rub(d.target)}` : "сумма сделки"}</span>
       </div>
-      <div className="dc-foot">
-        <StageDots done={d.stages.done} total={d.stages.total} working={d.status === "active"} />
-        {crowd ? (
+      <SegBar count={total} filled={filled} cur={d.status === "active" ? d.stages.done : undefined} label={funding ? "Сбор средств по этапам" : "Принятые этапы"} />
+      {crowd && (
+        <div className="dc-foot">
           <span className="row" style={{ gap: 6 }}><Icon name="crowd" size={16} /> {d.sponsors}</span>
-        ) : (
-          <span>{pct}% выплачено</span>
-        )}
-      </div>
+        </div>
+      )}
     </Link>
   );
 }
