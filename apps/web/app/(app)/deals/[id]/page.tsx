@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ChainCard } from "@/components/chain-card";
 import { ContractCard } from "@/components/contract-card";
 import { JournalCard } from "@/components/journal-card";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
@@ -111,7 +112,7 @@ export default function DealPage() {
         {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
       </div>}
 
-      {(d.meta?.chatId || !draft) && <div className="group">
+      {(d.meta?.chatId || !draft || d.chain) && <div className="group">
         {d.meta?.chatId && (
           <Link href={`/chats/${d.meta.chatId}`} className="card tap row">
             <span className="setic"><Icon name="chat" size={20} /></span>
@@ -121,6 +122,7 @@ export default function DealPage() {
         )}
         {!draft && <ContractCard d={d} />}
         {!draft && <JournalCard d={d} />}
+        <ChainCard d={d} />
       </div>}
       {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 

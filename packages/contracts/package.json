@@ -6,7 +6,9 @@
     "compile": "hardhat compile",
     "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js",
     "test:invariants": "hardhat test test/invariants.test.js",
-    "test:all": "hardhat test"
+    "test:all": "hardhat test",
+    "chain:local": "hardhat run scripts/testnet-deal.js",
+    "chain:sepolia": "hardhat run scripts/testnet-deal.js --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",

@@ -1,6 +1,7 @@
 import {
   DAY_MS,
   PLATFORM_ID,
+  type ChainLink,
   type Deal,
   type LedgerType,
   type Mode,
@@ -490,4 +491,19 @@ export const tick = mutate((s, now: number) => {
       }
     }
   }
+});
+
+const HEX_HASH = /^0x[0-9a-fA-F]{64}$/;
+const HEX_ADDR = /^0x[0-9a-fA-F]{40}$/;
+
+/** Привязывает к сделке отчет о прогоне на контракте в сети (адреса, номера и хеши транзакций). */
+export const linkChain = mutate((s, dealId: string, chain: ChainLink, at: number) => {
+  const d = getDeal(s, dealId);
+  if (!HEX_ADDR.test(chain.contract)) fail("Адрес контракта должен быть вида 0x и 40 символов");
+  if (!Number.isInteger(chain.chainId) || chain.chainId <= 0 || !Number.isInteger(chain.dealId) || chain.dealId <= 0) fail("Неверный номер сети или сделки");
+  if (!chain.network.trim() || chain.txs.length === 0 || chain.txs.length > 100) fail("Нужны название сети и от 1 до 100 транзакций");
+  if (chain.txs.some((x) => !HEX_HASH.test(x.hash) || !x.label.trim())) fail("Хеш транзакции должен быть вида 0x и 64 символа, у каждой нужна подпись");
+  if (chain.explorer && !/^https:\/\/[a-z0-9.-]+(\/[\w./-]*)?$/i.test(chain.explorer)) fail("Адрес обозревателя должен начинаться с https://");
+  d.chain = { ...chain, network: chain.network.trim(), explorer: chain.explorer?.replace(/\/+$/, "") };
+  record(d, at, "chain_linked", "system", { network: d.chain.network, address: chain.contract, txs: chain.txs.length });
 });

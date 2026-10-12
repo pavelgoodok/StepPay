@@ -52,6 +52,18 @@ export interface JournalEntry {
   hash: string;
 }
 
+/** Сделка, проведенная на контракте в сети: адреса и транзакции для проверки в обозревателе. */
+export interface ChainLink {
+  network: string;
+  chainId: number;
+  contract: string;
+  /** номер сделки в контракте */
+  dealId: number;
+  /** адрес обозревателя без слэша на конце, например https://sepolia.etherscan.io */
+  explorer?: string;
+  txs: { label: string; hash: string; at: number }[];
+}
+
 export interface Deal {
   id: string;
   mode: Mode;
@@ -76,6 +88,8 @@ export interface Deal {
   signing?: boolean;
   /** подписи сторон под хешем контракта */
   signatures?: Record<UserId, { at: number; hash: string; sig: string }>;
+  /** прогон этой сделки на контракте в тестовой сети */
+  chain?: ChainLink;
   /** журнал событий с цепочкой хешей */
   journal?: JournalEntry[];
   /** зафиксированный контракт: хеш условий на момент, когда они стали окончательными */

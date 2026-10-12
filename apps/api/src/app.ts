@@ -23,7 +23,7 @@ import {
   topUp,
   voteStage,
   type Deal,
-  type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal } from "@steppay/engine";
+  type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal, linkChain } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
@@ -290,6 +290,32 @@ export async function buildApp(opts: AppOptions) {
       for (const m of st.messages ?? []) ids.add(m.by);
     }
     return { ...d, summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), signatureStatus: { ...signatureStatus(d), valid: Object.fromEntries(Object.keys(d.signatures ?? {}).map((u) => [u, signatureValid(d, u)])) }, terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+  });
+
+  /** Прогон сделки на контракте в сети: администратор прикрепляет отчет (адреса и хеши транзакций), он виден участникам сделки. */
+  app.post("/deals/:id/chain", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    if (!dir.isAdmin(me)) return reply.code(403).send({ error: "Только для администраторов" });
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const chain = z
+      .object({
+        network: z.string().trim().min(1).max(60),
+        chainId: z.number().int().positive(),
+        contract: z.string(),
+        dealId: z.number().int().positive(),
+        explorer: z.string().max(200).optional(),
+        txs: z.array(z.object({ label: z.string().trim().min(1).max(80), hash: z.string(), at: z.number() })).min(1).max(100),
+      })
+      .parse(req.body);
+    const out = await transact((s) => {
+      const next = linkChain(s, id, chain, now());
+      return { state: next, result: next.deals[id]! };
+    });
+    const people = [out.executorId, out.ownerId, ...Object.keys(out.contributed)].filter((x): x is string => !!x);
+    hub.send(people, "notify", { dealId: id, text: `Сделка «${out.title}» проведена на контракте в сети ${chain.network}: транзакции доступны в сделке` });
+    hub.send(people, "changed", { dealId: id });
+    return { ok: true };
   });
 
   /** Журнал для разбора спора: события, хеши цепочки и результат проверки. Файл самодостаточен: условия и хеш контракта внутри. */

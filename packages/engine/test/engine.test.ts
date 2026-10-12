@@ -33,6 +33,7 @@ import {
   genesisHash,
   signContract,
   signatureStatus,
+  linkChain,
 } from "../src";
 
 const R = 100; // рубль в копейках
@@ -588,5 +589,27 @@ describe("подписи сторон", () => {
     const s = cancelDeal(fund(signedDeal(), "g1", "anna", 100_000 * R, T0 + 1), "g1", "anna", T0 + 2);
     expect(s.deals.g1!.status).toBe("cancelled");
     expect(freeBalance(s, "anna")).toBe(100_000 * R);
+  });
+});
+
+describe("привязка сделки к контракту в сети", () => {
+  const base = () => createDeal(topUp(createState(), "anna", 100 * R, T0), { id: "ch1", mode: "own", title: "x", executorId: "ivan", ownerId: "anna", stages: [{ title: "x", amount: 10 * R }], at: T0 });
+  const link = { network: "Sepolia", chainId: 11155111, contract: "0x" + "ab".repeat(20), dealId: 1, explorer: "https://sepolia.etherscan.io/", txs: [{ label: "Резерв", hash: "0x" + "cd".repeat(32), at: T0 }] };
+
+  it("сохраняет отчет, нормализует адрес обозревателя и пишет в журнал", () => {
+    const s = linkChain(base(), "ch1", link, T0 + 1);
+    expect(s.deals.ch1!.chain).toMatchObject({ network: "Sepolia", chainId: 11155111, explorer: "https://sepolia.etherscan.io" });
+    expect(s.deals.ch1!.journal!.at(-1)).toMatchObject({ type: "chain_linked", data: { txs: 1 } });
+    expect(verifyJournal(s.deals.ch1!).ok).toBe(true);
+    expect(verifyContract(s.deals.ch1!).ok).toBe(true); // контракт сделки отчет не меняет
+  });
+
+  it("отклоняет неверные адреса, хеши и обозреватель", () => {
+    const b = base();
+    expect(() => linkChain(b, "ch1", { ...link, contract: "0x123" }, T0)).toThrow(EngineError);
+    expect(() => linkChain(b, "ch1", { ...link, txs: [{ label: "x", hash: "0x12", at: T0 }] }, T0)).toThrow(EngineError);
+    expect(() => linkChain(b, "ch1", { ...link, txs: [] }, T0)).toThrow(EngineError);
+    expect(() => linkChain(b, "ch1", { ...link, explorer: "javascript:alert(1)" }, T0)).toThrow(EngineError);
+    expect(() => linkChain(b, "ch1", { ...link, chainId: 0 }, T0)).toThrow(EngineError);
   });
 });

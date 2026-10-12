@@ -12,10 +12,16 @@ subtask(TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD, async (args, hre, runSuper) => {
   return { compilerPath, isSolcJs: true, version: SOLC, longVersion: `${version}+commit.7893614a` };
 });
 
+// Публичные тестовые сети подключаются переменными окружения, ключи в репозиторий не попадают.
+const accounts = process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [];
+const publicNetworks = {};
+if (process.env.SEPOLIA_RPC_URL) publicNetworks.sepolia = { url: process.env.SEPOLIA_RPC_URL, chainId: 11155111, accounts };
+if (process.env.BASE_SEPOLIA_RPC_URL) publicNetworks.baseSepolia = { url: process.env.BASE_SEPOLIA_RPC_URL, chainId: 84532, accounts };
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: { version: SOLC, settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" } },
   paths: { sources: "contracts", tests: "test", cache: "cache", artifacts: "artifacts" },
-  networks: { hardhat: { allowUnlimitedContractSize: false } },
+  networks: { hardhat: { allowUnlimitedContractSize: false }, ...publicNetworks },
   mocha: { timeout: 120000 },
 };

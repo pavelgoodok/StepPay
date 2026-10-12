@@ -14,3 +14,5 @@ brag-output*/
 # контракты: сборка Hardhat
 packages/contracts/artifacts/
 packages/contracts/cache/
+
+packages/contracts/reports/*.json

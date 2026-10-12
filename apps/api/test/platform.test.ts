@@ -196,3 +196,19 @@ describe("подписи сторон в API", () => {
     expect(d.summary.signatures).toMatchObject({ complete: true });
   });
 });
+
+describe("прогон сделки на контракте в сети", () => {
+  it("администратор прикрепляет отчет, остальные не могут, данные проверяются", async () => {
+    const { call } = await setup();
+    const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
+    const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    const report = { network: "Sepolia", chainId: 11155111, contract: "0x" + "ab".repeat(20), dealId: 1, explorer: "https://sepolia.etherscan.io/", txs: [{ label: "Резерв", hash: "0x" + "cd".repeat(32), at: 1 }] };
+    expect((await call("anna", "POST", `/deals/${id}/chain`, report)).status).toBe(403);
+    expect((await call("admin", "POST", `/deals/${id}/chain`, { ...report, contract: "0x1" })).status).toBe(400);
+    expect((await call("admin", "POST", `/deals/${id}/chain`, { ...report, explorer: "http://evil" })).status).toBe(400);
+    expect((await call("admin", "POST", `/deals/${id}/chain`, report)).status).toBe(200);
+    const d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.chain).toMatchObject({ network: "Sepolia", explorer: "https://sepolia.etherscan.io", dealId: 1 });
+  });
+});
