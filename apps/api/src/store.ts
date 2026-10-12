@@ -1,5 +1,6 @@
 import pg from "pg";
 import { createState, type State } from "@steppay/engine";
+import type { RegisteredUser } from "./users";
 
 /** Хранилище целиком держит состояние движка. Для MVP (один инстанс) этого достаточно. */
 export interface StoredFile {
@@ -10,6 +11,8 @@ export interface StoredFile {
 export interface Store {
   load(): Promise<State>;
   save(state: State): Promise<void>;
+  loadUsers(): Promise<RegisteredUser[]>;
+  saveUsers(users: RegisteredUser[]): Promise<void>;
   putFile(id: string, file: StoredFile): Promise<void>;
   getFile(id: string): Promise<StoredFile | null>;
 }
@@ -21,6 +24,13 @@ export class MemoryStore implements Store {
   }
   async save(state: State) {
     this.state = state;
+  }
+  private users: RegisteredUser[] = [];
+  async loadUsers() {
+    return this.users;
+  }
+  async saveUsers(users: RegisteredUser[]) {
+    this.users = users;
   }
   private files = new Map<string, StoredFile>();
   async putFile(id: string, file: StoredFile) {
@@ -57,6 +67,16 @@ export class PgStore implements Store {
     await this.pool.query(
       "insert into app_state (id, state) values (1, $1) on conflict (id) do update set state = excluded.state, updated_at = now()",
       [JSON.stringify(state)],
+    );
+  }
+  async loadUsers(): Promise<RegisteredUser[]> {
+    const r = await this.pool.query("select state from app_state where id = 2");
+    return (r.rows[0]?.state as RegisteredUser[] | undefined) ?? [];
+  }
+  async saveUsers(users: RegisteredUser[]) {
+    await this.pool.query(
+      "insert into app_state (id, state) values (2, $1) on conflict (id) do update set state = excluded.state, updated_at = now()",
+      [JSON.stringify(users)],
     );
   }
   async putFile(id: string, file: StoredFile) {

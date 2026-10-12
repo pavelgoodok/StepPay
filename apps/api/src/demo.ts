@@ -38,6 +38,24 @@ export function seedCatalog(s: State, at: number): State {
   return fund(n, "seed-culture", "fond", 500_000 * R, at);
 }
 
+/** Убирает демо-сделки, демо-кошельки и их операции (когда демо-режим выключен, а в базе остались старые демо-данные). */
+export function purgeDemo(s: State): { state: State; changed: boolean } {
+  const demoIds = new Set(DEMO_USERS.map((u) => u.id));
+  const isDemoDeal = (id: string) => id.startsWith("seed-") || id.startsWith("demo-");
+  const touchesDemo = Object.values(s.deals).some((d) => isDemoDeal(d.id) || demoIds.has(d.executorId) || (d.ownerId && demoIds.has(d.ownerId)));
+  const hasDemoWallet = Object.keys(s.wallets).some((u) => demoIds.has(u));
+  if (!touchesDemo && !hasDemoWallet) return { state: s, changed: false };
+  const keep = Object.fromEntries(Object.entries(s.deals).filter(([id, d]) => !isDemoDeal(id) && !demoIds.has(d.executorId) && !(d.ownerId && demoIds.has(d.ownerId))));
+  return {
+    changed: true,
+    state: {
+      wallets: Object.fromEntries(Object.entries(s.wallets).filter(([u]) => !demoIds.has(u))),
+      deals: keep,
+      ledger: s.ledger.filter((l) => !demoIds.has(l.userId) && !(l.dealId && !keep[l.dealId])),
+    },
+  };
+}
+
 export const freshDemoState = (at: number) => seedCatalog(seedUsers(createState(), at), at);
 
 export interface Narration {

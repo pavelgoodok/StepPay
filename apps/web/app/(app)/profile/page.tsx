@@ -6,7 +6,7 @@ import { Icon, Initials } from "@/components/ui";
 import { api, type PublicUser } from "@/lib/api";
 import { useSession, usePoll } from "@/lib/session";
 
-const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приёмщик споров" };
+const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", user: "Участник StepPay" };
 
 export default function Profile() {
   const { user, users, login, logout, toast } = useSession();
@@ -41,7 +41,7 @@ export default function Profile() {
           <div className="avatar" style={{ width: 84, height: 84, fontSize: 30, background: "#fff", color: "var(--blue)" }}>{user.name.replace(/[«»]/g, "").split(" ").map((w) => w[0]).slice(0, 2).join("")}</div>
         </div>
         <div className="big" style={{ fontSize: 26, margin: "12px 0 2px" }}>{user.name}</div>
-        <div className="label">{ROLE[user.role]}</div>
+        <div className="label">{ROLE[user.role]}{user.phone ? ` · ${user.phone}` : ""}</div>
       </div>
 
       <div className="card row" style={{ justifyContent: "space-around", textAlign: "center" }}>
@@ -54,7 +54,7 @@ export default function Profile() {
         <Link href={`/u/${user.id}`} className="row between" style={{ padding: "12px 0" }}>
           <span className="row"><Icon name="user" size={22} /> Моя публичная карточка</span><Icon name="arrow" size={18} />
         </Link>
-        {user.role === "executor" && (
+        {(
           <Link href="/receipts" className="row between" style={{ padding: "12px 0" }}>
             <span className="row"><Icon name="check" size={22} /> Мои чеки</span><Icon name="arrow" size={18} />
           </Link>

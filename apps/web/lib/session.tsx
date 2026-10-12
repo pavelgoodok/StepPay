@@ -10,6 +10,8 @@ interface Session {
   ready: boolean;
   refresh(): Promise<void>;
   login(userId: string): Promise<void>;
+  /** вход по готовому токену (после подтверждения телефона) */
+  completeLogin(token: string): Promise<void>;
   logout(): void;
   toast(text: string, tone?: "ok" | "err"): void;
 }
@@ -105,6 +107,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
+  const completeLogin = useCallback(
+    async (token: string) => {
+      setToken(token);
+      lastFree.current = null;
+      await refresh();
+    },
+    [refresh],
+  );
+
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
@@ -113,7 +124,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, users, ready, refresh, login, logout, toast }}>
+    <Ctx.Provider value={{ user, wallet, users, ready, refresh, login, completeLogin, logout, toast }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

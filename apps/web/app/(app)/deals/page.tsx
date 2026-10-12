@@ -29,10 +29,23 @@ export default function Deals() {
 
       <div className="hero">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={IMG.wallet} alt="" />
-        <div className="label">Кошелёк цифрового рубля</div>
+        <img className="art" src={IMG.card} alt="" />
+        <div className="label">Цифровой рубль · свободно</div>
         <div className="big"><Money value={wallet?.free ?? 0} /></div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(wallet?.reserved ?? 0)} в резерве</span>
+      </div>
+
+      <div className="qa">
+        <Link href="/wallet"><span className="ic"><Icon name="plus" size={22} /></span>Пополнить</Link>
+        <button onClick={() => window.dispatchEvent(new Event("steppay:create"))}><span className="ic"><Icon name="hammer" size={22} /></span>Сделка</button>
+        <Link href="/projects"><span className="ic"><Icon name="sprout" size={22} /></span>Проекты</Link>
+        <Link href="/receipts"><span className="ic"><Icon name="check" size={22} /></span>Чеки</Link>
+      </div>
+
+      <div className="stats">
+        <div className="stat"><span className="eyebrow">В работе</span><b>{(data ?? []).filter((d) => d.status === "active").length}</b></div>
+        <div className="stat"><span className="eyebrow">Ждут решения</span><b>{needs.length}</b></div>
+        <div className="stat"><span className="eyebrow">Завершено</span><b>{(data ?? []).filter((d) => d.status === "completed").length}</b></div>
       </div>
 
       {needs.map((d) => (
@@ -51,7 +64,7 @@ export default function Deals() {
         <button className={view === "exec" ? "on" : ""} onClick={() => setView("exec")}>Я исполнитель</button>
       </div>
 
-      <div className="row between"><h2 className="title">Мои сделки</h2></div>
+      <div className="sec"><h2>Мои сделки</h2></div>
       {error && <div className="note bad">{error}</div>}
       {!data && <div className="skeleton" />}
       {data && mine.length === 0 && (
@@ -61,12 +74,13 @@ export default function Deals() {
           <p style={{ marginTop: 8 }}>{view === "exec" ? "Пока нет сделок, где вы исполнитель" : "Создайте первую сделку кнопкой «+»"}</p>
         </div>
       )}
+      <div className="grid2">
       {mine.map((d) => {
         const chip = dealChip(d);
         const other = view === "exec" ? nameOf(users, d.ownerId ?? "Спонсоры") : nameOf(users, d.executorId);
         const paidShare = d.target ? Math.round((d.stages.done / d.stages.total) * 100) : 0;
         return (
-          <Link key={d.id} href={`/deals/${d.id}`} className="card tap">
+          <Link key={d.id} href={`/deals/${d.id}`} className={`card tap dealcard ${chip.tone}`}>
             <div className="row between">
               <div className="grow">
                 <div className="title ellipsis">{d.title}</div>
@@ -82,6 +96,7 @@ export default function Deals() {
           </Link>
         );
       })}
+      </div>
     </div>
   );
 }

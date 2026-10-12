@@ -25,11 +25,12 @@ import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
-import { DEMO_SCRIPT, freshDemoState, runDemoStep, seedCatalog, seedUsers } from "./demo";
+import { DEMO_SCRIPT, freshDemoState, purgeDemo, runDemoStep, seedUsers } from "./demo";
 import { executorStats, receiptsFor } from "./stats";
 import type { Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
-import { DEMO_USERS, userById } from "./users";
+import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
+import { Directory, maskPhone, normalizePhone } from "./users";
 
 const RUB = 100;
 const rub = (k: number) => `${new Intl.NumberFormat("ru-RU").format(Math.round(k / 100))}\u00a0₽`;
@@ -43,6 +44,8 @@ export interface AppOptions {
   seedCatalog?: boolean;
   /** публичные демо-эндпоинты (сценарий для жюри и сброс данных); по умолчанию включены */
   demoMode?: boolean;
+  /** способ доставки кода из SMS; по умолчанию демо (код показывается на экране) */
+  otpDelivery?: OtpDelivery;
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -78,11 +81,23 @@ export async function buildApp(opts: AppOptions) {
   const now = opts.now ?? Date.now;
   const planner = opts.planner ?? createPlanner();
   const hub = new Hub();
+  const demoOn = opts.demoMode ?? true;
+  const dir = new Directory((users) => opts.store.saveUsers(users), await opts.store.loadUsers(), demoOn);
+  const otp = new OtpService(opts.secret, opts.otpDelivery ?? demoDelivery, now);
 
   let state: State = await opts.store.load();
   if (state.ledger.length === 0 && Object.keys(state.deals).length === 0) {
-    state = opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now());
-    await opts.store.save(state);
+    if (demoOn) {
+      state = opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now());
+      await opts.store.save(state);
+    }
+  }
+  if (!demoOn) {
+    const cleaned = purgeDemo(state);
+    if (cleaned.changed) {
+      state = cleaned.state;
+      await opts.store.save(state);
+    }
   }
 
   await opts.store.putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
@@ -109,7 +124,7 @@ export async function buildApp(opts: AppOptions) {
   const authed = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const h = req.headers.authorization;
     const id = verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
-    if (!id || !userById(id)) {
+    if (!id || !dir.get(id)) {
       reply.code(401).send({ error: "Требуется вход" });
       return null;
     }
@@ -121,12 +136,58 @@ export async function buildApp(opts: AppOptions) {
   // ── публичное ──
   app.get("/health", async () => ({ ok: true }));
   app.get("/templates", async () => TEMPLATES);
-  app.get("/auth/demo-users", async () => DEMO_USERS.map(({ id, name, role }) => ({ id, name, role })));
+  app.get("/auth/demo-users", async () => dir.demoUsers());
   app.post("/auth/demo", async (req, reply) => {
     const { userId } = z.object({ userId: z.string() }).parse(req.body);
-    const u = userById(userId);
+    const u = dir.demoUsers().find((x) => x.id === userId);
     if (!u) return reply.code(404).send({ error: "Нет такого демо-пользователя" });
     return { token: makeToken(opts.secret, u.id), user: { id: u.id, name: u.name, role: u.role } };
+  });
+
+  // регистрация и вход по телефону: код приходит по SMS (в демо показывается на экране)
+  app.post("/auth/otp/request", async (req, reply) => {
+    const { phone: raw } = z.object({ phone: z.string().max(40) }).parse(req.body);
+    const phone = normalizePhone(raw);
+    if (!phone) return reply.code(400).send({ error: "Введите российский номер в формате +7 999 123-45-67" });
+    try {
+      const r = await otp.request(phone);
+      return { phone, isNew: !dir.byPhone(phone), demoCode: r.demoCode, retryAfter: r.retryAfter };
+    } catch (e) {
+      return reply.code(429).send({ error: (e as Error).message });
+    }
+  });
+
+  app.post("/auth/otp/verify", async (req, reply) => {
+    const b = z.object({ phone: z.string().max(40), code: z.string().regex(/^\d{6}$/, "Код состоит из 6 цифр"), name: z.string().trim().min(2, "Укажите имя").max(60).optional() }).parse(req.body);
+    const phone = normalizePhone(b.phone);
+    if (!phone) return reply.code(400).send({ error: "Неверный номер телефона" });
+    const existing = dir.byPhone(phone);
+    if (!existing && !b.name) return reply.code(400).send({ error: "Укажите имя для регистрации" });
+    let ok: boolean;
+    try {
+      ok = otp.verify(phone, b.code);
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+    if (!ok) return reply.code(400).send({ error: "Неверный код" });
+    const user = existing ?? (await dir.register(phone, b.name!, now()));
+    return { token: makeToken(opts.secret, user.id), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const } };
+  });
+
+  // поиск исполнителя при создании сделки: точный номер или имя от 3 букв
+  app.get("/users/search", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { q } = z.object({ q: z.string().max(60) }).parse(req.query);
+    return dir.search(q, me);
+  });
+
+  app.post("/me/name", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { name } = z.object({ name: z.string().trim().min(2).max(60) }).parse(req.body);
+    if (!(await dir.rename(me, name))) return reply.code(400).send({ error: "Имя демо-аккаунта изменить нельзя" });
+    return { ok: true, name };
   });
 
   // каталог проектов: краудфандинг и гранты
@@ -141,8 +202,9 @@ export async function buildApp(opts: AppOptions) {
   app.get("/me", async (req, reply) => {
     const id = authed(req, reply);
     if (!id) return;
-    const { startBalance: _, ...u } = userById(id)!;
-    return { user: u, wallet: walletOf(state, id) };
+    const u = dir.get(id)!;
+    const phone = dir.phoneOf(id);
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -191,7 +253,7 @@ export async function buildApp(opts: AppOptions) {
       (b.templateId && b.total ? stagesFromTemplate(b.templateId, b.total) : null);
     if (!stages) return reply.code(400).send({ error: "Укажите этапы или шаблон с суммой" });
     if (!crowd && !b.executorId) return reply.code(400).send({ error: "Укажите исполнителя" });
-    if (b.executorId && !userById(b.executorId)) return reply.code(400).send({ error: "Исполнитель не найден" });
+    if (b.executorId && !dir.get(b.executorId)) return reply.code(400).send({ error: "Исполнитель не найден" });
     const dealId = `d_${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     return transact((s) => {
       const next = createDeal(s, {
@@ -213,7 +275,7 @@ export async function buildApp(opts: AppOptions) {
   /** Кому и что сообщить после действия: остальным участникам сделки приходит уведомление, всем — сигнал обновиться. */
   const announce = (d: Deal, actor: string, kind: string, stageTitle: string, amount: number) => {
     const people = new Set([d.executorId, d.ownerId, d.arbiterId, ...Object.keys(d.contributed)].filter((x): x is string => !!x));
-    const who = userById(actor)?.name ?? "Участник";
+    const who = dir.get(actor)?.name ?? "Участник";
     const q = `«${stageTitle}»`;
     const text: Record<string, string> = {
       fund: `${who} зарезервировал(а) деньги по «${d.title}»`,
@@ -290,7 +352,7 @@ export async function buildApp(opts: AppOptions) {
 
   // демо для жюри: без входа, действует только на демо-пользователях и демо-сделках
   if (opts.demoMode ?? true) {
-    const everyone = DEMO_USERS.map((u) => u.id);
+    const everyone = { [Symbol.iterator]: () => dir.allIds()[Symbol.iterator]() };
     let lastReset = 0;
     app.get("/demo/script", async () => DEMO_SCRIPT);
     app.post("/demo/reset", async (_req, reply) => {
@@ -327,7 +389,7 @@ export async function buildApp(opts: AppOptions) {
   // публичная карточка исполнителя: без входа, только репутация
   app.get("/users/:id/public", async (req, reply) => {
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const u = userById(id);
+    const u = dir.get(id);
     if (!u) return reply.code(404).send({ error: "Пользователь не найден" });
     return { id: u.id, name: u.name, role: u.role, ...executorStats(state, id) };
   });
@@ -335,14 +397,14 @@ export async function buildApp(opts: AppOptions) {
   app.get("/receipts", async (req, reply) => {
     const id = authed(req, reply);
     if (!id) return;
-    return receiptsFor(state, id).map((r) => ({ ...r, payer: r.payerId ? userById(r.payerId)?.name ?? null : null, executor: userById(id)!.name }));
+    return receiptsFor(state, id).map((r) => ({ ...r, payer: r.payerId ? dir.get(r.payerId)?.name ?? null : null, executor: dir.get(id)!.name }));
   });
 
   // события в реальном времени (SSE). Токен в query: EventSource не умеет заголовки.
   app.get("/events", async (req, reply) => {
     const { token } = z.object({ token: z.string() }).parse(req.query);
     const id = verifyToken(opts.secret, token);
-    if (!id || !userById(id)) return reply.code(401).send({ error: "Требуется вход" });
+    if (!id || !dir.get(id)) return reply.code(401).send({ error: "Требуется вход" });
     reply.hijack();
     const reqOrigin = req.headers.origin;
     const origin = !origins.length ? (reqOrigin ?? "*") : reqOrigin && origins.includes(reqOrigin) ? reqOrigin : origins[0]!;

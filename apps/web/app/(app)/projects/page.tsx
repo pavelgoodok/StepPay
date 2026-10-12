@@ -42,11 +42,12 @@ export default function Projects() {
           <p style={{ marginTop: 8 }}>Пока пусто. Создайте {crowd ? "сбор" : "программу"} кнопкой «+»</p>
         </div>
       )}
+      <div className="grid2">
       {data?.map((d) => {
         const chip = dealChip(d);
         const pct = d.target ? Math.min(100, Math.round((d.raised / d.target) * 100)) : 0;
         return (
-          <Link key={d.id} href={`/deals/${d.id}`} className="card tap">
+          <Link key={d.id} href={`/deals/${d.id}`} className={`card tap dealcard ${chip.tone}`}>
             <div className="row between">
               <div className="grow">
                 <div className="title ellipsis">{d.title}</div>
@@ -67,6 +68,7 @@ export default function Projects() {
           </Link>
         );
       })}
+      </div>
     </div>
   );
 }

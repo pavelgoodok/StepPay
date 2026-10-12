@@ -2,11 +2,18 @@ import type { Deal, LedgerEntry } from "@steppay/engine";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter";
+export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter" | "user";
 export interface PublicUser {
   id: string;
   name: string;
   role: Role;
+  /** маскированный номер, только у зарегистрированных */
+  phone?: string;
+}
+export interface FoundUser {
+  id: string;
+  name: string;
+  phone?: string;
 }
 export interface Wallet {
   free: number;

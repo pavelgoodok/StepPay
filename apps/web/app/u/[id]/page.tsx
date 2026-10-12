@@ -17,7 +17,7 @@ interface Pub {
   received: number;
   rating: number | null;
 }
-const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приёмщик споров" };
+const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", user: "Участник" };
 
 export default function PublicCard() {
   const { id } = useParams<{ id: string }>();
