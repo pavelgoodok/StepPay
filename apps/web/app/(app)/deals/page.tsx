@@ -46,12 +46,6 @@ export default function Deals() {
         <Link href="/receipts"><span className="ic"><Icon name="check" size={22} /></span>Чеки</Link>
       </div>
 
-      <div className="stats">
-        <div className="stat"><span className="eyebrow">В работе</span><b>{(data ?? []).filter((d) => d.status === "active").length}</b></div>
-        <div className="stat"><span className="eyebrow">Ждут вас</span><b>{needs.length}</b></div>
-        <div className="stat"><span className="eyebrow">Завершено</span><b>{(data ?? []).filter((d) => d.status === "completed").length}</b></div>
-      </div>
-
       {needs.map((n) => (
         <Link key={n.d.id} href={`/deals/${n.d.id}`} className="card tap row" style={{ background: "var(--amber-soft)" }}>
           <Icon name="clock" size={26} />

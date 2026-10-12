@@ -95,7 +95,7 @@ export default function DealPage() {
         </div>
       </div>
 
-      {!draft && <div className="hero">
+      {!draft && <div className="hero compact">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={d.status === "completed" ? IMG.terminal : IMG.safe} alt="" />
         <div className="label">Выплачено исполнителю</div>
@@ -109,11 +109,17 @@ export default function DealPage() {
         {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
       </div>}
 
-      {d.meta?.chatId && (
-        <Link href={`/chats/${d.meta.chatId}`} className="btn soft"><Icon name="chat" size={18} /> Чат по задаче</Link>
-      )}
-      {!draft && <ContractCard d={d} />}
-      {!draft && <JournalCard d={d} />}
+      {(d.meta?.chatId || !draft) && <div className="group">
+        {d.meta?.chatId && (
+          <Link href={`/chats/${d.meta.chatId}`} className="card tap row">
+            <span className="setic"><Icon name="chat" size={20} /></span>
+            <div className="grow title">Чат по задаче</div>
+            <Icon name="arrow" size={18} />
+          </Link>
+        )}
+        {!draft && <ContractCard d={d} />}
+        {!draft && <JournalCard d={d} />}
+      </div>}
       {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 
       {draft && isExec && (() => {

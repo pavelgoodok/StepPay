@@ -59,7 +59,7 @@ export function JournalCard({ d }: { d: DealFull }) {
       <button className="card tap row" style={{ textAlign: "left", width: "100%" }} onClick={() => setOpen(true)}>
         <span className="setic"><Icon name="clock" size={20} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="title">Журнал сделки</div>
+          <div className="title">Журнал</div>
           <div className="small muted">{entries.length} записей</div>
         </div>
         <span className={`chip ${ok ? "green" : "red"}`}>{ok ? "Цепочка цела" : "Цепочка нарушена"}</span>

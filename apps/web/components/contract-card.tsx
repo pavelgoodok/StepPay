@@ -39,10 +39,10 @@ export function ContractCard({ d }: { d: DealFull }) {
       <button className="card tap row" style={{ textAlign: "left", width: "100%" }} onClick={() => setOpen(true)}>
         <span className="setic"><Icon name="shield" size={20} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
-          <div className="title">Контракт сделки</div>
+          <div className="title">Контракт</div>
           <div className="small muted mono ellipsis">{short}</div>
         </div>
-        <span className={`chip ${ok ? "green" : "red"}`}>{ok ? "Условия не менялись" : "Условия изменены"}</span>
+        <span className={`chip ${ok ? "green" : "red"}`}>{ok ? "Без изменений" : "Изменены"}</span>
       </button>
 
       {open && (
