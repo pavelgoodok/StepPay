@@ -19,6 +19,9 @@ import {
   splitProRata,
   submitStage,
   tick,
+  expireFunding,
+  expireStage,
+  expireDispute,
   topUp,
   updateTerms,
   verifyContract,
@@ -53,10 +56,12 @@ type Act =
   | { k: "submit" | "approve" | "reject" | "dispute" | "reply"; d: number; role: Role; st: number }
   | { k: "vote"; d: number; role: Role; st: number; accept: boolean }
   | { k: "resolve"; d: number; role: Role; st: number; pay: boolean }
+  | { k: "expire"; d: number; what: "funding" | "stage" | "dispute"; st: number; at: number }
   | { k: "tick"; dt: number };
 
 const actArb: fc.Arbitrary<Act> = fc.oneof(
   { weight: 4, arbitrary: fc.record({ k: fc.constant("topup" as const), role: roleArb, amt: money }) },
+  { weight: 1, arbitrary: fc.record({ k: fc.constant("expire" as const), d: dealArb, what: fc.constantFrom("funding" as const, "stage" as const, "dispute" as const), st: stageArb, at: fc.constantFrom(0, DAY_MS, 4 * DAY_MS) }) },
   { weight: 3, arbitrary: fc.record({ k: fc.constant("create" as const), d: dealArb, mode: fc.constantFrom<Mode>("own", "own", "crowdfunding", "grant"), stages: stagesArb, signed: fc.boolean(), draft: fc.boolean(), fee: fc.constantFrom(0, 0, 250, 1000), days: fc.constantFrom(1, 3) }) },
   { weight: 2, arbitrary: fc.record({ k: fc.constant("terms" as const), d: dealArb, role: roleArb, stages: stagesArb }) },
   { weight: 2, arbitrary: fc.record({ k: fc.constantFrom("propose" as const, "reopen" as const, "sign" as const, "sign" as const, "cancel" as const), d: dealArb, role: roleArb }) },
@@ -75,7 +80,7 @@ const LEGAL: Record<string, string[]> = {
   cancelled: ["cancelled"],
 };
 
-const stats = { runs: 0, completed: 0, cancelled: 0, signed: 0, accepted: 0, steps: 0, accepts: 0 };
+const stats = { runs: 0, completed: 0, cancelled: 0, signed: 0, accepted: 0, steps: 0, accepts: 0, expired: 0 };
 
 function check(s: State, topped: number, prev: Record<string, string>, where: string) {
   const wallets = Object.entries(s.wallets);
@@ -162,6 +167,8 @@ function exec(s: State, a: Act, now: number): { s: State; topped: number; now: n
         id: id(a.d), mode: a.mode, title: "x", executorId: PEOPLE.executor, ownerId: a.mode === "crowdfunding" ? undefined : PEOPLE.owner,
         arbiterId: a.mode === "own" ? PEOPLE.arbiter : undefined, signed: a.signed, status: a.draft && a.mode === "own" ? "draft" : "funding",
         stages: a.draft && a.mode === "own" ? [] : a.stages.map((v, i) => ({ id: `s${i + 1}`, title: `Э${i + 1}`, amount: v * R })), feeBps: a.fee, autoAcceptDays: a.days, at: now,
+        // сроки только у части сделок (третья, 3 дня автоприемки): остальные идут без них
+        ...(a.d === 2 && a.days === 3 ? { fundingDeadlineDays: 3, stageDeadlineDays: 2, disputeDays: 2 } : {}),
       });
       break;
     case "terms": s = updateTerms(s, id(a.d), who(a.d, a.role), { stages: a.stages.map((v, i) => ({ id: `s${i + 1}`, title: `Э${i + 1}`, amount: v * R })) }); break;
@@ -181,6 +188,14 @@ function exec(s: State, a: Act, now: number): { s: State; topped: number; now: n
     case "reply": s = replyDispute(s, id(a.d), stg(a.st), who(a.d, a.role), "ответ", [], now); break;
     case "vote": s = voteStage(s, id(a.d), stg(a.st), who(a.d, a.role), a.accept ? "accept" : "reject", now); break;
     case "resolve": s = resolveDispute(s, id(a.d), stg(a.st), who(a.d, a.role), a.pay ? "pay" : "refund", now); break;
+    case "expire": {
+      const at = now + a.at;
+      if (a.what === "funding") s = expireFunding(s, id(a.d), at);
+      else if (a.what === "stage") s = expireStage(s, id(a.d), stg(a.st), at);
+      else s = expireDispute(s, id(a.d), stg(a.st), at);
+      now = at;
+      break;
+    }
     case "tick": now += a.dt; s = tick(s, now); break;
   }
   return { s, topped, now };
@@ -194,6 +209,7 @@ function tally(s: State) {
     if (d.status === "completed") stats.completed++;
     if (d.status === "cancelled") stats.cancelled++;
     if (d.signing && d.signatures && Object.keys(d.signatures).length > 0) stats.signed++;
+    stats.expired += d.stages.filter((x) => x.resolution?.by === "expired").length + (d.journal?.some((e) => e.type === "funding_expired") ? 1 : 0);
     stats.accepted += d.stages.filter((x) => x.status === "accepted").length;
   }
 }
@@ -230,6 +246,7 @@ function candidates(s: State, d: number): Act[] {
     for (const [mode, signed, draft] of [["own", true, false], ["own", true, true], ["own", false, false], ["crowdfunding", true, false], ["grant", true, false], ["own", true, false]] as [Mode, boolean, boolean][]) {
       out.push({ k: "create", d, mode, stages: [60_000, 40_000, 30_001], signed, draft, fee: [0, 250][d % 2]!, days: 1 });
     }
+    if (d === 2) out.push({ k: "create", d, mode: "own", stages: [60_000, 40_000, 30_001], signed: true, draft: false, fee: 0, days: 3 });
     return out;
   }
   const roles = Object.keys(PEOPLE) as Role[];
@@ -243,6 +260,7 @@ function candidates(s: State, d: number): Act[] {
   }
   out.push({ k: "terms", d, role: "executor", stages: [70_000, 30_000, 20_001] });
   for (const dt of [3_600_000, DAY_MS, 4 * DAY_MS]) out.push({ k: "tick", dt });
+  for (const what of ["funding", "stage", "dispute"] as const) out.push({ k: "expire", d, what, st, at: 4 * DAY_MS });
   return out;
 }
 
@@ -265,7 +283,7 @@ function runGuided(steps: { pick: number; junk: boolean; d: number }[]) {
       }
     }
     // чаще выбираем действия, двигающие сделку вперед, а не отмену, возврат на правку и пополнения
-    const quiet = (x: Act) => x.k === "cancel" || x.k === "reopen" || x.k === "terms" || x.k === "topup";
+    const quiet = (x: Act) => x.k === "cancel" || x.k === "expire" || x.k === "reopen" || x.k === "terms" || x.k === "topup";
     const forward = ok.filter((x) => !quiet(x));
     const pool = forward.length > 0 && step.pick % 100 >= 6 ? forward : ok;
     const a = step.junk || ok.length === 0 ? cands[step.pick % cands.length]! : pool[Math.floor(step.pick / 100) % pool.length]!;
@@ -290,7 +308,7 @@ describe("свойства ядра сделок на случайных пос�
 
   it("направляемые прогоны: сделки проходят до приемки, завершения и отмены, и инварианты держатся", () => {
     const stepArb = fc.record({ pick: fc.nat(100_000), junk: fc.integer({ min: 0, max: 99 }).map((v) => v < 12), d: dealArb });
-    fc.assert(fc.property(fc.array(stepArb, { minLength: 30, maxLength: 70 }), (steps) => runGuided(steps)), { numRuns: Number(process.env.FC_GUIDED_RUNS ?? 50), seed: 20260102 });
+    fc.assert(fc.property(fc.array(stepArb, { minLength: 30, maxLength: 70 }), (steps) => runGuided(steps)), { numRuns: Number(process.env.FC_GUIDED_RUNS ?? 80), seed: 20260102 });
   }, 280_000);
 
   it("прогоны не пустые: сделки доходят до приемки, завершения и отмены", () => {
@@ -299,6 +317,7 @@ describe("свойства ядра сделок на случайных пос�
     expect(stats.accepted, JSON.stringify(stats)).toBeGreaterThan(25);
     expect(stats.completed, JSON.stringify(stats)).toBeGreaterThan(1);
     expect(stats.cancelled, JSON.stringify(stats)).toBeGreaterThan(10);
+    expect(stats.expired, JSON.stringify(stats)).toBeGreaterThan(0);
     expect(stats.signed, JSON.stringify(stats)).toBeGreaterThan(50);
   });
 });

@@ -24,7 +24,8 @@ function describe(e: JournalEntry, d: DealFull): string {
     case "reserved": return `${who} зарезервировал(а) ${money}`;
     case "stage_submitted": return `${who} сдал(а) этап${st}`;
     case "stage_accepted": return e.by === "system" ? `Этап${st} принят автоматически` : `${who} принял(а) этап${st}`;
-    case "stage_failed": return `Этап${st} не принят`;
+    case "stage_failed": return data.closedBy === "expired" ? `Срок вышел, этап${st} закрыт, остаток возвращен` : `Этап${st} не принят`;
+    case "funding_expired": return "Срок сбора вышел, сделка закрыта, деньги возвращены";
     case "stage_rejected": return `${who} отказал(а) по этапу${st}`;
     case "vote": return `${who} проголосовал(а) ${data.vote === "accept" ? "за" : "против"}${st ? ` по этапу${st}` : ""}`;
     case "dispute_opened": return `${who} открыл(а) спор по этапу${st}`;

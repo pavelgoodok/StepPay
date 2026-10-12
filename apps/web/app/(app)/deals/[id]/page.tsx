@@ -22,6 +22,7 @@ const CLOSED_BY: Record<string, string> = {
   votes: "Решение спонсоров",
   auto: "Принят автоматически: ответа не было 3 дня",
   arbiter: "Решение независимого приемщика",
+  expired: "Срок вышел: остаток возвращен",
 };
 
 export default function DealPage() {

@@ -30,6 +30,26 @@ contract StepEscrow {
         StageStatus status;
         uint64 submittedAt;
         bytes32 evidence; // хеш материалов сдачи (описание и фото лежат вне цепочки)
+        uint64 activeSince; // когда этап пошел в работу: от этого считается срок этапа
+        uint64 disputedAt; // когда начался спор: от этого считается срок решения
+    }
+
+    /// @dev Сроки в секундах, ноль значит «без срока». Нужны для аварийного выхода, если сторона пропала.
+    struct Deadlines {
+        uint64 fundingSecs; // сбор денег, от создания сделки
+        uint64 stageSecs; // выполнение этапа, от начала работы над ним
+        uint64 disputeSecs; // решение спора приемщиком, от открытия спора
+    }
+
+    struct Params {
+        Mode mode;
+        address executor;
+        address owner;
+        address arbiter;
+        uint64 autoAcceptSecs;
+        uint16 feeBps;
+        bytes32 contractHash;
+        Deadlines deadlines;
     }
 
     struct Deal {
@@ -42,6 +62,8 @@ contract StepEscrow {
         bool ownerSigned;
         uint16 feeBps;
         uint64 autoAcceptSecs;
+        uint64 createdAt;
+        Deadlines deadlines;
         bytes32 contractHash;
         uint256 target;
         uint256 totalReserved;
@@ -84,6 +106,7 @@ contract StepEscrow {
     event Refund(uint256 indexed dealId, address indexed to, uint256 amount);
     event Completed(uint256 indexed dealId);
     event Cancelled(uint256 indexed dealId, address indexed by);
+    event FundingExpired(uint256 indexed dealId);
 
     error Unauthorized();
     error BadState();
@@ -116,35 +139,57 @@ contract StepEscrow {
         uint64 autoAcceptSecs,
         uint16 feeBps,
         bytes32 contractHash
-    ) external returns (uint256 dealId) {
-        if (executor == address(0) || stageAmounts.length == 0 || stageAmounts.length > MAX_STAGES) revert BadInput();
-        if (feeBps > MAX_FEE_BPS) revert BadInput();
-        if (mode == Mode.Crowdfunding) {
-            if (owner != address(0) || arbiter != address(0)) revert BadInput();
+    ) external returns (uint256) {
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, Deadlines(0, 0, 0)), stageAmounts);
+    }
+
+    /// @notice То же, что createDeal, плюс сроки аварийного выхода (ноль: без срока).
+    function createDealEx(
+        Mode mode,
+        address executor,
+        address owner,
+        address arbiter,
+        uint128[] calldata stageAmounts,
+        uint64 autoAcceptSecs,
+        uint16 feeBps,
+        bytes32 contractHash,
+        Deadlines calldata deadlines
+    ) external returns (uint256) {
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines), stageAmounts);
+    }
+
+    function _create(Params memory p, uint128[] calldata stageAmounts) private returns (uint256 dealId) {
+        if (p.executor == address(0) || stageAmounts.length == 0 || stageAmounts.length > MAX_STAGES) revert BadInput();
+        if (p.feeBps > MAX_FEE_BPS) revert BadInput();
+        if (p.mode == Mode.Crowdfunding) {
+            if (p.owner != address(0) || p.arbiter != address(0)) revert BadInput();
         } else {
-            if (owner == address(0) || owner == executor) revert BadInput();
-            if (mode == Mode.Own ? arbiter == address(0) : arbiter != address(0)) revert BadInput();
+            if (p.owner == address(0) || p.owner == p.executor) revert BadInput();
+            if (p.mode == Mode.Own ? p.arbiter == address(0) : p.arbiter != address(0)) revert BadInput();
         }
-        if (arbiter == executor || (arbiter != address(0) && arbiter == owner)) revert BadInput();
-        if (mode != Mode.Grant && autoAcceptSecs == 0) revert BadInput();
+        if (p.arbiter == p.executor || (p.arbiter != address(0) && p.arbiter == p.owner)) revert BadInput();
+        if (p.mode != Mode.Grant && p.autoAcceptSecs == 0) revert BadInput();
+        if (p.mode != Mode.Own && p.deadlines.disputeSecs != 0) revert BadInput(); // споры по приемщику только в своей сделке
 
         dealId = ++dealCount;
         Deal storage d = deals[dealId];
-        d.mode = mode;
-        d.executor = executor;
-        d.owner = owner;
-        d.arbiter = arbiter;
-        d.feeBps = feeBps;
-        d.autoAcceptSecs = autoAcceptSecs;
-        d.contractHash = contractHash;
+        d.mode = p.mode;
+        d.executor = p.executor;
+        d.owner = p.owner;
+        d.arbiter = p.arbiter;
+        d.feeBps = p.feeBps;
+        d.autoAcceptSecs = p.autoAcceptSecs;
+        d.createdAt = uint64(block.timestamp);
+        d.deadlines = p.deadlines;
+        d.contractHash = p.contractHash;
         uint256 sum;
         for (uint256 i = 0; i < stageAmounts.length; i++) {
             if (stageAmounts[i] == 0) revert BadInput();
-            d.stages.push(Stage({amount: stageAmounts[i], status: StageStatus.Pending, submittedAt: 0, evidence: bytes32(0)}));
+            d.stages.push(Stage({amount: stageAmounts[i], status: StageStatus.Pending, submittedAt: 0, evidence: bytes32(0), activeSince: 0, disputedAt: 0}));
             sum += stageAmounts[i];
         }
         d.target = sum;
-        emit DealCreated(dealId, mode, executor, owner, arbiter, contractHash, sum);
+        emit DealCreated(dealId, p.mode, p.executor, p.owner, p.arbiter, p.contractHash, sum);
     }
 
     /// @notice Подпись стороны. Подписывают исполнитель и заказчик (грантодатель); у краудфандинга только автор.
@@ -202,6 +247,7 @@ contract StepEscrow {
         if (d.status == DealStatus.Funding && d.totalReserved == d.target && isSigned(dealId)) {
             d.status = DealStatus.Active;
             d.stages[0].status = StageStatus.Active;
+            d.stages[0].activeSince = uint64(block.timestamp);
             emit Activated(dealId);
         }
     }
@@ -242,6 +288,7 @@ contract StepEscrow {
             _fail(dealId, d, stage, "owner");
         } else {
             st.status = StageStatus.Disputed;
+            st.disputedAt = uint64(block.timestamp);
             emit DisputeOpened(dealId, stage, msg.sender, reason);
         }
     }
@@ -277,6 +324,7 @@ contract StepEscrow {
         Stage storage st = _stage(d, stage);
         if (st.status != StageStatus.Submitted) revert BadState();
         st.status = StageStatus.Disputed;
+        st.disputedAt = uint64(block.timestamp);
         emit DisputeOpened(dealId, stage, msg.sender, reason);
     }
 
@@ -314,6 +362,37 @@ contract StepEscrow {
         _refundAll(dealId, d);
     }
 
+    // ───────────────────────── сроки и аварийный выход ─────────────────────────
+    // Вызвать может любой: после срока деньги возвращаются без чьего-либо согласия.
+
+    /// @notice Сбор не завершился в срок: сделка отменяется, все резервы возвращаются.
+    function expireFunding(uint256 dealId) external nonReentrant {
+        Deal storage d = _deal(dealId);
+        if (d.status != DealStatus.Funding || d.deadlines.fundingSecs == 0) revert BadState();
+        if (block.timestamp < uint256(d.createdAt) + d.deadlines.fundingSecs) revert BadState();
+        d.status = DealStatus.Cancelled;
+        emit FundingExpired(dealId);
+        _refundAll(dealId, d);
+    }
+
+    /// @notice Исполнитель не сдал этап в срок: этап провален, остаток возвращается спонсорам.
+    function expireStage(uint256 dealId, uint256 stage) external nonReentrant {
+        Deal storage d = _deal(dealId);
+        Stage storage st = _stage(d, stage);
+        if (d.status != DealStatus.Active || st.status != StageStatus.Active || d.deadlines.stageSecs == 0) revert BadState();
+        if (block.timestamp < uint256(st.activeSince) + d.deadlines.stageSecs) revert BadState();
+        _fail(dealId, d, stage, "expired");
+    }
+
+    /// @notice Приемщик не решил спор в срок: этап провален, остаток возвращается заказчику.
+    function expireDispute(uint256 dealId, uint256 stage) external nonReentrant {
+        Deal storage d = _deal(dealId);
+        Stage storage st = _stage(d, stage);
+        if (d.status != DealStatus.Active || st.status != StageStatus.Disputed || d.deadlines.disputeSecs == 0) revert BadState();
+        if (block.timestamp < uint256(st.disputedAt) + d.deadlines.disputeSecs) revert BadState();
+        _fail(dealId, d, stage, "expired");
+    }
+
     // ───────────────────────── движение денег ─────────────────────────
 
     function _accept(uint256 dealId, Deal storage d, uint256 stage, string memory closedBy) private {
@@ -323,6 +402,7 @@ contract StepEscrow {
         emit StageAccepted(dealId, stage, closedBy);
         if (stage + 1 < d.stages.length) {
             d.stages[stage + 1].status = StageStatus.Active;
+            d.stages[stage + 1].activeSince = uint64(block.timestamp);
         } else {
             d.status = DealStatus.Completed;
             emit Completed(dealId);
@@ -436,6 +516,16 @@ contract StepEscrow {
     function getStage(uint256 dealId, uint256 stage) external view returns (uint128 amount, StageStatus status, uint64 submittedAt, bytes32 evidence) {
         Stage storage st = _stage(_deal(dealId), stage);
         return (st.amount, st.status, st.submittedAt, st.evidence);
+    }
+
+    function getDeadlines(uint256 dealId) external view returns (uint64 createdAt, uint64 fundingSecs, uint64 stageSecs, uint64 disputeSecs) {
+        Deal storage d = _deal(dealId);
+        return (d.createdAt, d.deadlines.fundingSecs, d.deadlines.stageSecs, d.deadlines.disputeSecs);
+    }
+
+    function getStageTimes(uint256 dealId, uint256 stage) external view returns (uint64 activeSince, uint64 disputedAt) {
+        Stage storage st = _stage(_deal(dealId), stage);
+        return (st.activeSince, st.disputedAt);
     }
 
     function fundersOf(uint256 dealId) external view returns (address[] memory) {

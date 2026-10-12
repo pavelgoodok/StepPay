@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { createDeal, fund, type State } from "@steppay/engine";
+import { createDeal, defaultDeadlines, fund, type State } from "@steppay/engine";
 import { z } from "zod";
 import { validInn } from "./inn";
 import type { Hub } from "./hub";
@@ -202,7 +202,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const dealId = `g_${p.id}`;
     const t = c.now();
     await c.transact((s) => {
-      let n = createDeal(s, { id: dealId, mode: "grant", title: p.title, executorId: p.ownerId, ownerId: me, signed: true, stages: p.stages, meta: { projectId: p.id }, at: t });
+      let n = createDeal(s, { id: dealId, mode: "grant", title: p.title, executorId: p.ownerId, ownerId: me, signed: true, ...defaultDeadlines("grant"), stages: p.stages, meta: { projectId: p.id }, at: t });
       n = fund(c.signIfNeeded(n, dealId, me, t), dealId, me, projectGoal(p), t);
       return { state: n, result: true };
     });
@@ -242,7 +242,7 @@ export function registerPlatformRoutes(c: Ctx) {
       // краудфандинг открывается сразу: сделка ждет взносов спонсоров
       dealId = `d_${p.id}`;
       const t = c.now();
-      await c.transact((s) => ({ state: createDeal(s, { id: dealId!, mode: "crowdfunding", title: p.title, executorId: p.ownerId, signed: true, stages: p.stages, meta: { projectId: p.id }, at: t }), result: true }));
+      await c.transact((s) => ({ state: createDeal(s, { id: dealId!, mode: "crowdfunding", title: p.title, executorId: p.ownerId, signed: true, ...defaultDeadlines("crowdfunding"), stages: p.stages, meta: { projectId: p.id }, at: t }), result: true }));
       await platform.linkDeal(p.id, dealId);
     }
     const text = b.action === "approve" ? `Проект «${p.title}» одобрен${p.kind === "crowdfunding" ? ", сбор открыт: подпишите контракт, чтобы работа началась" : ", теперь его может поддержать грантодатель"}` : b.action === "reject" ? `Проект «${p.title}» отклонен: ${b.comment}` : `По проекту «${p.title}» есть замечания: ${b.comment}`;
@@ -403,7 +403,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const dealId = `t_${Math.random().toString(36).slice(2, 10)}${c.now().toString(36)}`;
     const t = c.now();
     await c.transact((s) => ({
-      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId: "expert", status: "draft", signed: true, stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
+      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId: "expert", status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
       result: true,
     }));
     await platform.post(id, me, `Зарегистрирована задача «${b.title}». Исполнитель согласует этапы и отправит условия.`, "system", dealId);

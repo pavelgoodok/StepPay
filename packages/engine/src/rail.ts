@@ -6,6 +6,9 @@ import {
   freeBalance,
   fund,
   openDispute,
+  expireDispute,
+  expireFunding,
+  expireStage,
   rejectStage,
   resolveDispute,
   signContract,
@@ -40,12 +43,15 @@ export interface MoneyRail {
   /** автоприемка: срабатывает, только если срок вышел */
   autoAccept(by: string, stage: number): Promise<void>;
   cancel(by: string): Promise<void>;
+  /** аварийный выход по сроку: любой может вызвать, срабатывает только если срок вышел */
+  expire(by: string, what: ExpireKind, stage: number): Promise<void>;
   /** сдвинуть время вперед */
   wait(seconds: number): Promise<void>;
   balance(who: string): Promise<number>;
   state(): Promise<RailState>;
 }
 
+export type ExpireKind = "funding" | "stage" | "dispute";
 export type RailStatus = "funding" | "active" | "completed" | "cancelled";
 export type RailStage = "pending" | "active" | "submitted" | "accepted" | "disputed" | "failed";
 export interface RailState {
@@ -62,9 +68,13 @@ export interface DealSpec {
   stages: number[];
   autoAcceptDays: number;
   feeBps: number;
+  /** сроки в днях; не заданы: без срока */
+  fundingDeadlineDays?: number;
+  stageDeadlineDays?: number;
+  disputeDays?: number;
 }
 
-export type StepKind = "sign" | "reserve" | "submit" | "approve" | "reject" | "vote" | "dispute" | "resolve" | "autoAccept" | "cancel" | "wait";
+export type StepKind = "expire" | "sign" | "reserve" | "submit" | "approve" | "reject" | "vote" | "dispute" | "resolve" | "autoAccept" | "cancel" | "wait";
 export interface Step {
   do: StepKind;
   by?: string;
@@ -73,6 +83,7 @@ export interface Step {
   accept?: boolean;
   pay?: boolean;
   seconds?: number;
+  what?: ExpireKind;
   /** шаг должен быть отклонен рельсом, состояние не меняется */
   fails?: true;
 }
@@ -99,6 +110,7 @@ export async function applyStep(rail: MoneyRail, s: Step): Promise<boolean> {
       case "resolve": await rail.resolve(s.by!, s.stage!, s.pay!); break;
       case "autoAccept": await rail.autoAccept(s.by ?? "stranger", s.stage!); break;
       case "cancel": await rail.cancel(s.by!); break;
+      case "expire": await rail.expire(s.by ?? "stranger", s.what!, s.stage ?? 0); break;
       case "wait": await rail.wait(s.seconds!); break;
     }
     return true;
@@ -155,6 +167,9 @@ export class EmulatedRail implements MoneyRail {
       stages: spec.stages.map((amount, i) => ({ id: `s${i + 1}`, title: `Этап ${i + 1}`, amount })),
       autoAcceptDays: spec.autoAcceptDays,
       feeBps: spec.feeBps,
+      fundingDeadlineDays: spec.fundingDeadlineDays,
+      stageDeadlineDays: spec.stageDeadlineDays,
+      disputeDays: spec.disputeDays,
       at: this.now,
     });
   }
@@ -191,6 +206,11 @@ export class EmulatedRail implements MoneyRail {
   }
   async cancel(by: string) {
     this.s = cancelDeal(this.s, this.id, by, this.now);
+  }
+  async expire(_by: string, what: ExpireKind, stage: number) {
+    if (what === "funding") this.s = expireFunding(this.s, this.id, this.now);
+    else if (what === "stage") this.s = expireStage(this.s, this.id, `s${stage + 1}`, this.now);
+    else this.s = expireDispute(this.s, this.id, `s${stage + 1}`, this.now);
   }
   async wait(seconds: number) {
     this.now += seconds * 1000;

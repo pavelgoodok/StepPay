@@ -101,6 +101,10 @@ export interface CreateDealInput {
   arbiterId?: UserId;
   stages: { id?: string; title: string; amount: Money; criteria?: string[] }[];
   autoAcceptDays?: number;
+  /** сроки в днях; не заданы или 0: без срока */
+  fundingDeadlineDays?: number;
+  stageDeadlineDays?: number;
+  disputeDays?: number;
   feeBps?: number;
   /** draft: условия согласует исполнитель (только «Свой проект»); по умолчанию funding */
   status?: "draft" | "funding";
@@ -141,6 +145,9 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     reserves: {},
     contributed: {},
     autoAcceptMs: (input.autoAcceptDays ?? 3) * DAY_MS,
+    fundingDeadlineMs: input.fundingDeadlineDays ? input.fundingDeadlineDays * DAY_MS : undefined,
+    stageDeadlineMs: input.stageDeadlineDays ? input.stageDeadlineDays * DAY_MS : undefined,
+    disputeMs: input.disputeDays ? input.disputeDays * DAY_MS : undefined,
     feeBps: input.feeBps ?? 0,
     createdAt: input.at,
     signing: input.signed ? true : undefined,
@@ -214,10 +221,13 @@ function assertContract(d: Deal, at: number) {
   if (!verifyJournal(d).ok) fail("Журнал сделки нарушен, операция остановлена");
 }
 
-function activate(d: Deal) {
+function activate(d: Deal, at: number) {
   d.status = "active";
   const first = d.stages.find((x) => x.status === "pending");
-  if (first) first.status = "active";
+  if (first) {
+    first.status = "active";
+    first.activeSince = at;
+  }
 }
 
 /** Резерв денег. own/grant - ровно вся сумма от заказчика; crowdfunding - любые взносы до цели. */
@@ -245,7 +255,7 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
   record(d, at, "reserved", userId, { amount });
 
   if (totalReserved(d) === d.target && signaturesComplete(d)) {
-    activate(d);
+    activate(d, at);
     if (d.signing) record(d, at, "activated", "system");
   }
 });
@@ -262,7 +272,7 @@ export const signContract = mutate((s, dealId: string, userId: UserId, at: numbe
   (d.signatures ??= {})[userId] = { at, hash: d.contract.hash, sig, ...(proof ? { proof } : {}) };
   record(d, at, "signed", userId, { contract: d.contract.hash, method: proof ? "device" : "server", ...(proof ? { keyId: proof.keyId } : {}) });
   if (totalReserved(d) === d.target && signaturesComplete(d)) {
-    activate(d);
+    activate(d, at);
     record(d, at, "activated", "system");
   }
 });
@@ -307,7 +317,10 @@ function acceptStage(s: State, d: Deal, stage: Stage, at: number, by: ClosedBy, 
   stage.resolution = { by, decision: "accepted", comment, at };
   record(d, at, "stage_accepted", actor, { closedBy: by, comment }, stage.id);
   const next = d.stages.find((x) => x.status === "pending");
-  if (next) next.status = "active";
+  if (next) {
+    next.status = "active";
+    next.activeSince = at;
+  }
   else {
     d.status = "completed";
     record(d, at, "completed", "system");
@@ -373,6 +386,7 @@ export const rejectStage = mutate(
       failDeal(s, d, st, at, "Этап не принят грантодателем", "owner", reason, userId);
     } else {
       st.status = "disputed";
+      st.disputedAt = at;
       st.disputeReason = reason;
       st.messages = [{ by: userId, text: reason, at }];
       record(d, at, "stage_rejected", userId, { reason }, st.id);
@@ -417,6 +431,7 @@ export const openDispute = mutate(
     if (st.status !== "submitted") fail("Спор можно открыть только по сданному этапу");
     if (!reason.trim()) fail("Укажите причину");
     st.status = "disputed";
+    st.disputedAt = at;
     st.disputeReason = reason;
     st.messages = [{ by: userId, text: reason, at }];
     record(d, at, "dispute_opened", userId, { reason }, st.id);
@@ -476,10 +491,59 @@ export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number)
   refundAll(s, d, at, "Сделка отменена");
 });
 
-/** Часы: автоприемка через autoAcceptMs без ответа (own и краудфандинг). */
+/** Срок сбора истек: сделка отменяется, деньги возвращаются плательщикам. Вызвать может любой. */
+/** Сроки платформы по умолчанию (дни): без них пропавшая сторона держала бы чужие деньги бесконечно. */
+export function defaultDeadlines(mode: Mode): { fundingDeadlineDays?: number; stageDeadlineDays?: number; disputeDays?: number } {
+  if (mode === "crowdfunding") return { fundingDeadlineDays: 30, stageDeadlineDays: 30 };
+  if (mode === "grant") return { stageDeadlineDays: 60 };
+  return { stageDeadlineDays: 30, disputeDays: 14 };
+}
+
+export const expireFunding = mutate((s, dealId: string, at: number) => {
+  const d = getDeal(s, dealId);
+  if (d.status !== "funding") fail("Сделка уже не собирает деньги");
+  const since = d.contract?.sealedAt ?? d.createdAt;
+  if (!d.fundingDeadlineMs || at < since + d.fundingDeadlineMs) fail("Срок сбора еще не истек");
+  d.status = "cancelled";
+  record(d, at, "funding_expired", "system");
+  refundAll(s, d, at, "Срок сбора истек");
+});
+
+/** Исполнитель не сдал этап в срок: этап провален, остаток возвращается. Вызвать может любой. */
+export const expireStage = mutate((s, dealId: string, stageId: string, at: number) => {
+  const d = getDeal(s, dealId);
+  const st = getStage(d, stageId);
+  if (d.status !== "active" || st.status !== "active") fail("Этап сейчас не в работе");
+  if (!d.stageDeadlineMs || st.activeSince === undefined || at < st.activeSince + d.stageDeadlineMs) fail("Срок этапа еще не истек");
+  failDeal(s, d, st, at, "Срок этапа истек", "expired");
+});
+
+/** Приемщик не решил спор в срок: этап провален, остаток возвращается плательщику. Вызвать может любой. */
+export const expireDispute = mutate((s, dealId: string, stageId: string, at: number) => {
+  const d = getDeal(s, dealId);
+  const st = getStage(d, stageId);
+  if (d.status !== "active" || st.status !== "disputed") fail("Этап не в споре");
+  if (!d.disputeMs || st.disputedAt === undefined || at < st.disputedAt + d.disputeMs) fail("Срок решения спора еще не истек");
+  failDeal(s, d, st, at, "Спор не решен в срок", "expired");
+});
+
+/** Часы: истекшие сроки (сбор, этап, спор) и автоприемка через autoAcceptMs без ответа (own и краудфандинг). */
 export const tick = mutate((s, now: number) => {
   for (const d of Object.values(s.deals)) {
-    if (d.status !== "active" || d.mode === "grant") continue;
+    // возвраты по истекшим срокам выполняются всегда, даже если условия или журнал нарушены
+    if (d.status === "funding" && d.fundingDeadlineMs && now >= (d.contract?.sealedAt ?? d.createdAt) + d.fundingDeadlineMs) {
+      d.status = "cancelled";
+      record(d, now, "funding_expired", "system");
+      refundAll(s, d, now, "Срок сбора истек");
+      continue;
+    }
+    if (d.status !== "active") continue;
+    const overdue = d.stages.find((st) => (st.status === "active" && d.stageDeadlineMs && st.activeSince !== undefined && now >= st.activeSince + d.stageDeadlineMs) || (st.status === "disputed" && d.disputeMs && st.disputedAt !== undefined && now >= st.disputedAt + d.disputeMs));
+    if (overdue) {
+      failDeal(s, d, overdue, now, overdue.status === "disputed" ? "Спор не решен в срок" : "Срок этапа истек", "expired");
+      continue;
+    }
+    if (d.mode === "grant") continue;
     if (d.contract && !verifyContract(d).ok) continue; // условия подменены: автоприемка не выплачивает
     for (const st of d.stages) {
       if (

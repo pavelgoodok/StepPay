@@ -282,3 +282,56 @@ describe("StepEscrow: краудфандинг", () => {
     assert.equal(await token.balanceOf(escrowAddress), 0n);
   });
 });
+
+describe("StepEscrow: сроки и аварийный выход", () => {
+  async function setup(deadlines) {
+    const { token, escrow, signers, escrowAddress } = await deploy();
+    const [, executor, owner, arbiter, stranger] = signers;
+    await giveTokens(token, escrowAddress, owner, 1_000n * R);
+    await escrow.createDealEx(Mode.Own, executor.address, owner.address, arbiter.address, [500n * R, 500n * R], 3 * DAY, 0, hash("t"), deadlines);
+    await escrow.connect(owner).sign(1);
+    await escrow.connect(executor).sign(1);
+    return { token, escrow, executor, owner, arbiter, stranger };
+  }
+
+  it("срок этапа: возврат остатка после срока, любой может вызвать", async () => {
+    const { token, escrow, executor, owner, stranger } = await setup([0, 10 * DAY, 0]);
+    await escrow.connect(owner).fund(1, 1_000n * R);
+    await reverts(escrow.connect(stranger).expireStage(1, 0), "BadState");
+    await increaseTime(10 * DAY);
+    await escrow.connect(stranger).expireStage(1, 0);
+    assert.equal(await token.balanceOf(owner.address), 1_000n * R);
+    assert.equal((await escrow.getDeal(1)).status, BigInt(DealStatus.Cancelled));
+    await reverts(escrow.connect(executor).submitStage(1, 0, hash("e")), "BadState");
+  });
+
+  it("без сроков выход невозможен, как бы долго ни ждали", async () => {
+    const { escrow, owner, stranger } = await setup([0, 0, 0]);
+    await escrow.connect(owner).fund(1, 1_000n * R);
+    await increaseTime(400 * DAY);
+    await reverts(escrow.connect(stranger).expireStage(1, 0), "BadState");
+    await reverts(escrow.connect(stranger).expireFunding(1), "BadState");
+  });
+
+  it("срок сбора и срок спора считаются от своих моментов", async () => {
+    const { token, escrow, executor, owner, arbiter, stranger } = await setup([5 * DAY, 0, 14 * DAY]);
+    await increaseTime(4 * DAY);
+    await escrow.connect(owner).fund(1, 1_000n * R);
+    await increaseTime(2 * DAY); // сбор завершен, выйти по сроку сбора нельзя
+    await reverts(escrow.connect(stranger).expireFunding(1), "BadState");
+    await escrow.connect(executor).submitStage(1, 0, hash("e"));
+    await escrow.connect(executor).openDispute(1, 0, hash("r"));
+    await increaseTime(13 * DAY);
+    await reverts(escrow.connect(stranger).expireDispute(1, 0), "BadState");
+    await increaseTime(2 * DAY);
+    await escrow.connect(stranger).expireDispute(1, 0);
+    assert.equal(await token.balanceOf(owner.address), 1_000n * R);
+    await reverts(escrow.connect(arbiter).resolveDispute(1, 0, true), "BadState");
+  });
+
+  it("срок спора задается только в своей сделке", async () => {
+    const { escrow, signers } = await deploy();
+    const [, executor, owner] = signers;
+    await reverts(escrow.createDealEx(Mode.Grant, executor.address, owner.address, ZERO, [100n * R], 0, 0, hash("t"), [0, 0, DAY]), "BadInput");
+  });
+});

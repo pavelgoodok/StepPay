@@ -17,6 +17,7 @@ import {
   resolveDispute,
   submitStage,
   tick,
+  defaultDeadlines,
   updateTerms,
   proposeDeal,
   reopenDeal,
@@ -417,6 +418,7 @@ export async function buildApp(opts: AppOptions) {
         signed: true,
         stages,
         autoAcceptDays: b.autoAcceptDays,
+        ...defaultDeadlines(b.mode),
         at: now(),
       });
       return { state: next, result: next.deals[dealId]! };
@@ -439,6 +441,7 @@ export async function buildApp(opts: AppOptions) {
       reply: `${who} написал(а) в споре по этапу ${q}`,
       resolve: `Спор по этапу ${q} решен`,
       cancel: `Сделка «${d.title}» отменена, остаток возвращен`,
+      expired: `Срок вышел: сделка «${d.title}» закрыта, остаток возвращен`,
       propose: `${who} отправил(а) условия по «${d.title}», можно резервировать`,
       reopen: `${who} вернул(а) условия на правку: «${d.title}»`,
       sign: d.status === "active" ? `${who} подписал(а) контракт «${d.title}»: работа началась` : `${who} подписал(а) контракт «${d.title}»`,
@@ -688,7 +691,10 @@ export async function buildApp(opts: AppOptions) {
     for (const d of Object.values(state.deals)) {
       d.stages.forEach((st, i) => {
         if (before.deals[d.id]?.stages[i]?.status === "submitted" && st.status === "accepted") announce(d, "", "approve", st.title, st.amount);
+        if (st.resolution?.by === "expired" && before.deals[d.id]?.stages[i]?.status !== "failed") announce(d, "", "expired", st.title, st.amount);
       });
+      const was = before.deals[d.id];
+      if (was?.status === "funding" && d.status === "cancelled") announce(d, "", "expired", "", 0);
     }
   };
   app.post("/system/tick", async (req, reply) => {

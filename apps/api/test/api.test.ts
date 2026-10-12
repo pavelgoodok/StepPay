@@ -79,6 +79,24 @@ describe("API", () => {
     expect((await call("ivan", "GET", "/me")).body.wallet.free).toBe(10_000 * R);
   });
 
+  it("сроки по умолчанию: исполнитель пропал - через 30 дней остаток возвращается заказчику", async () => {
+    const { call } = await setup();
+    const id = (await call("anna", "POST", "/deals", {
+      mode: "own", title: "Сайт", executorId: "ivan", stages: [{ title: "Дизайн", amount: 10_000 * R }],
+    })).body.id;
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    const before = (await call("anna", "GET", "/me")).body.wallet.free;
+    t += 29 * DAY;
+    await call("anna", "POST", "/system/tick");
+    expect((await call("anna", "GET", `/deals/${id}`)).body.status).toBe("active");
+    t += 2 * DAY;
+    await call("anna", "POST", "/system/tick");
+    const d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.status).toBe("cancelled");
+    expect(d.stages[0].resolution.by).toBe("expired");
+    expect((await call("anna", "GET", "/me")).body.wallet.free).toBe(before + 10_000 * R);
+  });
+
   it("краудфандинг: каталог, взносы, голосование", async () => {
     const { call } = await setup();
     const id = (await call("ivan", "POST", "/deals", {

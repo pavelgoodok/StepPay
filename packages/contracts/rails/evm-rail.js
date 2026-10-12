@@ -28,8 +28,9 @@ class EvmRail {
 
   async open(spec) {
     const zero = ethers.ZeroAddress;
+    const day = 86_400;
     await (
-      await this.escrow.createDeal(
+      await this.escrow.createDealEx(
         MODE[spec.mode],
         this.who[spec.executor].address,
         spec.owner ? this.who[spec.owner].address : zero,
@@ -38,6 +39,7 @@ class EvmRail {
         spec.autoAcceptDays * 86_400,
         spec.feeBps,
         ethers.id("rail-deal"),
+        [(spec.fundingDeadlineDays ?? 0) * day, (spec.stageDeadlineDays ?? 0) * day, (spec.disputeDays ?? 0) * day],
       )
     ).wait();
   }
@@ -58,6 +60,10 @@ class EvmRail {
   resolve(by, stage, pay) { return this.#send(by, (c) => c.resolveDispute(1, stage, pay)); }
   autoAccept(by, stage) { return this.#send(by ?? "stranger", (c) => c.autoAccept(1, stage)); }
   cancel(by) { return this.#send(by, (c) => c.cancel(1)); }
+
+  expire(by, what, stage) {
+    return this.#send(by ?? "stranger", (c) => (what === "funding" ? c.expireFunding(1) : what === "stage" ? c.expireStage(1, stage) : c.expireDispute(1, stage)));
+  }
 
   async wait(seconds) {
     await hre.network.provider.send("evm_increaseTime", [seconds]);

@@ -148,4 +148,53 @@ export const RAIL_SCENARIOS: Scenario[] = [
     ],
     expect: { balances: { anna: START - 100_000 * R, ivan: 100_000 * R, platform: 0 }, status: "completed", stages: ["accepted"] },
   },
+  {
+    name: "срок этапа: исполнитель пропал, после срока любой возвращает остаток заказчику",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [100_000 * R, 100_000 * R], autoAcceptDays: 3, feeBps: 0, stageDeadlineDays: 10 },
+    steps: [
+      reserve("anna", 200_000 * R), sign("ivan"), sign("anna"),
+      submit("ivan", 0), approve("anna", 0),
+      { do: "wait", seconds: 9 * 86_400 }, bad({ do: "expire", what: "stage", stage: 1 }), // срок второго этапа считается от приемки первого
+      bad({ do: "expire", what: "stage", stage: 0 }), // первый этап уже принят
+      { do: "wait", seconds: 2 * 86_400 }, { do: "expire", what: "stage", stage: 1, by: "stranger" },
+    ],
+    expect: { balances: { anna: START - 100_000 * R, ivan: 100_000 * R, platform: 0 }, status: "cancelled", stages: ["accepted", "failed"] },
+  },
+  {
+    name: "срок спора: приемщик молчит, после срока деньги возвращаются заказчику",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [100_000 * R], autoAcceptDays: 3, feeBps: 0, disputeDays: 14 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      submit("ivan", 0), { do: "dispute", by: "ivan", stage: 0 },
+      { do: "wait", seconds: 13 * 86_400 }, bad({ do: "expire", what: "dispute", stage: 0 }),
+      { do: "wait", seconds: 2 * 86_400 }, { do: "expire", what: "dispute", stage: 0, by: "stranger" },
+      bad({ do: "resolve", by: "expert", stage: 0, pay: true }), // после выхода решать уже нечего
+    ],
+    expect: { balances: { anna: START, ivan: 0, platform: 0 }, status: "cancelled", stages: ["failed"] },
+  },
+  {
+    name: "срок сбора: цель не набрана, после срока все взносы возвращаются",
+    balances: { olga: START, max: START },
+    deal: { mode: "crowdfunding", executor: "author", stages: [100_000 * R, 100_000 * R], autoAcceptDays: 1, feeBps: 0, fundingDeadlineDays: 30 },
+    steps: [
+      sign("author"), reserve("olga", 70_000 * R), reserve("max", 30_000 * R),
+      { do: "wait", seconds: 29 * 86_400 }, bad({ do: "expire", what: "funding" }),
+      { do: "wait", seconds: 2 * 86_400 }, { do: "expire", what: "funding", by: "stranger" },
+      bad(reserve("olga", 1 * R)), // сбор закрыт
+      bad({ do: "expire", what: "funding" }), // повторно нельзя
+    ],
+    expect: { balances: { olga: START, max: START, platform: 0 }, status: "cancelled", stages: ["pending", "pending"] },
+  },
+  {
+    name: "срок не задан: ожидание ничего не меняет, выход по сроку невозможен",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [100_000 * R], autoAcceptDays: 3, feeBps: 0 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      { do: "wait", seconds: 365 * 86_400 }, bad({ do: "expire", what: "stage", stage: 0 }), bad({ do: "expire", what: "funding" }),
+    ],
+    expect: { balances: { anna: START - 100_000 * R, platform: 0 }, status: "active", stages: ["active"] },
+  },
 ];

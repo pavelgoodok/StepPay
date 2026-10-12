@@ -34,6 +34,9 @@ import {
   signContract,
   signatureStatus,
   linkChain,
+  expireFunding,
+  expireStage,
+  expireDispute,
 } from "../src";
 
 const R = 100; // рубль в копейках
@@ -625,5 +628,72 @@ describe("подпись ключом устройства в движке", () 
     const signed = s.deals.k1!.journal!.filter((e) => e.type === "signed");
     expect(signed.map((e) => e.data)).toMatchObject([{ method: "device", keyId: "abcd" }, { method: "server" }]);
     expect(verifyJournal(s.deals.k1!).ok).toBe(true);
+  });
+});
+
+describe("сроки и аварийный выход", () => {
+  const own = (extra: Record<string, number> = {}) => {
+    let s = topUp(createState(), "anna", 100 * R, T0);
+    s = createDeal(s, { id: "e1", mode: "own", title: "x", executorId: "ivan", ownerId: "anna", arbiterId: "expert", stages: [{ title: "a", amount: 40 * R }, { title: "b", amount: 60 * R }], at: T0, ...extra });
+    return fund(s, "e1", "anna", 100 * R, T0);
+  };
+
+  it("этап не сдан в срок: провал и возврат остатка, срок идет от начала этапа", () => {
+    let s = own({ stageDeadlineDays: 10 });
+    expect(() => expireStage(s, "e1", "s1", T0 + 9 * DAY_MS)).toThrow(EngineError);
+    s = tick(s, T0 + 10 * DAY_MS);
+    expect(s.deals.e1!.status).toBe("cancelled");
+    expect(s.deals.e1!.stages[0]!.resolution?.by).toBe("expired");
+    expect(freeBalance(s, "anna")).toBe(100 * R);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+    expect(verifyJournal(s.deals.e1!).ok).toBe(true);
+  });
+
+  it("срок второго этапа идет от приемки первого", () => {
+    let s = own({ stageDeadlineDays: 10 });
+    s = submitStage(s, "e1", "s1", "ivan", {}, T0 + 5 * DAY_MS);
+    s = approveStage(s, "e1", "s1", "anna", T0 + 6 * DAY_MS);
+    s = tick(s, T0 + 15 * DAY_MS);
+    expect(s.deals.e1!.status).toBe("active");
+    s = expireStage(s, "e1", "s2", T0 + 16 * DAY_MS);
+    expect(s.deals.e1!.status).toBe("cancelled");
+    expect(freeBalance(s, "ivan")).toBe(40 * R);
+    expect(freeBalance(s, "anna")).toBe(60 * R);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+  });
+
+  it("спор не решен в срок: возврат плательщику", () => {
+    let s = own({ disputeDays: 14 });
+    s = submitStage(s, "e1", "s1", "ivan", {}, T0 + 1);
+    s = openDispute(s, "e1", "s1", "ivan", "нет", T0 + 3);
+    expect(() => expireDispute(s, "e1", "s1", T0 + 3 + 13 * DAY_MS)).toThrow(EngineError);
+    s = tick(s, T0 + 3 + 14 * DAY_MS);
+    expect(s.deals.e1!.status).toBe("cancelled");
+    expect(freeBalance(s, "anna")).toBe(100 * R);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+  });
+
+  it("срок сбора истек: сделка отменена, деньги вернулись", () => {
+    let s = topUp(createState(), "p1", 50 * R, T0);
+    s = createDeal(s, { id: "c1", mode: "crowdfunding", title: "x", executorId: "author", fundingDeadlineDays: 30, stages: [{ title: "a", amount: 100 * R }], at: T0 });
+    s = fund(s, "c1", "p1", 50 * R, T0 + 1);
+    expect(() => expireFunding(s, "c1", T0 + 29 * DAY_MS)).toThrow(EngineError);
+    s = tick(s, T0 + 30 * DAY_MS);
+    expect(s.deals.c1!.status).toBe("cancelled");
+    expect(freeBalance(s, "p1")).toBe(50 * R);
+    expect(s.deals.c1!.journal!.some((e) => e.type === "funding_expired")).toBe(true);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+  });
+
+  it("без сроков ничего не истекает", () => {
+    let s = own();
+    s = tick(s, T0 + 1000 * DAY_MS);
+    expect(s.deals.e1!.status).toBe("active");
+  });
+
+  it("сроки входят в хеш условий только когда заданы", () => {
+    const a = own();
+    const b = own({ stageDeadlineDays: 10 });
+    expect(contractHash(contractTerms(a.deals.e1!))).not.toBe(contractHash(contractTerms(b.deals.e1!)));
   });
 });

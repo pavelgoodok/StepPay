@@ -17,7 +17,7 @@ const CAST = {
 };
 const ALL = ["anna", "ivan", "expert", "olga", "max", "pasha", "author", "stranger", "fond", "studio"];
 
-const waitArb = fc.constantFrom(0, HOUR, 12 * HOUR, 23 * HOUR, 24 * HOUR, 48 * HOUR, 72 * HOUR, 96 * HOUR);
+const waitArb = fc.constantFrom(0, HOUR, 12 * HOUR, 23 * HOUR, 24 * HOUR, 47 * HOUR, 48 * HOUR, 71 * HOUR, 72 * HOUR, 96 * HOUR, 119 * HOUR, 120 * HOUR);
 
 /** Случайный шаг любого участника: чаще неверный, проверяет, что оба рельса отказывают одинаково. */
 const noise = (mode) =>
@@ -28,6 +28,7 @@ const noise = (mode) =>
     fc.record({ do: fc.constant("vote"), by: fc.constantFrom(...ALL), stage: fc.integer({ min: 0, max: 3 }), accept: fc.boolean() }),
     fc.record({ do: fc.constant("resolve"), by: fc.constantFrom(...ALL), stage: fc.integer({ min: 0, max: 3 }), pay: fc.boolean() }),
     fc.record({ do: fc.constant("autoAccept"), by: fc.constant("stranger"), stage: fc.integer({ min: 0, max: 3 }) }),
+    fc.record({ do: fc.constant("expire"), by: fc.constant("stranger"), what: fc.constantFrom("funding", "stage", "dispute"), stage: fc.integer({ min: 0, max: 3 }) }),
     fc.record({ do: fc.constant("wait"), seconds: waitArb }),
   ).map((s) => ({ ...s, mode }));
 
@@ -41,9 +42,17 @@ function stagePlan(mode, c, stage) {
       fc.constant([submit, { do: "reject", by: c.owner, stage }, { do: "resolve", by: c.arbiter, stage, pay: false }]),
       fc.constant([submit, { do: "dispute", by: c.executor, stage }, { do: "resolve", by: c.arbiter, stage, pay: true }]),
       waitArb.map((w) => [submit, { do: "wait", seconds: w }, { do: "autoAccept", by: "stranger", stage }]),
+      waitArb.map((w) => [submit, { do: "dispute", by: c.owner, stage }, { do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "dispute", stage }, { do: "resolve", by: c.arbiter, stage, pay: true }]),
+      waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "stage", stage }, submit, { do: "approve", by: c.owner, stage }]),
     );
-  if (mode === "grant") return fc.oneof(fc.constant([submit, { do: "approve", by: c.owner, stage }]), fc.constant([submit, { do: "reject", by: c.owner, stage }]));
+  if (mode === "grant")
+    return fc.oneof(
+      fc.constant([submit, { do: "approve", by: c.owner, stage }]),
+      fc.constant([submit, { do: "reject", by: c.owner, stage }]),
+      waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "stage", stage }, submit, { do: "approve", by: c.owner, stage }]),
+    );
   return fc.oneof(
+    waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "stage", stage }, submit, ...c.sponsors.map((by) => ({ do: "vote", by, stage, accept: true }))]),
     fc.constant([submit, ...c.sponsors.map((by) => ({ do: "vote", by, stage, accept: true }))]),
     fc.constant([submit, ...c.sponsors.map((by) => ({ do: "vote", by, stage, accept: false }))]),
     fc.constant([submit, { do: "vote", by: c.sponsors[0], stage, accept: true }, { do: "vote", by: c.sponsors[1], stage, accept: false }, { do: "vote", by: c.sponsors[2], stage, accept: true }]),
@@ -58,6 +67,12 @@ const scenarioArb = fc.constantFrom("own", "crowdfunding", "grant").chain((mode)
       stages: fc.array(fc.integer({ min: 1, max: 150_000 }), { minLength: 1, maxLength: 3 }),
       fee: fc.constantFrom(0, 0, 100, 250),
       days: fc.constantFrom(1, 3),
+      // сроки в днях: чаще не заданы; границы кратны часу, поэтому дрейф блоков EVM (секунды) не меняет исход
+      fundingDays: fc.constantFrom(undefined, undefined, 2, 5),
+      stageDays: fc.constantFrom(undefined, undefined, 2, 5),
+      disputeDays: fc.constantFrom(undefined, undefined, 2, 5),
+      // пауза перед резервом: сбор может истечь до того, как деньги внесены
+      gap: waitArb,
       // взносы: заказчик вносит всю сумму, спонсоры произвольные доли (в копейках, неровные)
       shares: fc.array(fc.integer({ min: 1, max: 100_000_00 }), { minLength: 3, maxLength: 3 }),
       order: fc.shuffledSubarray(["sign-a", "sign-b", "reserve"], { minLength: 3, maxLength: 3 }),
@@ -80,6 +95,7 @@ function build({ mode, c, base, stageAmounts, total, plans }) {
     if (o === "sign-a") prelude.push({ do: "sign", by: c.executor });
     if (o === "sign-b") prelude.push(...(mode === "crowdfunding" ? [{ do: "sign", by: c.executor }] : [{ do: "sign", by: owner }]));
     if (o === "reserve") {
+      prelude.push({ do: "wait", seconds: base.gap }, { do: "expire", by: "stranger", what: "funding" });
       if (mode === "crowdfunding") {
         // три спонсора вносят неровные доли, сумма не больше цели
         const raw = base.shares;
@@ -100,7 +116,7 @@ function build({ mode, c, base, stageAmounts, total, plans }) {
   return {
     name: "случайный",
     balances,
-    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee },
+    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee, fundingDeadlineDays: base.fundingDays, stageDeadlineDays: base.stageDays, disputeDays: mode === "own" ? base.disputeDays : undefined },
     steps,
     expect: { balances: { ...balances, platform: 0 }, status: "funding", stages: [] },
   };

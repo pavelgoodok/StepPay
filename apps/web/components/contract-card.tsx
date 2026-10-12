@@ -8,7 +8,22 @@ import { Icon, Sheet } from "./ui";
 
 const DAY = 86_400_000;
 
+const daysOf = (ms: number) => Math.round(ms / DAY);
+
+/** Сроки аварийного выхода: если сторона пропала, деньги возвращаются без чьего-либо согласия. */
+function deadlines(t: ContractTerms) {
+  const out: string[] = [];
+  if (t.fundingDeadlineMs) out.push(`Если сумма не собрана за ${daysOf(t.fundingDeadlineMs)} дн., сделка закрывается и взносы возвращаются.`);
+  if (t.stageDeadlineMs) out.push(`Если исполнитель не сдал этап за ${daysOf(t.stageDeadlineMs)} дн., остаток возвращается.`);
+  if (t.disputeMs) out.push(`Если приемщик не решил спор за ${daysOf(t.disputeMs)} дн., остаток возвращается заказчику.`);
+  return out.join(" ");
+}
+
 function rules(t: ContractTerms) {
+  return [baseRules(t), deadlines(t)].filter(Boolean).join(" ");
+}
+
+function baseRules(t: ContractTerms) {
   const days = Math.round(t.autoAcceptMs / DAY);
   if (t.mode === "own") return `Этап принимает заказчик. Если он отказывает, спор решает независимый приемщик. Если заказчик не отвечает ${days} дня, этап принимается сам.`;
   if (t.mode === "crowdfunding") return `Этап принимают спонсоры голосованием, вес голоса равен сумме взноса. Если этап не принят, остаток возвращается спонсорам. Если спонсоры не отвечают ${days} дня, этап принимается сам.`;

@@ -29,7 +29,11 @@ export interface Stage {
   /** переписка по спору: причина, ответы сторон, пояснения приемщика */
   messages?: DisputeMessage[];
   /** как этап был закрыт */
-  resolution?: { by: "owner" | "votes" | "auto" | "arbiter"; decision: "accepted" | "failed"; comment?: string; at: number };
+  /** когда этап стал текущим (для срока выполнения) */
+  activeSince?: number;
+  /** когда открыт спор (для срока решения) */
+  disputedAt?: number;
+  resolution?: { by: "owner" | "votes" | "auto" | "arbiter" | "expired"; decision: "accepted" | "failed"; comment?: string; at: number };
 }
 
 export interface DisputeMessage {
@@ -102,6 +106,12 @@ export interface Deal {
   /** сколько внесено в сумме (для весов голосования и пропорционального возврата) */
   contributed: Record<UserId, Money>;
   autoAcceptMs: number;
+  /** срок сбора денег с момента фиксации условий; 0 или не задан: без срока */
+  fundingDeadlineMs?: number;
+  /** срок сдачи каждого этапа с момента, когда он стал текущим */
+  stageDeadlineMs?: number;
+  /** срок решения спора приемщиком; по истечении деньги возвращаются плательщику */
+  disputeMs?: number;
   feeBps: number;
   createdAt: number;
   /** связи с платформой: услуга, проект, описание задачи. Движок их не использует */

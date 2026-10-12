@@ -31,6 +31,10 @@ export interface ContractTerms {
   autoAcceptMs: number;
   feeBps: number;
   rules: ContractRules;
+  /** сроки: поля есть, только если заданы */
+  fundingDeadlineMs?: number;
+  stageDeadlineMs?: number;
+  disputeMs?: number;
   /** кто должен подписать контракт; поля нет у сделок без подписей */
   signers?: UserId[];
 }
@@ -67,6 +71,9 @@ export function contractTerms(d: Deal): ContractTerms {
     autoAcceptMs: d.autoAcceptMs,
     feeBps: d.feeBps,
     rules: contractRules(d.mode),
+    fundingDeadlineMs: d.fundingDeadlineMs || undefined,
+    stageDeadlineMs: d.stageDeadlineMs || undefined,
+    disputeMs: d.disputeMs || undefined,
     signers: requiredSigners(d),
   };
 }
