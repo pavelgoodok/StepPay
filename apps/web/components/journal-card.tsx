@@ -18,6 +18,8 @@ function describe(e: JournalEntry, d: DealFull): string {
     case "created": return "Сделка создана";
     case "terms_sealed": return `${who} отправил(а) условия, контракт зафиксирован`;
     case "terms_reopened": return `${who} вернул(а) условия на согласование`;
+    case "signed": return `${who} подписал(а) контракт`;
+    case "activated": return "Все подписи на месте, работа началась";
     case "reserved": return `${who} зарезервировал(а) ${money}`;
     case "stage_submitted": return `${who} сдал(а) этап${st}`;
     case "stage_accepted": return e.by === "system" ? `Этап${st} принят автоматически` : `${who} принял(а) этап${st}`;

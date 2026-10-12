@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -22,7 +23,7 @@ import {
   topUp,
   voteStage,
   type Deal,
-  type State, canonicalJson, contractTerms, sealContract, verifyContract, verifyJournal } from "@steppay/engine";
+  type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
@@ -93,6 +94,20 @@ export async function buildApp(opts: AppOptions) {
   const adminPhones = (opts.adminPhones ?? []).map((p) => normalizePhone(p)).filter((p): p is string => !!p);
   const dir = new Directory((users) => opts.store.saveUsers(users), await opts.store.loadUsers(), demoOn, adminPhones);
   const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
+  /** Серверная подпись (демо): HMAC от сделки, хеша контракта и подписанта. Настоящие подписи ключами на устройстве это шаг 7. */
+  const signFor = (dealId: string, hash: string, userId: string) => createHmac("sha256", `${opts.secret}:sign`).update(`${dealId}:${hash}:${userId}`).digest("hex");
+  const signatureValid = (d: Deal, userId: string) => {
+    const sg = d.signatures?.[userId];
+    return !!sg && !!d.contract && sg.hash === d.contract.hash && sg.sig === signFor(d.id, sg.hash, userId);
+  };
+  /** Подписывает за пользователя, если он сторона контракта и еще не подписал. */
+  const signIfNeeded = (s: State, dealId: string, userId: string, at: number): State => {
+    const d = s.deals[dealId];
+    if (!d?.signing || !d.contract || d.status !== "funding") return s;
+    const st = signatureStatus(d);
+    if (!st.required.includes(userId) || st.signed.includes(userId)) return s;
+    return signContract(s, dealId, userId, at, signFor(dealId, d.contract.hash, userId));
+  };
   const otp = new OtpService(opts.secret, opts.otpDelivery ?? demoDelivery, now);
 
   let state: State = await opts.store.load();
@@ -223,7 +238,7 @@ export async function buildApp(opts: AppOptions) {
   };
   const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
-  registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief });
+  registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief, signIfNeeded });
 
   // ── личное ──
   app.get("/me", async (req, reply) => {
@@ -272,7 +287,7 @@ export async function buildApp(opts: AppOptions) {
       for (const u of Object.keys(st.votes)) ids.add(u);
       for (const m of st.messages ?? []) ids.add(m.by);
     }
-    return { ...d, summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+    return { ...d, summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), signatureStatus: { ...signatureStatus(d), valid: Object.fromEntries(Object.keys(d.signatures ?? {}).map((u) => [u, signatureValid(d, u)])) }, terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
   });
 
   /** Журнал для разбора спора: события, хеши цепочки и результат проверки. Файл самодостаточен: условия и хеш контракта внутри. */
@@ -312,6 +327,7 @@ export async function buildApp(opts: AppOptions) {
         executorId: crowd ? me : b.executorId!,
         ownerId: crowd ? undefined : me,
         arbiterId: b.arbiterId ?? (b.mode === "own" ? "expert" : undefined),
+        signed: true,
         stages,
         autoAcceptDays: b.autoAcceptDays,
         at: now(),
@@ -338,6 +354,7 @@ export async function buildApp(opts: AppOptions) {
       cancel: `Сделка «${d.title}» отменена, остаток возвращен`,
       propose: `${who} отправил(а) условия по «${d.title}», можно резервировать`,
       reopen: `${who} вернул(а) условия на правку: «${d.title}»`,
+      sign: d.status === "active" ? `${who} подписал(а) контракт «${d.title}»: работа началась` : `${who} подписал(а) контракт «${d.title}»`,
     };
     if (kind === "propose" || kind === "reopen") {
       if (d.meta?.chatId) void platform.post(d.meta.chatId, actor, kind === "propose" ? "Условия отправлены. Можно проверить этапы и зарезервировать деньги." : "Условия возвращены на правку.", "system", d.id);
@@ -375,7 +392,7 @@ export async function buildApp(opts: AppOptions) {
   act("/deals/:id/fund", z.object({ amount: money.optional() }), (s, p, me, b) => {
     const d = s.deals[p.id];
     if (!d) throw new EngineError("Сделка не найдена");
-    return fund(s, p.id, me, b.amount ?? d.target, now());
+    return fund(signIfNeeded(s, p.id, me, now()), p.id, me, b.amount ?? d.target, now());
   }, "fund");
   act(
     "/deals/:id/terms",
@@ -387,7 +404,8 @@ export async function buildApp(opts: AppOptions) {
     (s, p, me, b) => updateTerms(s, p.id, me, b),
     "terms",
   );
-  act("/deals/:id/propose", none, (s, p, me) => proposeDeal(s, p.id, me, now()), "propose");
+  act("/deals/:id/propose", none, (s, p, me) => signIfNeeded(proposeDeal(s, p.id, me, now()), p.id, me, now()), "propose");
+  act("/deals/:id/sign", none, (s, p, me) => signContract(s, p.id, me, now(), signFor(p.id, s.deals[p.id]?.contract?.hash ?? "", me)), "sign");
   act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me, now()), "reopen");
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(
@@ -435,7 +453,7 @@ export async function buildApp(opts: AppOptions) {
     });
     app.post("/demo/step", async (req) => {
       const { step } = z.object({ step: z.number().int().min(1).max(DEMO_SCRIPT.length) }).parse(req.body);
-      const prep = await prepareDemoStep(platform, step, now());
+      const prep = await prepareDemoStep(platform, step, now(), signFor);
       const narration = await transact((s) => ({ state: prep.apply(s), result: prep.narration }));
       await prep.after?.();
       hub.send(everyone, "changed", {});

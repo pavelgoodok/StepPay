@@ -18,7 +18,12 @@ async function setup() {
   }
   const call = async (who: string, method: "GET" | "POST", url: string, payload?: unknown) => {
     const r = await app.inject({ method, url, payload: payload as object, headers: { authorization: `Bearer ${tokens[who]}` } });
-    return { status: r.statusCode, body: r.json() };
+    const body = r.json();
+    // исполнитель сразу подписывает контракт новой сделки: подписи сторон проверяются в отдельных тестах
+    if (method === "POST" && url === "/deals" && r.statusCode === 200 && body.executorId && tokens[body.executorId]) {
+      await app.inject({ method: "POST", url: `/deals/${body.id}/sign`, payload: {}, headers: { authorization: `Bearer ${tokens[body.executorId]}` } });
+    }
+    return { status: r.statusCode, body };
   };
   return { app, call };
 }
@@ -358,8 +363,9 @@ describe("регистрация и вход по телефону", () => {
     expect((await app.inject({ method: "GET", url: "/users/search?q=" + encodeURIComponent("Мастер"), headers: h })).json()).toHaveLength(1);
 
     const deal = (await app.inject({ method: "POST", url: "/deals", headers: h, payload: { mode: "own", title: "Кран", executorId: master.user.id, stages: [{ title: "Замена", amount: 5_000 * R }] } })).json();
-    await app.inject({ method: "POST", url: `/deals/${deal.id}/fund`, headers: h, payload: {} });
     const mh = { authorization: `Bearer ${master.token}` };
+    await app.inject({ method: "POST", url: `/deals/${deal.id}/sign`, headers: mh, payload: {} });
+    await app.inject({ method: "POST", url: `/deals/${deal.id}/fund`, headers: h, payload: {} });
     await app.inject({ method: "POST", url: `/deals/${deal.id}/stages/s1/submit`, headers: mh, payload: {} });
     await app.inject({ method: "POST", url: `/deals/${deal.id}/stages/s1/approve`, headers: h, payload: {} });
     const me = (await app.inject({ method: "GET", url: "/me", headers: mh })).json();

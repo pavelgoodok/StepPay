@@ -10,7 +10,7 @@ async function setup() {
   let t = 1_000_000;
   const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t });
   const tokens: Record<string, string> = {};
-  for (const id of ["anna", "ivan", "olga", "fond", "admin", "expert", "games"]) {
+  for (const id of ["anna", "ivan", "olga", "fond", "admin", "expert", "games", "tsj"]) {
     tokens[id] = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: id } })).json().token;
   }
   const call = async (who: string, method: "GET" | "POST", url: string, payload?: unknown) => {
@@ -88,6 +88,15 @@ describe("проекты с проверкой", () => {
     expect(full.dealId).toBeTruthy();
     // сбор открыт: спонсор вносит
     expect((await call("anna", "POST", `/deals/${full.dealId}/fund`, { amount: 10_000 * R })).status).toBe(200);
+    // сбор собран полностью, но работа ждет подписи автора
+    expect((await call("anna", "POST", `/deals/${full.dealId}/fund`, { amount: 140_000 * R })).status).toBe(200);
+    let cd = (await call("anna", "GET", `/deals/${full.dealId}`)).body;
+    expect(cd.status).toBe("funding");
+    expect(cd.signatureStatus).toMatchObject({ required: ["olga"], signed: [], complete: false });
+    expect((await call("anna", "POST", `/deals/${full.dealId}/sign`)).status).toBe(400); // спонсор не сторона контракта
+    expect((await call("olga", "POST", `/deals/${full.dealId}/sign`)).status).toBe(200);
+    cd = (await call("anna", "GET", `/deals/${full.dealId}`)).body;
+    expect(cd.status).toBe("active");
     // чужому документов не видно
     expect(full.docs?.filter?.((d: { kind: string }) => d.kind === "doc") ?? []).toHaveLength(0);
   });
@@ -101,7 +110,12 @@ describe("проекты с проверкой", () => {
     const r = await call("fond", "POST", `/projects/${grant.id}/grant`);
     expect(r.status).toBe(200);
     expect((await call("fond", "POST", `/projects/${grant.id}/grant`)).status).toBe(400); // повторно нельзя
-    const d = (await call("fond", "GET", `/deals/${r.body.dealId}`)).body;
+    let d = (await call("fond", "GET", `/deals/${r.body.dealId}`)).body;
+    expect(d.status).toBe("funding"); // деньги зарезервированы, ждем подпись автора
+    expect(d.signatureStatus).toMatchObject({ signed: ["fond"], complete: false });
+    expect((await call("fond", "POST", `/deals/${r.body.dealId}/sign`)).status).toBe(400); // уже подписал
+    await call("tsj", "POST", `/deals/${r.body.dealId}/sign`);
+    d = (await call("fond", "GET", `/deals/${r.body.dealId}`)).body;
     expect(d.status).toBe("active");
   });
 });
@@ -153,11 +167,32 @@ describe("контракт сделки в API", () => {
     expect(d.contractCheck.ok).toBe(true);
     expect(d.terms.stages[0].title).toBe("Плитка");
     // журнал: фиксация условий записана, цепочка цела
-    expect(d.journalCheck).toMatchObject({ ok: true, count: 2 });
+    expect(d.journalCheck).toMatchObject({ ok: true, count: 3 }); // создание, условия, подпись исполнителя
     await call("anna", "POST", `/deals/${id}/fund`, {});
     const j = (await call("anna", "GET", `/deals/${id}/journal`)).body;
-    expect(j.entries.map((e: { type: string }) => e.type)).toEqual(["created", "terms_sealed", "reserved"]);
+    expect(j.entries.map((e: { type: string }) => e.type)).toEqual(["created", "terms_sealed", "signed", "signed", "reserved", "activated"]);
     expect(j.entries[1].data.contract).toBe(c.contract.hash);
-    expect(j.check).toMatchObject({ ok: true, count: 3, contractMatches: true });
+    expect(j.check).toMatchObject({ ok: true, count: 6, contractMatches: true });
+  });
+});
+
+describe("подписи сторон в API", () => {
+  it("исполнитель подписывает при отправке условий, заказчик при резерве; работа начинается после обеих подписей", async () => {
+    const { call } = await setup();
+    const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
+    const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    expect((await call("ivan", "POST", `/deals/${id}/sign`)).status).toBe(400); // контракта еще нет
+    await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R }] });
+    await call("ivan", "POST", `/deals/${id}/propose`);
+    let d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.signatureStatus).toMatchObject({ required: ["ivan", "anna"], signed: ["ivan"], complete: false, valid: { ivan: true } });
+    expect((await call("olga", "POST", `/deals/${id}/sign`)).status).toBe(400); // чужой
+    // резерв подписывает за заказчика и запускает работу
+    expect((await call("anna", "POST", `/deals/${id}/fund`, {})).status).toBe(200);
+    d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.status).toBe("active");
+    expect(d.signatureStatus).toMatchObject({ complete: true, valid: { ivan: true, anna: true } });
+    expect(d.summary.signatures).toMatchObject({ complete: true });
   });
 });

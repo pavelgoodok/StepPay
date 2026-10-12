@@ -8,8 +8,7 @@ import {
   topUp,
   voteStage,
   createState,
-  type State,
-} from "@steppay/engine";
+  type State, signContract } from "@steppay/engine";
 import { DEMO_DOC_ID, DEMO_PHOTO_ID } from "./demo-photo";
 import { innFromNine } from "./inn";
 import type { PlatformData, Platform, Project, Service } from "./platform";
@@ -130,7 +129,10 @@ const DEMO_STAGES = [
 ];
 
 /** Один шаг сценария для жюри: платформа и сервер сами совершают действия за нужных участников. */
-export async function prepareDemoStep(platform: Platform, step: number, at: number): Promise<PreparedStep> {
+export type Signer = (dealId: string, hash: string, userId: string) => string;
+
+export async function prepareDemoStep(platform: Platform, step: number, at: number, sign: Signer): Promise<PreparedStep> {
+  const signAs = (s: State, dealId: string, userId: string) => signContract(s, dealId, userId, at, sign(dealId, s.deals[dealId]!.contract!.hash, userId));
   const same = (s: State) => s;
   const thread = () => platform.snapshot.threads.find((t) => t.serviceId === "svc_ivan" && t.customerId === "anna");
   switch (step) {
@@ -143,19 +145,19 @@ export async function prepareDemoStep(platform: Platform, step: number, at: numb
     case 2: {
       const th = thread();
       return {
-        apply: (s) => createDeal(s, { id: "demo-own", mode: "own", title: "Ремонт ванной", executorId: "ivan", ownerId: "anna", arbiterId: "expert", status: "draft", stages: [], meta: { serviceId: "svc_ivan", chatId: th?.id, description: "Ванная 4 кв. м, полный ремонт" }, at }),
+        apply: (s) => createDeal(s, { id: "demo-own", mode: "own", title: "Ремонт ванной", executorId: "ivan", ownerId: "anna", arbiterId: "expert", status: "draft", signed: true, stages: [], meta: { serviceId: "svc_ivan", chatId: th?.id, description: "Ванная 4 кв. м, полный ремонт" }, at }),
         after: async () => void (th && (await platform.post(th.id, "ivan", "Зарегистрирована задача «Ремонт ванной». Исполнитель согласует этапы и отправит условия.", "system", "demo-own"))),
         narration: { title: "Задача зарегистрирована", text: "Иван создал задачу по итогам разговора. У сделки статус «Согласование»: денег еще нет, условия правит исполнитель.", viewAs: "ivan", path: "/deals/demo-own" },
       };
     }
     case 3:
       return {
-        apply: (s) => proposeDeal(updateTerms(s, "demo-own", "ivan", { stages: DEMO_STAGES }), "demo-own", "ivan", at),
+        apply: (s) => signAs(proposeDeal(updateTerms(s, "demo-own", "ivan", { stages: DEMO_STAGES }), "demo-own", "ivan", at), "demo-own", "ivan"),
         after: async () => void (thread() && (await platform.post(thread()!.id, "ivan", "Условия отправлены. Можно проверить этапы и зарезервировать деньги.", "system", "demo-own"))),
-        narration: { title: "Условия отправлены", text: "Иван разбил работу на 4 этапа с суммами и критериями приемки. Анна видит условия и может их принять.", viewAs: "anna", path: "/deals/demo-own" },
+        narration: { title: "Условия отправлены", text: "Иван разбил работу на 4 этапа с суммами и критериями приемки и подписал контракт. Анна видит условия и может их принять.", viewAs: "anna", path: "/deals/demo-own" },
       };
     case 4:
-      return { apply: (s) => fund(s, "demo-own", "anna", 300_000 * R, at), narration: { title: "Деньги зарезервированы", text: "300 000 ₽ заморожены в кошельке. Иван видит, что деньги есть, и приступает к работе.", viewAs: "ivan", path: "/deals/demo-own" } };
+      return { apply: (s) => fund(signAs(s, "demo-own", "anna"), "demo-own", "anna", 300_000 * R, at), narration: { title: "Контракт подписан, деньги зарезервированы", text: "Анна подписала контракт и заморозила 300 000 ₽ в кошельке. Подписи обеих сторон на месте, Иван приступает к работе.", viewAs: "ivan", path: "/deals/demo-own" } };
     case 5:
       return { apply: (s) => submitStage(s, "demo-own", "s1", "ivan", { note: "Плитка уложена, швы затерты, всё по уровню", photos: [PHOTO] }, at), narration: { title: "Этап сдан", text: "Иван приложил фото. Если Анна не ответит 3 дня, этап примется автоматически.", viewAs: "anna", path: "/deals/demo-own" } };
     case 6:
@@ -177,12 +179,12 @@ export async function prepareDemoStep(platform: Platform, step: number, at: numb
       await platform.decide(p.id, "admin", "approve");
       await platform.linkDeal(p.id, "demo-crowd");
       return {
-        apply: (s) => createDeal(s, { id: "demo-crowd", mode: "crowdfunding", title: p.title, executorId: "games", stages: p.stages.map((x, i) => ({ id: `s${i + 1}`, ...x })), meta: { projectId: p.id }, at }),
+        apply: (s) => createDeal(s, { id: "demo-crowd", mode: "crowdfunding", title: p.title, executorId: "games", signed: true, stages: p.stages.map((x, i) => ({ id: `s${i + 1}`, ...x })), meta: { projectId: p.id }, at }),
         narration: { title: "Проект одобрен", text: "Администратор изучил заявку и документы и одобрил проект. Он появился в каталоге, сбор открыт.", viewAs: "olga", path: "/deals/demo-crowd" },
       };
     }
     case 9:
-      return { apply: (s) => fund(fund(s, "demo-crowd", "olga", 150_000 * R, at), "demo-crowd", "max", 150_000 * R, at), narration: { title: "Сбор завершен", text: "Ольга и Максим внесли по 150 000 ₽. Деньги не у автора, а в резерве до приемки этапов.", viewAs: "games", path: "/deals/demo-crowd" } };
+      return { apply: (s) => fund(fund(signAs(s, "demo-crowd", "games"), "demo-crowd", "olga", 150_000 * R, at), "demo-crowd", "max", 150_000 * R, at), narration: { title: "Сбор завершен", text: "Автор подписал контракт, Ольга и Максим внесли по 150 000 ₽. Деньги не у автора, а в резерве до приемки этапов.", viewAs: "games", path: "/deals/demo-crowd" } };
     case 10:
       return {
         apply: (s) => {

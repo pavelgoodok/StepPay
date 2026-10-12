@@ -1,4 +1,4 @@
-import type { Deal } from "@steppay/engine";
+import { signatureStatus, type Deal } from "@steppay/engine";
 
 export function stageCounts(d: Deal) {
   const done = d.stages.filter((x) => x.status === "accepted").length;
@@ -16,6 +16,7 @@ export function summary(d: Deal) {
     executorId: d.executorId,
     ownerId: d.ownerId,
     meta: d.meta,
+    signatures: d.signing && d.contract ? signatureStatus(d) : null,
     target: d.target,
     raised,
     sponsors: Object.keys(d.contributed).length,

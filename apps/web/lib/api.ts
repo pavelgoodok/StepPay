@@ -1,4 +1,4 @@
-import type { ContractTerms, Deal, JournalCheck, LedgerEntry } from "@steppay/engine";
+import type { ContractTerms, Deal, JournalCheck, LedgerEntry, SignatureStatus } from "@steppay/engine";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -32,6 +32,7 @@ export interface DealSummary {
   title: string;
   status: Deal["status"];
   meta?: Deal["meta"];
+  signatures?: SignatureStatus | null;
   executorId: string;
   ownerId?: string;
   executor: Person;
@@ -58,6 +59,7 @@ export type DealFull = Deal & {
   contractCheck: { sealed: boolean; ok: boolean; expected?: string; actual: string };
   terms: ContractTerms;
   journalCheck: JournalCheck;
+  signatureStatus: SignatureStatus & { valid: Record<string, boolean> };
 };
 
 const TOKEN_KEY = "steppay.token";

@@ -21,6 +21,7 @@ export interface Ctx {
   getState(): State;
   transact<T>(fn: (s: State) => { state: State; result: T }): Promise<T>;
   brief(id: string): { id: string; name: string; avatar?: string };
+  signIfNeeded(s: State, dealId: string, userId: string, at: number): State;
 }
 
 const docSchema = z.object({ id: z.string().min(1).max(60), name: z.string().trim().min(1).max(120), url: photoUrl, kind: z.enum(["photo", "doc"]) });
@@ -201,12 +202,12 @@ export function registerPlatformRoutes(c: Ctx) {
     const dealId = `g_${p.id}`;
     const t = c.now();
     await c.transact((s) => {
-      let n = createDeal(s, { id: dealId, mode: "grant", title: p.title, executorId: p.ownerId, ownerId: me, stages: p.stages, meta: { projectId: p.id }, at: t });
-      n = fund(n, dealId, me, projectGoal(p), t);
+      let n = createDeal(s, { id: dealId, mode: "grant", title: p.title, executorId: p.ownerId, ownerId: me, signed: true, stages: p.stages, meta: { projectId: p.id }, at: t });
+      n = fund(c.signIfNeeded(n, dealId, me, t), dealId, me, projectGoal(p), t);
       return { state: n, result: true };
     });
     await platform.linkDeal(p.id, dealId, me);
-    notify([p.ownerId], `Проект «${p.title}» получил грант, работа может начинаться`, dealId);
+    notify([p.ownerId], `Проект «${p.title}» получил грант: подпишите контракт, и работа начнется`, dealId);
     changed([p.ownerId, me]);
     return { dealId };
   });
@@ -240,10 +241,10 @@ export function registerPlatformRoutes(c: Ctx) {
       // краудфандинг открывается сразу: сделка ждет взносов спонсоров
       dealId = `d_${p.id}`;
       const t = c.now();
-      await c.transact((s) => ({ state: createDeal(s, { id: dealId!, mode: "crowdfunding", title: p.title, executorId: p.ownerId, stages: p.stages, meta: { projectId: p.id }, at: t }), result: true }));
+      await c.transact((s) => ({ state: createDeal(s, { id: dealId!, mode: "crowdfunding", title: p.title, executorId: p.ownerId, signed: true, stages: p.stages, meta: { projectId: p.id }, at: t }), result: true }));
       await platform.linkDeal(p.id, dealId);
     }
-    const text = b.action === "approve" ? `Проект «${p.title}» одобрен${p.kind === "crowdfunding" ? ", сбор открыт" : ", теперь его может поддержать грантодатель"}` : b.action === "reject" ? `Проект «${p.title}» отклонен: ${b.comment}` : `По проекту «${p.title}» есть замечания: ${b.comment}`;
+    const text = b.action === "approve" ? `Проект «${p.title}» одобрен${p.kind === "crowdfunding" ? ", сбор открыт: подпишите контракт, чтобы работа началась" : ", теперь его может поддержать грантодатель"}` : b.action === "reject" ? `Проект «${p.title}» отклонен: ${b.comment}` : `По проекту «${p.title}» есть замечания: ${b.comment}`;
     notify([p.ownerId], text, dealId);
     changed([p.ownerId, ...admins()]);
     return projectView(p, me);
@@ -394,7 +395,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const dealId = `t_${Math.random().toString(36).slice(2, 10)}${c.now().toString(36)}`;
     const t = c.now();
     await c.transact((s) => ({
-      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId: "expert", status: "draft", stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
+      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId: "expert", status: "draft", signed: true, stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
       result: true,
     }));
     await platform.post(id, me, `Зарегистрирована задача «${b.title}». Исполнитель согласует этапы и отправит условия.`, "system", dealId);

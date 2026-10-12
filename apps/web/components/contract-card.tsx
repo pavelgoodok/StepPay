@@ -69,6 +69,24 @@ export function ContractCard({ d }: { d: DealFull }) {
               <div className="small muted">Правила</div>
               <div>{rules(d.terms)}</div>
             </div>
+            {d.signatureStatus.required.length > 0 && (
+              <div className="note" style={{ marginTop: 0 }}>
+                <div className="small muted">Подписи</div>
+                {d.signatureStatus.required.map((u) => {
+                  const sg = d.signatures?.[u];
+                  const done = d.signatureStatus.signed.includes(u);
+                  return (
+                    <div key={u} className="row between" style={{ marginTop: 6 }}>
+                      <span>{d.people[u]?.name ?? "Участник"}</span>
+                      <span className={`chip ${done && d.signatureStatus.valid[u] ? "green" : done ? "red" : "amber"}`}>
+                        {done ? (d.signatureStatus.valid[u] ? `Подписал(а) ${dayLabel(sg!.at)}` : "Подпись не подтверждена") : "Ждет подписи"}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="small muted" style={{ marginTop: 8 }}>Подпись серверная, демонстрационная. Юридически значимая подпись ключом на устройстве запланирована отдельным шагом.</div>
+              </div>
+            )}
             <div className="note" style={{ marginTop: 0 }}>
               <div className="small muted">Хеш SHA-256</div>
               <div className="mono small" style={{ wordBreak: "break-all" }}>{d.contract.hash}</div>

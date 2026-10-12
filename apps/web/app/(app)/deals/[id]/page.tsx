@@ -77,6 +77,10 @@ export default function DealPage() {
     }
   }
 
+  const sg = d.signatureStatus;
+  const fullyReserved = reservedLeft >= d.target && d.target > 0;
+  const needsMySign = d.status === "funding" && !!d.contract && sg.required.includes(me) && !sg.signed.includes(me);
+  const unsigned = sg.required.filter((u) => !sg.signed.includes(u)).map((u) => d.people[u]?.name ?? "участник");
   const missing = d.target - Object.values(d.reserves).reduce((a, b) => a + b, 0);
 
   return (
@@ -142,7 +146,18 @@ export default function DealPage() {
         </div>
       )}
 
-      {d.status === "funding" && (
+      {needsMySign && !(isOwner && !crowd && !fullyReserved) && (
+        <div className="card stack">
+          <div className="title">Подпишите контракт</div>
+          <div className="small muted">{fullyReserved ? "Деньги зарезервированы. Работа начнется, когда контракт подпишут все стороны." : "Подпись нужна до начала работы. Условия зафиксированы хешем, их уже нельзя изменить."}</div>
+          <button className="btn" disabled={busy} onClick={() => run("/sign", {}, "Контракт подписан")}>Подписать контракт</button>
+        </div>
+      )}
+      {d.status === "funding" && fullyReserved && !needsMySign && unsigned.length > 0 && (
+        <div className="card row"><Icon name="clock" size={22} /><div className="sub">Деньги зарезервированы. Ждем подпись контракта: {unsigned.join(", ")}.</div></div>
+      )}
+
+      {d.status === "funding" && !fullyReserved && (
         <div className="card stack">
           {crowd ? (
             <>
@@ -170,7 +185,7 @@ export default function DealPage() {
               <div className="title">Зарезервируйте {rub(d.target)}</div>
               <div className="small muted">Деньги замораживаются в кошельке и уходят исполнителю только за принятые этапы.</div>
               <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={() => run("/fund", {}, "Резерв создан")}>
-                <Icon name="lock" size={18} /> Зарезервировать
+                <Icon name="lock" size={18} /> {needsMySign ? "Подписать и зарезервировать" : "Зарезервировать"}
               </button>
               {(wallet?.free ?? 0) < d.target && <div className="note warn">Не хватает {rub(d.target - (wallet?.free ?? 0))}. Пополните кошелек на вкладке «Кошелек».</div>}
             </>

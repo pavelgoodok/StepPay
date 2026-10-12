@@ -31,6 +31,8 @@ export interface ContractTerms {
   autoAcceptMs: number;
   feeBps: number;
   rules: ContractRules;
+  /** кто должен подписать контракт; поля нет у сделок без подписей */
+  signers?: UserId[];
 }
 
 export interface SealedContract {
@@ -43,6 +45,12 @@ export function contractRules(mode: Mode): ContractRules {
   if (mode === "own") return { approval: "owner", onReject: "dispute", arbiter: true, autoAccept: true };
   if (mode === "crowdfunding") return { approval: "sponsors_majority", onReject: "refund", arbiter: false, autoAccept: true };
   return { approval: "owner", onReject: "refund", arbiter: false, autoAccept: false };
+}
+
+/** Кто подписывает: личная сделка и грант - обе стороны, краудфандинг - автор (спонсоры соглашаются взносом). */
+export function requiredSigners(d: Deal): UserId[] | undefined {
+  if (!d.signing) return undefined;
+  return d.mode === "crowdfunding" || !d.ownerId ? [d.executorId] : [d.executorId, d.ownerId];
 }
 
 export function contractTerms(d: Deal): ContractTerms {
@@ -59,6 +67,7 @@ export function contractTerms(d: Deal): ContractTerms {
     autoAcceptMs: d.autoAcceptMs,
     feeBps: d.feeBps,
     rules: contractRules(d.mode),
+    signers: requiredSigners(d),
   };
 }
 
@@ -93,3 +102,19 @@ export function verifyContract(d: Deal): ContractCheck {
   if (!d.contract) return { sealed: false, ok: false, actual };
   return { sealed: true, ok: d.contract.hash === actual, expected: d.contract.hash, actual };
 }
+
+export interface SignatureStatus {
+  required: UserId[];
+  signed: UserId[];
+  /** все нужные подписи поставлены под текущим хешем */
+  complete: boolean;
+}
+
+export function signatureStatus(d: Deal): SignatureStatus {
+  const required = d.contract ? (requiredSigners(d) ?? []) : [];
+  const signed = required.filter((u) => d.signatures?.[u]?.hash === d.contract?.hash);
+  return { required, signed, complete: signed.length === required.length };
+}
+
+/** Контракт без подписей (старые сделки) считается вступившим в силу сразу. */
+export const signaturesComplete = (d: Deal): boolean => !d.signing || signatureStatus(d).complete;

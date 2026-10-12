@@ -4,10 +4,11 @@ export const nameOf = (users: PublicUser[], id?: string) => users.find((u) => u.
 
 export const MODE_LABEL = { own: "Услуга", crowdfunding: "Краудфандинг", grant: "Грант" } as const;
 
-export function dealChip(d: Pick<DealSummary, "status" | "currentStage" | "mode">): { text: string; tone: string } {
+export function dealChip(d: Pick<DealSummary, "status" | "currentStage" | "mode"> & Partial<Pick<DealSummary, "signatures" | "raised" | "target">>): { text: string; tone: string } {
   if (d.status === "completed") return { text: "Завершена", tone: "gray" };
   if (d.status === "cancelled") return { text: "Отменена", tone: "red" };
   if (d.status === "draft") return { text: "Согласование", tone: "amber" };
+  if (d.status === "funding" && d.signatures && !d.signatures.complete && (d.raised ?? 0) >= (d.target ?? Infinity)) return { text: "Ждет подписи", tone: "amber" };
   if (d.status === "funding") return { text: d.mode === "crowdfunding" ? "Сбор средств" : "Ждет резерва", tone: "amber" };
   switch (d.currentStage?.status) {
     case "submitted": return { text: "Ждет приемки", tone: "amber" };

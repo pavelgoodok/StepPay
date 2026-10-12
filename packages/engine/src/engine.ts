@@ -9,8 +9,9 @@ import {
   type State,
   type UserId,
 } from "./types";
-import { sealContract, verifyContract } from "./contract";
+import { sealContract, signaturesComplete, verifyContract } from "./contract";
 import { record, verifyJournal } from "./journal";
+import { requiredSigners as requiredSignersOf } from "./contract";
 
 export class EngineError extends Error {}
 
@@ -101,6 +102,8 @@ export interface CreateDealInput {
   feeBps?: number;
   /** draft: условия согласует исполнитель (только «Свой проект»); по умолчанию funding */
   status?: "draft" | "funding";
+  /** контракт вступает в силу после подписей сторон */
+  signed?: boolean;
   meta?: Deal["meta"];
   at: number;
 }
@@ -138,6 +141,7 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     autoAcceptMs: (input.autoAcceptDays ?? 3) * DAY_MS,
     feeBps: input.feeBps ?? 0,
     createdAt: input.at,
+    signing: input.signed ? true : undefined,
     meta: input.meta,
   };
   const nd = s.deals[input.id]!;
@@ -176,6 +180,7 @@ export const proposeDeal = mutate((s, dealId: string, userId: UserId, at: number
   if (userId !== d.executorId) fail("Отправить условия может исполнитель");
   if (d.stages.length === 0 || d.target <= 0) fail("Сначала добавьте этапы");
   d.status = "funding";
+  d.signatures = undefined;
   sealContract(d, at);
   record(d, at, "terms_sealed", userId, { target: d.target, stages: d.stages.length, contract: d.contract!.hash });
 });
@@ -188,6 +193,7 @@ export const reopenDeal = mutate((s, dealId: string, userId: UserId, at: number)
   if (totalReserved(d) > 0) fail("Заказчик уже зарезервировал деньги");
   d.status = "draft";
   delete d.contract;
+  d.signatures = undefined;
   record(d, at, "terms_reopened", userId);
 });
 
@@ -220,6 +226,7 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
   assertContract(d, at);
   if (!Number.isInteger(amount) || amount <= 0) fail("Сумма должна быть положительной");
 
+  if (totalReserved(d) >= d.target) fail("Нужная сумма уже зарезервирована");
   if (d.mode === "crowdfunding") {
     if (userId === d.executorId) fail("Автор не может спонсировать себя");
     if (amount > d.target - totalReserved(d)) fail("Взнос превышает недостающую сумму");
@@ -235,7 +242,27 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
   log(s, at, "reserve", userId, amount, { dealId });
   record(d, at, "reserved", userId, { amount });
 
-  if (totalReserved(d) === d.target) activate(d);
+  if (totalReserved(d) === d.target && signaturesComplete(d)) {
+    activate(d);
+    if (d.signing) record(d, at, "activated", "system");
+  }
+});
+
+/** Подпись стороны под хешем контракта. Работа начинается, когда деньги зарезервированы и все подписи на месте. */
+export const signContract = mutate((s, dealId: string, userId: UserId, at: number, sig: string) => {
+  const d = getDeal(s, dealId);
+  if (!d.signing) fail("Эта сделка подписывается без отдельной подписи");
+  if (!d.contract) fail("Контракт еще не зафиксирован: исполнитель не отправил условия");
+  if (d.status !== "funding") fail("Подписать можно, пока сделка не началась");
+  if (!verifyContract(d).ok) fail("Условия сделки изменены после фиксации, подпись невозможна");
+  if (!(requiredSignersOf(d) ?? []).includes(userId)) fail("Вы не сторона этого контракта");
+  if (d.signatures?.[userId]?.hash === d.contract.hash) fail("Вы уже подписали контракт");
+  (d.signatures ??= {})[userId] = { at, hash: d.contract.hash, sig };
+  record(d, at, "signed", userId, { contract: d.contract.hash });
+  if (totalReserved(d) === d.target && signaturesComplete(d)) {
+    activate(d);
+    record(d, at, "activated", "system");
+  }
 });
 
 // ───────────────────────── движение денег ─────────────────────────

@@ -31,6 +31,8 @@ import {
   verifyJournal,
   verifyEntries,
   genesisHash,
+  signContract,
+  signatureStatus,
 } from "../src";
 
 const R = 100; // рубль в копейках
@@ -508,5 +510,83 @@ describe("журнал сделки", () => {
     const s = submitStage(legacy, "j1", "s2", "ivan", {}, T0 + 9);
     expect(s.deals.j1!.journal!.map((e) => e.type)).toEqual(["stage_submitted"]);
     expect(verifyJournal(s.deals.j1!).ok).toBe(true);
+  });
+});
+
+describe("подписи сторон", () => {
+  const signedDeal = () => {
+    let s = createState();
+    s = topUp(s, "anna", 100_000 * R, T0);
+    return createDeal(s, { id: "g1", mode: "own", title: "Ремонт", executorId: "ivan", ownerId: "anna", arbiterId: "expert", signed: true, stages: [{ title: "Плитка", amount: 100_000 * R }], at: T0 });
+  };
+
+  it("работа начинается после резерва и подписей обеих сторон, в любом порядке", () => {
+    let s = fund(signedDeal(), "g1", "anna", 100_000 * R, T0 + 1);
+    expect(s.deals.g1!.status).toBe("funding"); // деньги есть, подписей нет
+    expect(() => submitStage(s, "g1", "s1", "ivan", {}, T0 + 2)).toThrow(EngineError);
+    expect(signatureStatus(s.deals.g1!)).toMatchObject({ required: ["ivan", "anna"], signed: [], complete: false });
+    s = signContract(s, "g1", "anna", T0 + 3, "sig-anna");
+    expect(s.deals.g1!.status).toBe("funding");
+    s = signContract(s, "g1", "ivan", T0 + 4, "sig-ivan");
+    expect(s.deals.g1!.status).toBe("active");
+    expect(s.deals.g1!.stages[0]!.status).toBe("active");
+    expect(s.deals.g1!.journal!.map((e) => e.type)).toEqual(["created", "reserved", "signed", "signed", "activated"]);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+  });
+
+  it("подпись до резерва, чужая и повторная подписи отклоняются", () => {
+    let s = signedDeal();
+    expect(() => signContract(s, "g1", "stranger", T0, "x")).toThrow(/не сторона/);
+    s = signContract(s, "g1", "ivan", T0 + 1, "sig-ivan");
+    expect(() => signContract(s, "g1", "ivan", T0 + 2, "again")).toThrow(/уже подписали/);
+    s = signContract(s, "g1", "anna", T0 + 2, "sig-anna");
+    expect(s.deals.g1!.status).toBe("funding"); // подписано, но денег нет
+    s = fund(s, "g1", "anna", 100_000 * R, T0 + 3);
+    expect(s.deals.g1!.status).toBe("active");
+  });
+
+  it("повторный резерв по уже оплаченной сделке невозможен, подпись не нужна сделкам без подписей", () => {
+    const s = fund(signedDeal(), "g1", "anna", 100_000 * R, T0 + 1);
+    expect(() => fund(topUp(s, "anna", 100_000 * R, T0 + 2), "g1", "anna", 100_000 * R, T0 + 3)).toThrow(/уже зарезервирована/);
+    const plain = createDeal(topUp(createState(), "anna", 10 * R, T0), { id: "p1", mode: "own", title: "x", executorId: "ivan", ownerId: "anna", stages: [{ title: "x", amount: 10 * R }], at: T0 });
+    expect(fund(plain, "p1", "anna", 10 * R, T0).deals.p1!.status).toBe("active");
+    expect(() => signContract(plain, "p1", "anna", T0, "x")).toThrow(/без отдельной подписи/);
+  });
+
+  it("подписи привязаны к хешу: возврат на правку их снимает, подмена условий блокирует подпись", () => {
+    let s = createDeal(topUp(createState(), "anna", 100 * R, T0), { id: "g2", mode: "own", title: "Задача", executorId: "ivan", ownerId: "anna", signed: true, status: "draft", stages: [], at: T0 });
+    expect(() => signContract(s, "g2", "ivan", T0, "x")).toThrow(/не зафиксирован/);
+    s = proposeDeal(updateTerms(s, "g2", "ivan", { stages: [{ title: "Работа", amount: 100 * R }] }), "g2", "ivan", T0 + 1);
+    s = signContract(s, "g2", "ivan", T0 + 2, "sig-ivan");
+    const hash1 = s.deals.g2!.contract!.hash;
+    expect(s.deals.g2!.signatures!.ivan).toMatchObject({ hash: hash1, sig: "sig-ivan" });
+    s = reopenDeal(s, "g2", "ivan", T0 + 3);
+    expect(s.deals.g2!.signatures).toBeUndefined();
+    s = proposeDeal(updateTerms(s, "g2", "ivan", { stages: [{ title: "Работа", amount: 90 * R }] }), "g2", "ivan", T0 + 4);
+    expect(s.deals.g2!.contract!.hash).not.toBe(hash1);
+    const bad = structuredClone(s);
+    bad.deals.g2!.stages[0]!.amount = 1;
+    expect(() => signContract(bad, "g2", "anna", T0 + 5, "x")).toThrow(/изменены после фиксации/);
+    // подпись под старым хешем не засчитывается
+    const old = structuredClone(s);
+    old.deals.g2!.signatures = { ivan: { at: T0, hash: hash1, sig: "old" } };
+    expect(signatureStatus(old.deals.g2!).signed).toEqual([]);
+  });
+
+  it("краудфандинг: подписывает автор, спонсоры соглашаются взносом", () => {
+    let s = topUp(topUp(createState(), "olga", 100 * R, T0), "max", 100 * R, T0);
+    s = createDeal(s, { id: "c9", mode: "crowdfunding", title: "Игра", executorId: "ivan", signed: true, stages: [{ title: "Макет", amount: 100 * R }], at: T0 });
+    expect(signatureStatus(s.deals.c9!).required).toEqual(["ivan"]);
+    s = fund(fund(s, "c9", "olga", 50 * R, T0 + 1), "c9", "max", 50 * R, T0 + 2);
+    expect(s.deals.c9!.status).toBe("funding");
+    expect(() => signContract(s, "c9", "olga", T0 + 3, "x")).toThrow(/не сторона/);
+    s = signContract(s, "c9", "ivan", T0 + 3, "sig-ivan");
+    expect(s.deals.c9!.status).toBe("active");
+  });
+
+  it("отмена до подписей возвращает деньги", () => {
+    const s = cancelDeal(fund(signedDeal(), "g1", "anna", 100_000 * R, T0 + 1), "g1", "anna", T0 + 2);
+    expect(s.deals.g1!.status).toBe("cancelled");
+    expect(freeBalance(s, "anna")).toBe(100_000 * R);
   });
 });

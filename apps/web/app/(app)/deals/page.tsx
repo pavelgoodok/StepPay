@@ -19,6 +19,7 @@ export default function Deals() {
   for (const d of data ?? []) {
     const stage = d.currentStage;
     if (d.status === "draft" && d.executorId === user.id) needs.push({ d, title: "Составьте этапы", sub: d.title, chip: "Согласовать" });
+    else if (d.status === "funding" && d.signatures && d.signatures.required.includes(user.id) && !d.signatures.signed.includes(user.id) && (d.ownerId !== user.id || d.raised >= d.target)) needs.push({ d, title: "Подпишите контракт", sub: d.title, chip: "Подписать" });
     else if (d.status === "funding" && d.mode === "own" && d.ownerId === user.id) needs.push({ d, title: "Условия готовы", sub: `${d.title} · ${rub(d.target)}`, chip: "Проверить" });
     else if (stage?.status === "submitted" && (d.ownerId === user.id || (d.mode === "crowdfunding" && d.executorId !== user.id))) needs.push({ d, title: `${d.executor.name} сдал(а) этап`, sub: `«${stage.title}» · ${d.title}`, chip: "Проверить" });
     else if (stage?.status === "disputed" && user.role === "arbiter") needs.push({ d, title: "Нужно решение по спору", sub: `«${stage.title}» · ${d.title}`, chip: "Открыть" });
