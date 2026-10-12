@@ -8,11 +8,12 @@ import { useSession } from "@/lib/session";
 
 const TABS = [
   { href: "/deals", label: "Сделки", icon: "deals" },
-  { href: "/projects", label: "Проекты", icon: "sprout" },
+  { href: "/catalog", label: "Каталог", icon: "sprout" },
   null,
-  { href: "/wallet", label: "Кошелек", icon: "wallet" },
+  { href: "/chats", label: "Чаты", icon: "chat" },
   { href: "/profile", label: "Профиль", icon: "user" },
 ];
+const ADMIN_TABS = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, ready } = useSession();
@@ -28,12 +29,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     if (ready && !user) router.replace("/login");
   }, [ready, user, router]);
 
-  // быстрые действия на главной открывают мастер создания сделки
+  // быстрые действия на главной открывают меню добавления
   useEffect(() => {
     const open = () => setCreate(true);
     window.addEventListener("steppay:create", open);
     return () => window.removeEventListener("steppay:create", open);
   }, []);
+
+  const active = (href: string) => path.startsWith(href) || (href === "/catalog" && (path.startsWith("/projects") || path.startsWith("/services")));
 
   if (!user) return <div className="shell"><div className="page"><div className="skeleton" /><div className="skeleton" /></div></div>;
 
@@ -45,16 +48,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       )}
       <nav className="tabbar">
         <Link href="/deals" className="side-logo" aria-label="StepPay"><Logo /></Link>
-        {TABS.map((t) =>
+        {(user.role === "admin" ? ADMIN_TABS : TABS).map((t) =>
           t ? (
-            <Link key={t.href} href={t.href} className={`tab ${path.startsWith(t.href) ? "on" : ""}`}>
+            <Link key={t.href} href={t.href} className={`tab ${active(t.href) ? "on" : ""}`}>
               <span className="ti"><Icon name={t.icon} /></span>
               {t.label}
             </Link>
           ) : (
             <button key="plus" className="plus" onClick={() => setCreate(true)} aria-label="Создать">
               <Icon name="plus" />
-              <span className="plus-label">Новая сделка</span>
+              <span className="plus-label">Добавить</span>
             </button>
           ),
         )}

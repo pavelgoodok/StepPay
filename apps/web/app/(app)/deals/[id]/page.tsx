@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
+import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { IMG, Icon, Money, MoneyInput, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
@@ -29,6 +30,7 @@ export default function DealPage() {
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [rows, setRows] = useState<Row[] | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -48,12 +50,13 @@ export default function DealPage() {
   const reservedLeft = Object.values(d.reserves).reduce((a, b) => a + b, 0);
   const raised = d.summary.raised;
   const crowd = d.mode === "crowdfunding";
+  const draft = d.status === "draft";
   const canCancel =
     d.status !== "completed" && d.status !== "cancelled" &&
-    (crowd ? isExec : isOwner) &&
+    (draft ? isExec || isOwner : crowd ? isExec : isOwner) &&
     !d.stages.some((s) => s.status === "submitted" || s.status === "disputed");
 
-  async function run(path: string, body: unknown = {}, ok?: string) {
+  async function run(path: string, body: unknown = {}, ok?: string): Promise<boolean> {
     setBusy(true);
     try {
       await api(`/deals/${id}${path}`, { method: "POST", body });
@@ -63,8 +66,10 @@ export default function DealPage() {
       setPhotos([]);
       setAmount("");
       await Promise.all([reload(), refresh()]);
+      return true;
     } catch (e) {
       toast((e as Error).message, "err");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -88,7 +93,7 @@ export default function DealPage() {
         </div>
       </div>
 
-      <div className="hero">
+      {!draft && <div className="hero">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={d.status === "completed" ? IMG.terminal : IMG.safe} alt="" />
         <div className="label">Выплачено исполнителю</div>
@@ -100,7 +105,34 @@ export default function DealPage() {
           <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>из {rub(d.target)}</div>
         </div>
         {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
-      </div>
+      </div>}
+
+      {d.meta?.chatId && (
+        <Link href={`/chats/${d.meta.chatId}`} className="btn soft"><Icon name="chat" size={18} /> Чат по задаче</Link>
+      )}
+      {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
+
+      {draft && isExec && (() => {
+        const cur = rows ?? stagesToRows(d.stages.map((x) => ({ title: x.title, amount: x.amount, criteria: x.criteria })));
+        const ready = rowsToStages(cur).length > 0;
+        return (
+          <div className="card stack">
+            <div className="title">Условия для заказчика</div>
+            <div className="sub">Разбейте работу на этапы и укажите стоимость каждого. Заказчик увидит их, проверит и зарезервирует деньги.</div>
+            <StageEditor rows={cur} onChange={setRows} mode="own" seedText={[d.title, d.meta?.description].filter(Boolean).join(". ")} />
+            <div className="btns">
+              <button className="btn soft" disabled={busy || !ready} onClick={() => run("/terms", { stages: rowsToStages(cur) }, "Сохранено")}>Сохранить</button>
+              <button className="btn" disabled={busy || !ready} onClick={async () => { if (await run("/terms", { stages: rowsToStages(cur) })) await run("/propose", {}, `Условия на ${rub(toKopecks(rowsTotal(cur)))} отправлены заказчику`); }}>Отправить</button>
+            </div>
+          </div>
+        );
+      })()}
+      {draft && !isExec && (
+        <div className="card row">
+          <Icon name="clock" size={22} />
+          <div className="sub">Исполнитель составляет этапы и стоимость. Когда отправит условия, вы сможете их проверить и зарезервировать деньги. Вопросы можно обсудить в чате.</div>
+        </div>
+      )}
 
       {d.status === "funding" && (
         <div className="card stack">
@@ -108,7 +140,7 @@ export default function DealPage() {
             <>
               <div className="row between"><b>Собрано {rub(raised)}</b><span className="muted">из {rub(d.target)}</span></div>
               <div className="meter"><b style={{ width: `${(raised / d.target) * 100}%` }} /></div>
-              <div className="small muted">{d.summary.sponsors} спонсоров. Автор получает деньги только за принятые этапы - не сдан этап, остаток вернется вам.</div>
+              <div className="small muted">Поддержали {d.summary.sponsors}. Не сдан этап: остаток вернется вам.</div>
               {!isExec && (
                 <>
                   <div className="chips">
@@ -128,19 +160,22 @@ export default function DealPage() {
           ) : isOwner ? (
             <>
               <div className="title">Зарезервируйте {rub(d.target)}</div>
-              <div className="small muted">Деньги будут заморожены в кошельке и уйдут исполнителю только за принятые этапы. Исполнитель увидит, что деньги есть.</div>
+              <div className="small muted">Деньги замораживаются в кошельке и уходят исполнителю только за принятые этапы.</div>
               <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={() => run("/fund", {}, "Резерв создан")}>
                 <Icon name="lock" size={18} /> Зарезервировать
               </button>
               {(wallet?.free ?? 0) < d.target && <div className="note warn">Не хватает {rub(d.target - (wallet?.free ?? 0))}. Пополните кошелек на вкладке «Кошелек».</div>}
             </>
           ) : (
-            <div className="row"><Icon name="clock" size={22} /><div className="sub">Ждем, пока {d.mode === "grant" ? "грантодатель" : "заказчик"} зарезервирует деньги</div></div>
+            <>
+              <div className="row"><Icon name="clock" size={22} /><div className="sub">Ждем, пока {d.mode === "grant" ? "грантодатель" : "заказчик"} зарезервирует деньги</div></div>
+              {d.mode === "own" && isExec && <button className="btn ghost sm" disabled={busy} onClick={() => run("/reopen", {}, "Условия снова можно править")}>Изменить условия</button>}
+            </>
           )}
         </div>
       )}
 
-      <div className="timeline">
+      {!draft && <div className="timeline">
         {d.stages.map((s, i) => {
           const left = s.submittedAt ? s.submittedAt + d.autoAcceptMs - now : 0;
           const votesAccept = Object.entries(s.votes).filter(([, v]) => v === "accept").reduce((a, [u]) => a + (d.contributed[u] ?? 0), 0);
@@ -226,7 +261,7 @@ export default function DealPage() {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {crowd && Object.keys(d.contributed).length > 0 && (
         <div className="card stack">
@@ -238,8 +273,8 @@ export default function DealPage() {
       )}
 
       {canCancel && (
-        <button className="btn danger" disabled={busy} onClick={() => confirm("Отменить сделку? Неиспользованный резерв вернется.") && run("/cancel", {}, "Сделка отменена, остаток возвращен")}>
-          Отменить сделку и вернуть остаток
+        <button className="btn danger" disabled={busy} onClick={() => confirm(draft ? "Отменить задачу?" : "Отменить сделку? Неиспользованный резерв вернется.") && run("/cancel", {}, draft ? "Задача отменена" : "Сделка отменена, остаток возвращен")}>
+          {draft ? "Отменить задачу" : "Отменить сделку и вернуть остаток"}
         </button>
       )}
 

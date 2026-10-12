@@ -127,6 +127,7 @@ const P: Record<string, string> = {
   laptop: "M5 6h14v10H5zM2 19h20",
   ring: "M12 21a6 6 0 100-12 6 6 0 000 12zM9 6l3-3 3 3",
   flag: "M5 21V4m0 0h12l-2 4 2 4H5",
+  chat: "M5 5h14v11H9l-4 4z",
   camera: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 100-7 3.5 3.5 0 000 7z",
 };
 

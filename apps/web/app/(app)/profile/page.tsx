@@ -3,15 +3,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Ava, Icon, Initials, Sheet, Switch } from "@/components/ui";
-import { api, uploadAvatar } from "@/lib/api";
+import { api, uploadAvatar, type ProjectItem, type ServiceItem } from "@/lib/api";
+import { PROJECT_STATUS } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
-const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", user: "Участник StepPay" };
+const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
 
 export default function Profile() {
   const { user, users, login, logout, toast, refresh } = useSession();
   const router = useRouter();
   const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
+  const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
+  const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
   const [dark, setDark] = useState(false);
   const [notif, setNotif] = useState(false);
   const [edit, setEdit] = useState(false);
@@ -106,6 +109,33 @@ export default function Profile() {
         <div className="tile"><b>{data?.disputes ?? 0}</b><span>споров</span></div>
       </div>
 
+      {((mineP.data?.length ?? 0) > 0 || (mineS.data?.length ?? 0) > 0) && (
+        <div className="card stack">
+          {mineP.data && mineP.data.length > 0 && (
+            <>
+              <div className="title">Мои проекты</div>
+              {mineP.data.map((p) => (
+                <Link key={p.id} href={`/projects/${p.id}`} className="row between">
+                  <span className="ellipsis">{p.title || "Без названия"}</span>
+                  <span className={`chip ${PROJECT_STATUS[p.status ?? "draft"]!.tone}`}>{PROJECT_STATUS[p.status ?? "draft"]!.text}</span>
+                </Link>
+              ))}
+            </>
+          )}
+          {mineS.data && mineS.data.length > 0 && (
+            <>
+              <div className="title">Мои услуги</div>
+              {mineS.data.map((s) => (
+                <Link key={s.id} href={`/services/${s.id}`} className="row between">
+                  <span className="ellipsis">{s.title}</span>
+                  {!s.active && <span className="chip gray">Скрыта</span>}
+                </Link>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="card" style={{ padding: "6px 18px" }}>
         <Link href="/receipts" className="setrow">
           <span className="setic"><Icon name="check" size={20} /></span><span className="grow"><b>Мои чеки</b><div className="small muted">По выплатам за этапы</div></span><Icon name="arrow" size={18} />
@@ -139,7 +169,7 @@ export default function Profile() {
           </div>
         </>
       )}
-      <p className="small muted" style={{ textAlign: "center" }}>StepPay, оплата по шагам в цифровых рублях. Версия 0.6</p>
+      <p className="small muted" style={{ textAlign: "center" }}>StepPay, оплата по шагам в цифровых рублях. Версия 0.7</p>
 
       {edit && (
         <Sheet onClose={() => setEdit(false)}>

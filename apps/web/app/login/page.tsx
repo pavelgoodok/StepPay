@@ -166,7 +166,7 @@ export default function Login() {
         </div>
 
         <Link href="/demo" className="demo-link">
-          <span className="grow"><b>Демо-сценарий для жюри</b><span>3 минуты, без регистрации</span></span>
+          <span className="grow"><b>Демо-сценарий для жюри</b><span>без регистрации</span></span>
           <Icon name="arrow" size={18} />
         </Link>
 

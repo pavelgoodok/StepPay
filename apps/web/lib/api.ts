@@ -2,7 +2,7 @@ import type { Deal, LedgerEntry } from "@steppay/engine";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter" | "user";
+export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter" | "admin" | "user";
 export interface PublicUser {
   id: string;
   name: string;
@@ -10,6 +10,7 @@ export interface PublicUser {
   /** маскированный номер, только у зарегистрированных */
   phone?: string;
   avatar?: string;
+  grantor?: boolean;
 }
 export interface Person {
   id: string;
@@ -30,6 +31,7 @@ export interface DealSummary {
   mode: Deal["mode"];
   title: string;
   status: Deal["status"];
+  meta?: Deal["meta"];
   executorId: string;
   ownerId?: string;
   executor: Person;
@@ -124,4 +126,86 @@ export async function uploadAvatar(file: File): Promise<string> {
   c.width = c.height = 256;
   c.getContext("2d")!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 256, 256);
   return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl: c.toDataURL("image/jpeg", 0.86) } })).url;
+}
+
+/** Приватный документ открывается по ссылке с токеном: так его можно показать в новой вкладке. */
+export const docSrc = (url: string) => {
+  const t = getToken();
+  return API_URL + url + (t ? `?token=${encodeURIComponent(t)}` : "");
+};
+
+/** PDF до 5 МБ, доступен только автору и администраторам. */
+export async function uploadDoc(file: File): Promise<string> {
+  if (file.type !== "application/pdf") throw new ApiError("Документ должен быть в формате PDF", 0);
+  if (file.size > 5 * 1024 * 1024) throw new ApiError("Файл больше 5 МБ", 0);
+  const dataUrl = await new Promise<string>((ok, no) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result));
+    r.onerror = () => no(new ApiError("Не удалось прочитать файл", 0));
+    r.readAsDataURL(file);
+  });
+  return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl, private: true } })).url;
+}
+
+export type ProjectKind = "crowdfunding" | "grant";
+export type ProjectStatus = "draft" | "review" | "changes" | "approved" | "rejected";
+export interface ProjectDoc { id: string; name: string; url: string; kind: "photo" | "doc" }
+export interface ProjectStage { title: string; amount: number; criteria: string[] }
+export interface ReviewEvent { at: number; by: string; action: "submit" | "resubmit" | "approve" | "reject" | "changes"; comment?: string }
+export interface AuthorProfile { legalStatus: "person" | "selfemployed" | "ip" | "org"; inn: string; orgName?: string; email?: string }
+export interface ProjectItem {
+  id: string;
+  kind: ProjectKind;
+  title: string;
+  summary: string;
+  category: string;
+  cover?: string;
+  goal: number;
+  raised: number;
+  sponsors: number;
+  dealId?: string;
+  dealStatus?: string;
+  owner: Person;
+  status?: ProjectStatus;
+  lastReview?: ReviewEvent;
+  submittedAt?: number;
+}
+export interface ProjectFull extends ProjectItem {
+  description: string;
+  stages: ProjectStage[];
+  photos: ProjectDoc[];
+  status: ProjectStatus;
+  docs?: ProjectDoc[];
+  history?: ReviewEvent[];
+  author?: AuthorProfile | null;
+  deal: DealSummary | null;
+  funder?: Person;
+  can: { edit: boolean; fundGrant: boolean; support: boolean };
+  problems?: string[];
+}
+export interface ServiceItem { id: string; title: string; category: string; description: string; priceFrom?: number; photos: string[]; active: boolean; owner: Person; mine?: boolean }
+export interface ChatItem {
+  id: string;
+  role: "customer" | "executor";
+  service: { id: string; title: string };
+  with: Person;
+  last: { text: string; at: number; by: string; kind: "text" | "system" } | null;
+  unread: number;
+  updatedAt: number;
+}
+export interface ChatMessage { id: string; by: string; text: string; at: number; kind: "text" | "system"; dealId?: string }
+export interface ChatFull {
+  id: string;
+  role: "customer" | "executor";
+  service: { id: string; title: string };
+  with: Person;
+  messages: ChatMessage[];
+  deals: (DealSummary & { description?: string })[];
+  me: Person;
+}
+export interface PlanResult {
+  title: string;
+  source: "claude" | "template";
+  reason?: { code: string; text: string };
+  stages: { title: string; share: number; criteria: string[] }[];
 }

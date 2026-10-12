@@ -86,13 +86,13 @@ export default function Demo() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="art" src={IMG.terminal} alt="" />
           <div style={{ maxWidth: 220 }}>
-            <div className="label">Демо для жюри · 3 минуты</div>
-            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1, marginTop: 6 }}>Деньги уходят, когда есть результат</div>
+            <div className="label">Демо для жюри</div>
+            <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1, marginTop: 6 }}>Сценарий на 11 шагов</div>
           </div>
         </div>
 
         {last && (
-          <div className="card stack" style={{ gap: 8, border: "2px solid var(--blue)" }}>
+          <div className="card stack" style={{ gap: 8, background: "var(--blue-soft)" }}>
             <span className="chip" style={{ alignSelf: "flex-start" }}>Шаг {last.step} из {last.total}</span>
             <div className="title">{last.title}</div>
             <div className="sub">{last.text}</div>
@@ -103,7 +103,7 @@ export default function Demo() {
         {finished ? (
           <div className="card stack" style={{ textAlign: "center" }}>
             <div className="title">Сценарий завершен</div>
-            <div className="sub">Один движок: ремонт, краудфандинг и грант. Деньги ушли за принятый этап и вернулись за проваленный.</div>
+            <div className="sub">Услуга, проверка проекта и краудфандинг прошли на одном движке: деньги ушли за принятый этап и вернулись за сорванный.</div>
           </div>
         ) : (
           <button className="btn" disabled={busy || script.length === 0} onClick={next}>
