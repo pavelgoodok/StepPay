@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { SessionProvider } from "@/lib/session";
+import "@fontsource-variable/exo-2";
 import "./globals.css";
 
 export const metadata: Metadata = {
