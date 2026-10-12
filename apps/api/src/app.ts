@@ -33,7 +33,7 @@ import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
 import { Directory, maskPhone, normalizePhone } from "./users";
 
 const RUB = 100;
-const rub = (k: number) => `${new Intl.NumberFormat("ru-RU").format(Math.round(k / 100))}\u00a0₽`;
+const rub = (k: number) => `${String(Math.round(k / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0")}\u00a0₽`;
 
 export interface AppOptions {
   store: Store;
@@ -391,6 +391,12 @@ export async function buildApp(opts: AppOptions) {
       return { step, total: DEMO_SCRIPT.length, ...narration };
     });
   }
+
+  // Настроен ли Claude на сервере (ключ не показывается)
+  app.get("/ai/status", async (req, reply) => {
+    if (!authed(req, reply)) return;
+    return planner.status();
+  });
 
   // AI-помощник: описание работы -> этапы с долями и критериями приемки
   const lastAi = new Map<string, number[]>();

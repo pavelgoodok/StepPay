@@ -15,10 +15,16 @@ export interface Plan {
   stages: { title: string; share: number; criteria: string[] }[];
   /** claude - ответ модели; template - запасной вариант без AI */
   source: "claude" | "template";
+  /** модель, которая ответила (только для source = claude) */
+  model?: string;
+  /** почему сработал запасной вариант (только для source = template) */
+  reason?: { code: string; text: string };
 }
 
 export interface Planner {
   plan(input: PlanInput): Promise<Plan>;
+  /** настроен ли Claude на сервере; без запроса к API */
+  status(): { configured: boolean; models: string[] };
 }
 
 const PlanSchema = z.object({
@@ -80,42 +86,82 @@ export function templatePlan(input: PlanInput): Plan {
   return { title: t?.title ?? input.description.trim().slice(0, 60), stages, source: "template" };
 }
 
-export class ClaudePlanner implements Planner {
-  private client: Anthropic;
-  constructor(
-    apiKey: string,
-    private model = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5",
-  ) {
-    this.client = new Anthropic({ apiKey, timeout: 40_000, maxRetries: 1 });
-  }
+/** Понятное объяснение ошибки, чтобы пользователь видел причину, а не просто «недоступен». */
+export function describeFailure(e: unknown): { code: string; text: string } {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (e instanceof Anthropic.AuthenticationError) return { code: "invalid_key", text: "Ключ Anthropic не принят (401). Проверьте, что он скопирован целиком, без пробелов и кавычек" };
+  if (e instanceof Anthropic.PermissionDeniedError) return { code: "no_access", text: "У ключа нет доступа к модели (403)" };
+  if (e instanceof Anthropic.NotFoundError) return { code: "no_model", text: "Модель не найдена для этого ключа (404)" };
+  if (e instanceof Anthropic.RateLimitError) return { code: "rate_limit", text: "Превышен лимит запросов Anthropic (429), попробуйте позже" };
+  if (e instanceof Anthropic.APIConnectionTimeoutError) return { code: "timeout", text: "Claude не ответил вовремя, попробуйте еще раз" };
+  if (e instanceof Anthropic.APIConnectionError) return { code: "network", text: "Сервер не смог связаться с Anthropic (сеть)" };
+  if (e instanceof Anthropic.BadRequestError && /credit|balance|billing/i.test(msg)) return { code: "no_credit", text: "На счете Anthropic нет средств: пополните баланс в разделе Billing" };
+  if (e instanceof Anthropic.APIError) return { code: "api_error", text: `Ошибка Anthropic (${e.status ?? "?"}): ${msg.slice(0, 140)}` };
+  return { code: "error", text: msg.slice(0, 140) };
+}
 
+/** Эти ошибки не лечатся сменой модели: останавливаемся сразу. */
+const fatal = (e: unknown) =>
+  e instanceof Anthropic.AuthenticationError ||
+  e instanceof Anthropic.RateLimitError ||
+  e instanceof Anthropic.APIConnectionError ||
+  (e instanceof Anthropic.BadRequestError && /credit|balance|billing/i.test(e.message));
+
+export class ClaudePlanner {
+  constructor(
+    private client: Pick<Anthropic, "messages">,
+    public readonly models: string[],
+  ) {}
+
+  /** Пробует модели по очереди: если основной нет у ключа, берется следующая. */
   async plan(input: PlanInput): Promise<Plan> {
     const budget = input.total ? ` Общий бюджет: ${Math.round(input.total / 100)} ₽.` : "";
-    const res = await this.client.messages.parse({
-      model: this.model,
-      max_tokens: 4000,
-      system: SYSTEM,
-      output_config: { effort: "low", format: zodOutputFormat(PlanSchema) },
-      messages: [{ role: "user", content: `Режим: ${input.mode}.${budget}\nОписание работы:\n${input.description}` }],
-    });
-    if (res.stop_reason === "refusal" || !res.parsed_output) return templatePlan(input);
-    const stages = normalizePlan(res.parsed_output);
-    if (!stages) return templatePlan(input);
-    return { title: res.parsed_output.title.trim().slice(0, 80) || input.description.slice(0, 60), stages, source: "claude" };
+    let last: unknown = new Error("нет моделей");
+    for (const model of this.models) {
+      try {
+        const res = await this.client.messages.parse({
+          model,
+          max_tokens: 16000,
+          system: SYSTEM,
+          output_config: { effort: "low", format: zodOutputFormat(PlanSchema) },
+          messages: [{ role: "user", content: `Режим: ${input.mode}.${budget}\nОписание работы:\n${input.description}` }],
+        });
+        if (res.stop_reason === "refusal") return { ...templatePlan(input), reason: { code: "refused", text: "Claude отказался отвечать на это описание, подобран шаблон" } };
+        if (res.stop_reason === "max_tokens") return { ...templatePlan(input), reason: { code: "truncated", text: "Ответ Claude оборвался, попробуйте описать работу короче" } };
+        const stages = res.parsed_output ? normalizePlan(res.parsed_output) : null;
+        if (!res.parsed_output || !stages) return { ...templatePlan(input), reason: { code: "bad_output", text: "Claude вернул неподходящий план, подобран шаблон" } };
+        return { title: res.parsed_output.title.trim().slice(0, 80) || input.description.slice(0, 60), stages, source: "claude", model };
+      } catch (e) {
+        last = e;
+        if (fatal(e)) break;
+      }
+    }
+    throw last;
   }
 }
 
-/** Выбирает Claude при наличии ключа; любая ошибка модели не ломает создание сделки. */
-export function createPlanner(apiKey = process.env.ANTHROPIC_API_KEY): Planner {
-  const claude = apiKey ? new ClaudePlanner(apiKey) : null;
+/** Убирает пробелы, переводы строк и кавычки, которые часто попадают в ключ при копировании. */
+export const cleanKey = (raw?: string) => (raw ?? "").trim().replace(/^["']|["']$/g, "").trim();
+
+/** Выбирает Claude при наличии ключа; любая ошибка модели не ломает создание сделки, а объясняется. */
+export function createPlanner(
+  apiKey = process.env.ANTHROPIC_API_KEY,
+  client?: Pick<Anthropic, "messages">,
+  model = process.env.ANTHROPIC_MODEL,
+): Planner {
+  const key = cleanKey(apiKey);
+  const models = [...new Set([cleanKey(model) || "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"])];
+  const claude = key || client ? new ClaudePlanner(client ?? new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1 }), models) : null;
   return {
+    status: () => ({ configured: !!claude, models }),
     async plan(input) {
-      if (!claude) return templatePlan(input);
+      if (!claude) return { ...templatePlan(input), reason: { code: "no_key", text: "Ключ ANTHROPIC_API_KEY не задан на сервере" } };
       try {
         return await claude.plan(input);
       } catch (e) {
-        console.warn("AI-планировщик недоступен, используем шаблон:", (e as Error).message);
-        return templatePlan(input);
+        const reason = describeFailure(e);
+        console.warn("AI-планировщик недоступен:", reason.code, reason.text);
+        return { ...templatePlan(input), reason };
       }
     },
   };

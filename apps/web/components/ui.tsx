@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { photoSrc } from "@/lib/api";
-import { rub } from "@/lib/format";
+import { group, rub } from "@/lib/format";
 
 export const IMG = {
   card: "/3d/card.webp",
@@ -165,5 +165,20 @@ export function Money({ value }: { value: number }) {
     <span className="money mono">
       {rub(shown)}
     </span>
+  );
+}
+
+/** Поле суммы: на экране «300 000», в значении только цифры. */
+export function MoneyInput({ value, onChange, placeholder, style }: { value: string; onChange(digits: string): void; placeholder?: string; style?: React.CSSProperties }) {
+  return (
+    <input
+      className="input"
+      style={style}
+      inputMode="numeric"
+      autoComplete="off"
+      placeholder={placeholder}
+      value={value ? group(value) : ""}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 10))}
+    />
   );
 }

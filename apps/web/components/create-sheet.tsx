@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type DealFull, type FoundUser, type Template } from "@/lib/api";
 import { rub, toKopecks } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import { IMG, Icon, Sheet } from "./ui";
+import { IMG, Icon, MoneyInput, Sheet } from "./ui";
 
 type Mode = "own" | "crowdfunding" | "grant";
 const MODES: { id: Mode; title: string; text: string; icon: string }[] = [
@@ -36,6 +36,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
   const [aiTotal, setAiTotal] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiSource, setAiSource] = useState<"claude" | "template" | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
 
   useEffect(() => {
     api<Template[]>("/templates").then(setTemplates).catch(() => undefined);
@@ -65,7 +66,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
     if (!mode) return;
     setAiBusy(true);
     try {
-      const plan = await api<{ title: string; source: "claude" | "template"; stages: { title: string; share: number; criteria: string[] }[] }>("/ai/plan", {
+      const plan = await api<{ title: string; source: "claude" | "template"; model?: string; reason?: { code: string; text: string }; stages: { title: string; share: number; criteria: string[] }[] }>("/ai/plan", {
         method: "POST",
         body: { description: aiText.trim(), mode, total: Number(aiTotal) > 0 ? toKopecks(Number(aiTotal)) : undefined },
       });
@@ -81,6 +82,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       setTpl(null);
       if (!title.trim()) setTitle(plan.title);
       setAiSource(plan.source);
+      setAiNote(plan.source === "claude" ? null : (plan.reason?.text ?? null));
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -150,14 +152,15 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
           <span className="tag"><Icon name="bolt" size={14} /> ПОМОЩНИК ПО ЭТАПАМ</span>
           <textarea className="input" placeholder="Опишите задачу своими словами: «Переделать ванную 4 м², плитка, замена труб, установка душевой»" value={aiText} onChange={(e) => setAiText(e.target.value)} style={{ minHeight: 76 }} />
           <div className="row">
-            <input className="input" inputMode="numeric" placeholder="Бюджет, ₽" value={aiTotal} onChange={(e) => setAiTotal(e.target.value.replace(/[^\d]/g, ""))} />
+            <MoneyInput placeholder="Бюджет, ₽" value={aiTotal} onChange={setAiTotal} />
             <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={aiBusy || aiText.trim().length < 5} onClick={askAi}>
               {aiBusy ? <span className="spin" /> : "Разбить на этапы"}
             </button>
           </div>
           {aiSource && (
             <div className="small muted">
-              {aiSource === "claude" ? "Этапы составлены Claude. Проверьте и поправьте при необходимости." : "AI сейчас недоступен - подобран ближайший шаблон. Этапы можно изменить."}
+              {aiSource === "claude" ? "Этапы составлены Claude. Проверьте и поправьте при необходимости." : "Подобран ближайший шаблон, этапы можно изменить."}
+              {aiNote && <div style={{ marginTop: 4, color: "var(--amber)" }}>Почему не Claude: {aiNote}</div>}
             </div>
           )}
         </div>
@@ -204,7 +207,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
             {rows.map((r, i) => (
               <div key={i} className="row">
                 <input className="input" style={{ flex: 2 }} placeholder={`Этап ${i + 1}`} value={r.title} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
-                <input className="input" style={{ flex: 1 }} inputMode="numeric" placeholder="₽" value={r.rub} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, rub: e.target.value.replace(/[^\d]/g, "") } : x)))} />
+                <MoneyInput style={{ flex: 1 }} placeholder="₽" value={r.rub} onChange={(v) => setRows(rows.map((x, j) => (j === i ? { ...x, rub: v } : x)))} />
               </div>
             ))}
             <button className="btn soft sm" onClick={() => setRows([...rows, { title: "", rub: "" }])}>+ Добавить этап</button>
@@ -213,7 +216,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
           <>
             <div className="field">
               <label>{mode === "crowdfunding" ? "Цель сбора, ₽" : "Общая сумма, ₽"}</label>
-              <input className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(e.target.value.replace(/[^\d]/g, ""))} placeholder="300000" />
+              <MoneyInput value={total} onChange={setTotal} placeholder="300 000" />
             </div>
             {preview.length > 0 && (
               <div className="card" style={{ boxShadow: "none", background: "var(--card)" }}>

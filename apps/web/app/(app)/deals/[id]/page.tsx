@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
-import { IMG, Icon, Money, Sheet } from "@/components/ui";
+import { IMG, Icon, Money, MoneyInput, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
 import { MODE_LABEL, STAGE_LABEL, dealChip } from "@/lib/labels";
@@ -117,7 +117,7 @@ export default function DealPage() {
                     ))}
                     <button className="opt" onClick={() => setAmount(String(Math.floor(missing / 100)))}>Все недостающее</button>
                   </div>
-                  <input className="input" inputMode="numeric" placeholder="Сумма, ₽" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} />
+                  <MoneyInput placeholder="Сумма, ₽" value={amount} onChange={setAmount} />
                   <button className="btn" disabled={busy || !Number(amount)} onClick={() => run("/fund", { amount: toKopecks(Number(amount)) }, "Деньги зарезервированы")}>
                     Поддержать{Number(amount) ? ` на ${rub(toKopecks(Number(amount)))}` : ""}
                   </button>

@@ -1,9 +1,13 @@
-/** копейки → «12 500 ₽» */
+/** 1234567 → «1 234 567» (неразрывные пробелы; русская локаль браузера не делит четырехзначные числа, поэтому считаем сами) */
+export const group = (n: number | string) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+
+/** копейки → «12 500 ₽», «5 000 ₽», копейки только если они есть: «1 250,5 ₽» */
 export function rub(kopecks: number, opts: { sign?: boolean } = {}): string {
   const v = Math.round(kopecks) / 100;
-  const s = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(Math.abs(v)).replace(/ | /g, " ");
-  const sign = v < 0 ? "−" : opts.sign && v > 0 ? "+" : "";
-  return `${sign}${s} ₽`;
+  const [int, frac] = Math.abs(v).toFixed(2).split(".") as [string, string];
+  const tail = frac === "00" ? "" : "," + frac.replace(/0$/, "");
+  const sign = v < 0 ? "\u2212" : opts.sign && v > 0 ? "+" : "";
+  return `${sign}${group(int)}${tail}\u00a0₽`;
 }
 
 export const toKopecks = (rubles: number) => Math.round(rubles * 100);

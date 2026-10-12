@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { IMG, Icon, Money, Sheet, StageBars } from "@/components/ui";
+import { IMG, Icon, Money, MoneyInput, Sheet, StageBars } from "@/components/ui";
 import { api, type WalletView } from "@/lib/api";
 import { dayLabel, rub, toKopecks } from "@/lib/format";
 import { LEDGER_LABEL } from "@/lib/labels";
@@ -101,7 +101,7 @@ export default function WalletPage() {
             <div className="chips" style={{ justifyContent: "center" }}>
               {[10000, 50000, 100000, 300000].map((v) => <button key={v} className={`opt ${amount === String(v) ? "on" : ""}`} onClick={() => setAmount(String(v))}>{rub(toKopecks(v))}</button>)}
             </div>
-            <input className="input" inputMode="numeric" placeholder="Сумма, ₽" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} />
+            <MoneyInput placeholder="Сумма, ₽" value={amount} onChange={setAmount} />
             <button className="btn" disabled={busy || !Number(amount)} onClick={topup}>Пополнить</button>
           </div>
         </Sheet>

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import http from "node:http";
-import { normalizePlan, templatePlan, createPlanner } from "../src/ai";
+import Anthropic from "@anthropic-ai/sdk";
+import { cleanKey, normalizePlan, templatePlan, createPlanner } from "../src/ai";
 import { buildApp } from "../src/app";
 import { MemoryStore } from "../src/store";
 
@@ -159,7 +160,7 @@ describe("AI-планировщик", () => {
 
   it("/ai/plan: нужен вход, валидация, подмена планировщика, лимит запросов", async () => {
     const calls: unknown[] = [];
-    const planner = { plan: async (i: unknown) => (calls.push(i), { title: "Т", stages: [{ title: "А", share: 100, criteria: [] }], source: "claude" as const }) };
+    const planner = { status: () => ({ configured: true, models: ["m"] }), plan: async (i: unknown) => (calls.push(i), { title: "Т", stages: [{ title: "А", share: 100, criteria: [] }], source: "claude" as const }) };
     const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t, planner });
     const token = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "anna" } })).json().token;
     const h = { authorization: `Bearer ${token}` };
@@ -446,6 +447,58 @@ describe("аватарки и данные участников", () => {
 
     await app.inject({ method: "POST", url: "/me/profile", headers: hb, payload: { avatar: null } });
     expect((await app.inject({ method: "GET", url: "/me", headers: hb })).json().user.avatar).toBeUndefined();
+  });
+});
+
+describe("Claude-планировщик: причины отказа и запасные модели", () => {
+  const apiErr = (status: number, message: string) => Anthropic.APIError.generate(status, { type: "error", error: { type: "x", message } }, message, new Headers());
+  const okReply = { stop_reason: "end_turn", parsed_output: { title: "Баня", stages: [{ title: "Фундамент", share: 60, criteria: ["Залит"] }, { title: "Стены", share: 40, criteria: [] }] } };
+  const fake = (impl: (model: string) => unknown) => {
+    const tried: string[] = [];
+    return { tried, client: { messages: { parse: async (a: { model: string }) => { tried.push(a.model); return impl(a.model); } } } as never };
+  };
+  const input = { description: "Построить баню", mode: "own" as const };
+
+  it("успешный ответ: источник claude, указана модель", async () => {
+    const f = fake(() => okReply);
+    const plan = await createPlanner("sk-ant-x", f.client).plan(input);
+    expect(plan).toMatchObject({ source: "claude", model: "claude-opus-5-5", title: "Баня" });
+    expect(plan.stages.reduce((a, x) => a + x.share, 0)).toBe(100);
+  });
+
+  it("нет такой модели у ключа: пробуем следующую", async () => {
+    const f = fake((m) => { if (m === "claude-opus-5-5") throw apiErr(404, "model: claude-opus-5-5"); return okReply; });
+    const plan = await createPlanner("sk-ant-x", f.client).plan(input);
+    expect(f.tried).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+    expect(plan).toMatchObject({ source: "claude", model: "claude-sonnet-5-5" });
+  });
+
+  it("неверный ключ: шаблон с понятной причиной, лишние модели не перебираются", async () => {
+    const f = fake(() => { throw apiErr(401, "invalid x-api-key"); });
+    const plan = await createPlanner("sk-ant-bad", f.client).plan(input);
+    expect(f.tried).toHaveLength(1);
+    expect(plan).toMatchObject({ source: "template", reason: { code: "invalid_key" } });
+  });
+
+  it("нет денег на счете: причина про баланс", async () => {
+    const f = fake(() => { throw apiErr(400, "Your credit balance is too low to access the Anthropic API"); });
+    const plan = await createPlanner("sk-ant-x", f.client).plan(input);
+    expect(f.tried).toHaveLength(1);
+    expect(plan.reason?.code).toBe("no_credit");
+  });
+
+  it("оборванный ответ и отказ модели не ломают создание сделки", async () => {
+    expect((await createPlanner("k", fake(() => ({ stop_reason: "max_tokens", parsed_output: null })).client).plan(input)).reason?.code).toBe("truncated");
+    expect((await createPlanner("k", fake(() => ({ stop_reason: "refusal", parsed_output: null })).client).plan(input)).reason?.code).toBe("refused");
+    expect((await createPlanner("k", fake(() => ({ stop_reason: "end_turn", parsed_output: null })).client).plan(input)).reason?.code).toBe("bad_output");
+  });
+
+  it("без ключа: причина no_key, статус не настроен; ключ очищается от кавычек и пробелов", async () => {
+    const p = createPlanner("");
+    expect(p.status().configured).toBe(false);
+    expect((await p.plan(input)).reason?.code).toBe("no_key");
+    expect(cleanKey(' "sk-ant-abc"\n')).toBe("sk-ant-abc");
+    expect(createPlanner("  ").status().configured).toBe(false);
   });
 });
 
