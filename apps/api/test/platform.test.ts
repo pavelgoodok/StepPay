@@ -152,5 +152,12 @@ describe("контракт сделки в API", () => {
     const d = (await call("anna", "GET", `/deals/${id}`)).body;
     expect(d.contractCheck.ok).toBe(true);
     expect(d.terms.stages[0].title).toBe("Плитка");
+    // журнал: фиксация условий записана, цепочка цела
+    expect(d.journalCheck).toMatchObject({ ok: true, count: 2 });
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    const j = (await call("anna", "GET", `/deals/${id}/journal`)).body;
+    expect(j.entries.map((e: { type: string }) => e.type)).toEqual(["created", "terms_sealed", "reserved"]);
+    expect(j.entries[1].data.contract).toBe(c.contract.hash);
+    expect(j.check).toMatchObject({ ok: true, count: 3, contractMatches: true });
   });
 });

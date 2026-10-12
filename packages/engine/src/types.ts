@@ -39,6 +39,19 @@ export interface DisputeMessage {
   at: number;
 }
 
+export interface JournalEntry {
+  n: number;
+  at: number;
+  type: string;
+  /** пользователь или «system» */
+  by: string;
+  stageId?: string;
+  data?: Record<string, unknown>;
+  /** хеш предыдущей записи (у первой: хеш начала журнала сделки) */
+  prev: string;
+  hash: string;
+}
+
 export interface Deal {
   id: string;
   mode: Mode;
@@ -59,6 +72,8 @@ export interface Deal {
   feeBps: number;
   createdAt: number;
   /** связи с платформой: услуга, проект, описание задачи. Движок их не использует */
+  /** журнал событий с цепочкой хешей */
+  journal?: JournalEntry[];
   /** зафиксированный контракт: хеш условий на момент, когда они стали окончательными */
   contract?: { v: number; hash: string; sealedAt: number };
   meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string };

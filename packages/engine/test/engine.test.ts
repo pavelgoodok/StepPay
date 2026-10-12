@@ -28,6 +28,9 @@ import {
   contractTerms,
   sha256Hex,
   verifyContract,
+  verifyJournal,
+  verifyEntries,
+  genesisHash,
 } from "../src";
 
 const R = 100; // рубль в копейках
@@ -325,11 +328,11 @@ describe("согласование условий (услуги)", () => {
     s = proposeDeal(s, "t1", "ivan", T0);
     expect(s.deals.t1!.status).toBe("funding");
     expect(() => updateTerms(s, "t1", "ivan", { title: "Поздно" })).toThrow(/верните сделку на согласование/);
-    const back = reopenDeal(s, "t1", "ivan"); // заказчик попросил поправить в чате
+    const back = reopenDeal(s, "t1", "ivan", T0); // заказчик попросил поправить в чате
     expect(back.deals.t1!.status).toBe("draft");
     s = fund(s, "t1", "anna", 100_000 * R, T0);
     expect(s.deals.t1!.status).toBe("active");
-    expect(() => reopenDeal(s, "t1", "ivan")).toThrow(EngineError);
+    expect(() => reopenDeal(s, "t1", "ivan", T0)).toThrow(EngineError);
     expect(totalMoney(s)).toBe(toppedUp(s));
   });
 
@@ -416,7 +419,7 @@ describe("контракт сделки", () => {
     s = proposeDeal(s, "d1", "ivan", T0 + 5);
     expect(s.deals.d1!.contract).toMatchObject({ sealedAt: T0 + 5 });
     const first = s.deals.d1!.contract!.hash;
-    s = reopenDeal(s, "d1", "ivan");
+    s = reopenDeal(s, "d1", "ivan", T0 + 6);
     expect(s.deals.d1!.contract).toBeUndefined();
     s = updateTerms(s, "d1", "ivan", { stages: [{ title: "Работа", amount: 90 * R }] });
     s = proposeDeal(s, "d1", "ivan", T0 + 9);
@@ -429,5 +432,81 @@ describe("контракт сделки", () => {
     delete legacy.deals.c1!.contract;
     const s = fund(legacy, "c1", "anna", 100_000 * R, T0 + 7);
     expect(s.deals.c1!.contract).toMatchObject({ sealedAt: T0 + 7, hash: s0.deals.c1!.contract!.hash });
+  });
+});
+
+describe("журнал сделки", () => {
+  const full = () => {
+    let s = createState();
+    s = topUp(s, "anna", 100_000 * R, T0);
+    s = createDeal(s, { id: "j1", mode: "own", title: "Ремонт", executorId: "ivan", ownerId: "anna", arbiterId: "expert", stages: [{ title: "Плитка", amount: 60_000 * R }, { title: "Сантехника", amount: 40_000 * R }], at: T0 });
+    s = fund(s, "j1", "anna", 100_000 * R, T0 + 1);
+    s = submitStage(s, "j1", "s1", "ivan", { note: "готово" }, T0 + 2);
+    s = approveStage(s, "j1", "s1", "anna", T0 + 3);
+    return s;
+  };
+
+  it("события пишутся по порядку и образуют цепочку хешей", () => {
+    const d = full().deals.j1!;
+    expect(d.journal!.map((e) => e.type)).toEqual(["created", "reserved", "stage_submitted", "payout", "stage_accepted"]);
+    expect(d.journal![0]!.prev).toBe(genesisHash("j1"));
+    expect(d.journal![1]!.prev).toBe(d.journal![0]!.hash);
+    expect(d.journal![0]!.data!.contract).toBe(d.contract!.hash);
+    expect(d.journal![3]).toMatchObject({ by: "system", stageId: "s1", data: { amount: 60_000 * R } });
+    expect(verifyJournal(d)).toMatchObject({ ok: true, count: 5, contractMatches: true, head: d.journal![4]!.hash });
+  });
+
+  it("подмена, удаление и перестановка записей ломают цепочку", () => {
+    const d = full().deals.j1!;
+    const edit = (fn: (j: NonNullable<typeof d.journal>) => void) => {
+      const c = structuredClone(d);
+      fn(c.journal!);
+      return verifyEntries("j1", c.journal!);
+    };
+    expect(edit((j) => ((j[3]!.data as { amount: number }).amount = 1))).toMatchObject({ ok: false, brokenAt: 4 });
+    expect(edit((j) => j.splice(2, 1))).toMatchObject({ ok: false, brokenAt: 3 });
+    expect(edit((j) => ([j[1], j[2]] = [j[2]!, j[1]!]))).toMatchObject({ ok: false, brokenAt: 2 });
+    expect(edit((j) => j.pop())).toMatchObject({ ok: true }); // обрезанный хвост виден по head и числу записей
+    expect(verifyEntries("другая", d.journal!)).toMatchObject({ ok: false, brokenAt: 1 }); // журнал нельзя перенести в другую сделку
+  });
+
+  it("нарушенный журнал останавливает выплату и резерв, но не возврат", () => {
+    let s = full();
+    s = submitStage(s, "j1", "s2", "ivan", {}, T0 + 4);
+    const bad = structuredClone(s);
+    bad.deals.j1!.journal![1]!.data!.amount = 5;
+    expect(() => approveStage(bad, "j1", "s2", "anna", T0 + 5)).toThrow(/Журнал сделки нарушен/);
+    expect(verifyJournal(bad.deals.j1!)).toMatchObject({ ok: false, brokenAt: 2 });
+    const fine = resolveDispute(rejectStage(s, "j1", "s2", "anna", "плохо", T0 + 5), "j1", "s2", "expert", "refund", T0 + 6);
+    expect(fine.deals.j1!.status).toBe("cancelled");
+    expect(fine.deals.j1!.journal!.map((e) => e.type)).toContain("refund");
+    expect(verifyJournal(fine.deals.j1!).ok).toBe(true);
+  });
+
+  it("фиксация условий и разбор спора попадают в журнал; хеш контракта сверяется", () => {
+    let s = createDeal(topUp(createState(), "anna", 100 * R, T0), { id: "j2", mode: "own", title: "Задача", executorId: "ivan", ownerId: "anna", arbiterId: "expert", status: "draft", stages: [], at: T0 });
+    s = proposeDeal(updateTerms(s, "j2", "ivan", { stages: [{ title: "Работа", amount: 100 * R }] }), "j2", "ivan", T0 + 1);
+    s = fund(s, "j2", "anna", 100 * R, T0 + 2);
+    s = submitStage(s, "j2", "s1", "ivan", {}, T0 + 3);
+    s = openDispute(s, "j2", "s1", "anna", "не готово", T0 + 4);
+    s = replyDispute(s, "j2", "s1", "ivan", "готово", [], T0 + 5);
+    s = resolveDispute(s, "j2", "s1", "expert", "pay", T0 + 6, "работа выполнена");
+    const d = s.deals.j2!;
+    expect(d.journal!.map((e) => e.type)).toEqual(["created", "terms_sealed", "reserved", "stage_submitted", "dispute_opened", "dispute_reply", "payout", "stage_accepted", "completed"]);
+    expect(d.journal![7]).toMatchObject({ by: "expert", data: { closedBy: "arbiter", comment: "работа выполнена" } });
+    expect(verifyJournal(d).ok).toBe(true);
+    const tampered = structuredClone(d);
+    tampered.contract!.hash = "0".repeat(64);
+    expect(verifyJournal(tampered)).toMatchObject({ ok: false, contractMatches: false });
+  });
+
+  it("сделка без журнала (созданная раньше) начинает журнал с первого события", () => {
+    const base = full();
+    const legacy = structuredClone(base);
+    delete legacy.deals.j1!.journal;
+    expect(verifyJournal(legacy.deals.j1!)).toMatchObject({ ok: true, count: 0 });
+    const s = submitStage(legacy, "j1", "s2", "ivan", {}, T0 + 9);
+    expect(s.deals.j1!.journal!.map((e) => e.type)).toEqual(["stage_submitted"]);
+    expect(verifyJournal(s.deals.j1!).ok).toBe(true);
   });
 });

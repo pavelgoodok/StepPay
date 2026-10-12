@@ -354,3 +354,5 @@ select.input { appearance: none; }
 .sendbtn { width: 52px; border-radius: 16px; background: var(--blue); color: #fff; display: grid; place-items: center; flex: none; }
 .sendbtn[disabled] { opacity: .45; }
 @media (min-width: 1024px) { .composer { bottom: 12px; } }
+.jlist { display: flex; flex-direction: column; gap: 8px; max-height: 38dvh; overflow-y: auto; }
+.jitem { background: var(--surface2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }

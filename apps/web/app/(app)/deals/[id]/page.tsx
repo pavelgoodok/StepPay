@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ContractCard } from "@/components/contract-card";
+import { JournalCard } from "@/components/journal-card";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { IMG, Icon, Money, MoneyInput, Sheet } from "@/components/ui";
@@ -112,6 +113,7 @@ export default function DealPage() {
         <Link href={`/chats/${d.meta.chatId}`} className="btn soft"><Icon name="chat" size={18} /> Чат по задаче</Link>
       )}
       {!draft && <ContractCard d={d} />}
+      {!draft && <JournalCard d={d} />}
       {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 
       {draft && isExec && (() => {

@@ -22,7 +22,7 @@ import {
   topUp,
   voteStage,
   type Deal,
-  type State, canonicalJson, contractTerms, sealContract, verifyContract } from "@steppay/engine";
+  type State, canonicalJson, contractTerms, sealContract, verifyContract, verifyJournal } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
@@ -272,7 +272,15 @@ export async function buildApp(opts: AppOptions) {
       for (const u of Object.keys(st.votes)) ids.add(u);
       for (const m of st.messages ?? []) ids.add(m.by);
     }
-    return { ...d, summary: sum(d), contractCheck: verifyContract(d), terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+    return { ...d, summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+  });
+
+  /** Журнал для разбора спора: события, хеши цепочки и результат проверки. Файл самодостаточен: условия и хеш контракта внутри. */
+  app.get("/deals/:id/journal", async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const d = state.deals[id];
+    if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
+    return { dealId: d.id, title: d.title, contract: d.contract ?? null, check: verifyJournal(d), entries: d.journal ?? [] };
   });
 
   /** Контракт для разбора и независимой проверки: условия, каноническая запись и хеш. SHA-256 канонической записи должен совпасть с hash. */
@@ -380,7 +388,7 @@ export async function buildApp(opts: AppOptions) {
     "terms",
   );
   act("/deals/:id/propose", none, (s, p, me) => proposeDeal(s, p.id, me, now()), "propose");
-  act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me), "reopen");
+  act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me, now()), "reopen");
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(
     "/deals/:id/stages/:stageId/submit",

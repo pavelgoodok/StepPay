@@ -10,6 +10,7 @@ import {
   type UserId,
 } from "./types";
 import { sealContract, verifyContract } from "./contract";
+import { record, verifyJournal } from "./journal";
 
 export class EngineError extends Error {}
 
@@ -139,7 +140,9 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     createdAt: input.at,
     meta: input.meta,
   };
-  if (input.status !== "draft") sealContract(s.deals[input.id]!, input.at);
+  const nd = s.deals[input.id]!;
+  if (input.status !== "draft") sealContract(nd, input.at);
+  record(nd, input.at, "created", "system", { mode: nd.mode, target: nd.target, status: nd.status, contract: nd.contract?.hash });
 });
 
 function toStages(items: NonNullable<CreateDealInput["stages"]>): Stage[] {
@@ -174,16 +177,18 @@ export const proposeDeal = mutate((s, dealId: string, userId: UserId, at: number
   if (d.stages.length === 0 || d.target <= 0) fail("Сначала добавьте этапы");
   d.status = "funding";
   sealContract(d, at);
+  record(d, at, "terms_sealed", userId, { target: d.target, stages: d.stages.length, contract: d.contract!.hash });
 });
 
 /** Вернуть условия на правку, пока заказчик ничего не зарезервировал. */
-export const reopenDeal = mutate((s, dealId: string, userId: UserId) => {
+export const reopenDeal = mutate((s, dealId: string, userId: UserId, at: number) => {
   const d = getDeal(s, dealId);
   if (d.status !== "funding" || d.mode !== "own") fail("Вернуть на согласование нельзя");
   if (userId !== d.executorId) fail("Вернуть условия может исполнитель");
   if (totalReserved(d) > 0) fail("Заказчик уже зарезервировал деньги");
   d.status = "draft";
   delete d.contract;
+  record(d, at, "terms_reopened", userId);
 });
 
 function totalReserved(d: Deal): Money {
@@ -198,6 +203,7 @@ function totalContributed(d: Deal): Money {
 function assertContract(d: Deal, at: number) {
   if (!d.contract) return sealContract(d, at);
   if (!verifyContract(d).ok) fail("Условия сделки изменены после фиксации, операция остановлена");
+  if (!verifyJournal(d).ok) fail("Журнал сделки нарушен, операция остановлена");
 }
 
 function activate(d: Deal) {
@@ -227,6 +233,7 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
   d.reserves[userId] = (d.reserves[userId] ?? 0) + amount;
   d.contributed[userId] = (d.contributed[userId] ?? 0) + amount;
   log(s, at, "reserve", userId, amount, { dealId });
+  record(d, at, "reserved", userId, { amount });
 
   if (totalReserved(d) === d.target) activate(d);
 });
@@ -244,6 +251,7 @@ function payout(s: State, d: Deal, stage: Stage, at: number) {
   const fee = Math.floor((stage.amount * d.feeBps) / 10000);
   s.wallets[d.executorId] = (s.wallets[d.executorId] ?? 0) + stage.amount - fee;
   log(s, at, "payout", d.executorId, stage.amount - fee, { dealId: d.id, stageId: stage.id });
+  record(d, at, "payout", "system", { amount: stage.amount - fee, fee }, stage.id);
   if (fee > 0) {
     s.wallets[PLATFORM_ID] = (s.wallets[PLATFORM_ID] ?? 0) + fee;
     log(s, at, "fee", PLATFORM_ID, fee, { dealId: d.id, stageId: stage.id });
@@ -257,28 +265,32 @@ function refundAll(s: State, d: Deal, at: number, note: string) {
     s.wallets[uid] = (s.wallets[uid] ?? 0) + left;
     d.reserves[uid] = 0;
     log(s, at, "refund", uid, left, { dealId: d.id, note });
+    record(d, at, "refund", "system", { to: uid, amount: left, note });
   }
 }
 
 type ClosedBy = NonNullable<Stage["resolution"]>["by"];
 
-function acceptStage(s: State, d: Deal, stage: Stage, at: number, by: ClosedBy, comment?: string) {
+function acceptStage(s: State, d: Deal, stage: Stage, at: number, by: ClosedBy, comment?: string, actor = "system") {
   assertContract(d, at);
   payout(s, d, stage, at);
   stage.status = "accepted";
   stage.resolution = { by, decision: "accepted", comment, at };
+  record(d, at, "stage_accepted", actor, { closedBy: by, comment }, stage.id);
   const next = d.stages.find((x) => x.status === "pending");
   if (next) next.status = "active";
   else {
     d.status = "completed";
+    record(d, at, "completed", "system");
     refundAll(s, d, at, "Остаток после завершения"); // страховка от округлений: обычно 0
   }
 }
 
-function failDeal(s: State, d: Deal, stage: Stage, at: number, note: string, by: ClosedBy, comment?: string) {
+function failDeal(s: State, d: Deal, stage: Stage, at: number, note: string, by: ClosedBy, comment?: string, actor = "system") {
   stage.status = "failed";
   stage.resolution = { by, decision: "failed", comment, at };
   d.status = "cancelled";
+  record(d, at, "stage_failed", actor, { closedBy: by, comment }, stage.id);
   refundAll(s, d, at, note);
 }
 
@@ -301,6 +313,7 @@ export const submitStage = mutate(
     st.submittedAt = at;
     st.evidence = evidence;
     st.votes = {};
+    record(d, at, "stage_submitted", userId, { note: evidence.note, photos: evidence.photos?.length ? evidence.photos : undefined }, st.id);
   },
 );
 
@@ -311,7 +324,7 @@ export const approveStage = mutate((s, dealId: string, stageId: string, userId: 
   if (d.mode === "crowdfunding") fail("В краудфандинге этап принимают голосованием");
   if (userId !== d.ownerId) fail("Принять этап может только заказчик");
   if (st.status !== "submitted") fail("Этап не ожидает приемки");
-  acceptStage(s, d, st, at, "owner");
+  acceptStage(s, d, st, at, "owner", undefined, userId);
 });
 
 /**
@@ -328,11 +341,12 @@ export const rejectStage = mutate(
     if (!reason.trim()) fail("Отказ возможен только с причиной");
     if (d.mode === "grant") {
       st.disputeReason = reason;
-      failDeal(s, d, st, at, "Этап не принят грантодателем", "owner", reason);
+      failDeal(s, d, st, at, "Этап не принят грантодателем", "owner", reason, userId);
     } else {
       st.status = "disputed";
       st.disputeReason = reason;
       st.messages = [{ by: userId, text: reason, at }];
+      record(d, at, "stage_rejected", userId, { reason }, st.id);
     }
   },
 );
@@ -353,13 +367,14 @@ export const voteStage = mutate(
     if (st.status !== "submitted") fail("Этап не ожидает приемки");
     if ((d.contributed[userId] ?? 0) <= 0) fail("Голосовать могут только спонсоры");
     st.votes[userId] = vote;
+    record(d, at, "vote", userId, { vote }, st.id);
     const total = totalContributed(d);
     const weight = (v: "accept" | "reject") =>
       Object.entries(st.votes)
         .filter(([, x]) => x === v)
         .reduce((a, [uid]) => a + (d.contributed[uid] ?? 0), 0);
-    if (weight("accept") * 2 > total) acceptStage(s, d, st, at, "votes");
-    else if (weight("reject") * 2 >= total) failDeal(s, d, st, at, "Спонсоры не приняли этап", "votes");
+    if (weight("accept") * 2 > total) acceptStage(s, d, st, at, "votes", undefined, userId);
+    else if (weight("reject") * 2 >= total) failDeal(s, d, st, at, "Спонсоры не приняли этап", "votes", undefined, userId);
   },
 );
 
@@ -375,6 +390,7 @@ export const openDispute = mutate(
     st.status = "disputed";
     st.disputeReason = reason;
     st.messages = [{ by: userId, text: reason, at }];
+    record(d, at, "dispute_opened", userId, { reason }, st.id);
   },
 );
 
@@ -387,6 +403,7 @@ export const replyDispute = mutate(
     if (userId !== d.ownerId && userId !== d.executorId && userId !== d.arbiterId) fail("Нет доступа к спору");
     if (!text.trim() && photos.length === 0) fail("Напишите сообщение или приложите фото");
     (st.messages ??= []).push({ by: userId, text: text.trim(), photos: photos.length ? photos : undefined, at });
+    record(d, at, "dispute_reply", userId, { text: text.trim() || undefined, photos: photos.length ? photos : undefined }, st.id);
   },
 );
 
@@ -406,8 +423,8 @@ export const resolveDispute = mutate(
     if (!d.arbiterId || userId !== d.arbiterId) fail("Решить спор может только приемщик");
     if (st.status !== "disputed") fail("Этап не в споре");
     const note = comment?.trim() || undefined;
-    if (decision === "pay") acceptStage(s, d, st, at, "arbiter", note);
-    else failDeal(s, d, st, at, "Спор решен в пользу заказчика", "arbiter", note);
+    if (decision === "pay") acceptStage(s, d, st, at, "arbiter", note, userId);
+    else failDeal(s, d, st, at, "Спор решен в пользу заказчика", "arbiter", note, userId);
   },
 );
 
@@ -418,6 +435,7 @@ export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number)
   if (d.status === "draft") {
     if (userId !== d.executorId && userId !== d.ownerId) fail("Нет доступа к сделке");
     d.status = "cancelled";
+    record(d, at, "cancelled", userId);
     return;
   }
   if (d.mode !== "crowdfunding" && userId !== d.ownerId) fail("Отменить может только заказчик");
@@ -425,6 +443,7 @@ export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number)
   if (d.stages.some((x) => x.status === "submitted" || x.status === "disputed"))
     fail("Сначала закройте этап на приемке или в споре");
   d.status = "cancelled";
+  record(d, at, "cancelled", userId);
   refundAll(s, d, at, "Сделка отменена");
 });
 
