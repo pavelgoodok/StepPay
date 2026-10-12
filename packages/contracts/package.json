@@ -8,7 +8,8 @@
     "test:invariants": "hardhat test test/invariants.test.js",
     "test:all": "hardhat test",
     "chain:local": "hardhat run scripts/testnet-deal.js",
-    "chain:sepolia": "hardhat run scripts/testnet-deal.js --network sepolia"
+    "chain:sepolia": "hardhat run scripts/testnet-deal.js --network sepolia",
+    "test:differential": "hardhat test test/differential.test.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
@@ -17,6 +18,7 @@
     "hardhat": "^2.26.0",
     "solc": "0.8.28",
     "tsx": "^4.19.0",
-    "@steppay/engine": "workspace:*"
+    "@steppay/engine": "workspace:*",
+    "fast-check": "^3.23.0"
   }
 }
