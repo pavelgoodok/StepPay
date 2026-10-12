@@ -9,6 +9,7 @@ import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
+import { deviceKeysAvailable, ensureDeviceKey, signContractOnDevice } from "@/lib/keys";
 import { rub, timeLeft, toKopecks } from "@/lib/format";
 import { MODE_LABEL, STAGE_LABEL, dealChip } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
@@ -59,23 +60,48 @@ export default function DealPage() {
     (draft ? isExec || isOwner : crowd ? isExec : isOwner) &&
     !d.stages.some((s) => s.status === "submitted" || s.status === "disputed");
 
-  async function run(path: string, body: unknown = {}, ok?: string): Promise<boolean> {
+  async function run(path: string, body: unknown = {}, ok?: string): Promise<{ deal: DealFull } | null> {
     setBusy(true);
     try {
-      await api(`/deals/${id}${path}`, { method: "POST", body });
+      const out = await api<{ deal: DealFull }>(`/deals/${id}${path}`, { method: "POST", body });
       if (ok) toast(ok);
       setAsk(null);
       setText("");
       setPhotos([]);
       setAmount("");
       await Promise.all([reload(), refresh()]);
-      return true;
+      return out;
     } catch (e) {
       toast((e as Error).message, "err");
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Ключ этого устройства создается заранее, чтобы контракт подписывал сам пользователь, а не сервер. */
+  async function prepareKey() {
+    if (!deviceKeysAvailable()) return;
+    try {
+      await ensureDeviceKey(me);
+    } catch {
+      /* без ключа сервер подпишет демо-подписью, если это разрешено */
+    }
+  }
+  /** Подпись контракта ключом устройства (или серверная демо-подпись, если ключи в браузере недоступны). */
+  async function signNow(hash: string, okText?: string) {
+    if (!deviceKeysAvailable()) return run("/sign", {}, okText);
+    setBusy(true);
+    let proof;
+    try {
+      proof = await signContractOnDevice(me, id, hash);
+    } catch (e) {
+      toast((e as Error).message || "Не удалось подписать на этом устройстве", "err");
+      setBusy(false);
+      return null;
+    }
+    setBusy(false);
+    return run("/sign", { proof }, okText);
   }
 
   const sg = d.signatureStatus;
@@ -136,7 +162,12 @@ export default function DealPage() {
             <StageEditor rows={cur} onChange={setRows} mode="own" seedText={[d.title, d.meta?.description].filter(Boolean).join(". ")} />
             <div className="btns">
               <button className="btn soft" disabled={busy || !ready} onClick={() => run("/terms", { stages: rowsToStages(cur) }, "Сохранено")}>Сохранить</button>
-              <button className="btn" disabled={busy || !ready} onClick={async () => { if (await run("/terms", { stages: rowsToStages(cur) })) await run("/propose", {}, `Условия на ${rub(toKopecks(rowsTotal(cur)))} отправлены заказчику`); }}>Отправить</button>
+              <button className="btn" disabled={busy || !ready} onClick={async () => {
+                if (!(await run("/terms", { stages: rowsToStages(cur) }))) return;
+                await prepareKey();
+                const r = await run("/propose", {}, `Условия на ${rub(toKopecks(rowsTotal(cur)))} отправлены заказчику`);
+                if (r?.deal.contract && !r.deal.signatures?.[me]) await signNow(r.deal.contract.hash, "Контракт подписан");
+              }}>Отправить</button>
             </div>
           </div>
         );
@@ -152,7 +183,7 @@ export default function DealPage() {
         <div className="card stack">
           <div className="title">Подпишите контракт</div>
           <div className="small muted">{fullyReserved ? "Деньги зарезервированы. Работа начнется, когда контракт подпишут все стороны." : "Подпись нужна до начала работы. Условия зафиксированы хешем, их уже нельзя изменить."}</div>
-          <button className="btn" disabled={busy} onClick={() => run("/sign", {}, "Контракт подписан")}>Подписать контракт</button>
+          <button className="btn" disabled={busy} onClick={() => signNow(d.contract!.hash, "Контракт подписан")}>Подписать контракт</button>
         </div>
       )}
       {d.status === "funding" && fullyReserved && !needsMySign && unsigned.length > 0 && (
@@ -186,7 +217,13 @@ export default function DealPage() {
             <>
               <div className="title">Зарезервируйте {rub(d.target)}</div>
               <div className="small muted">Деньги замораживаются в кошельке и уходят исполнителю только за принятые этапы.</div>
-              <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={() => run("/fund", {}, "Резерв создан")}>
+              <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={async () => {
+                if (needsMySign) {
+                  await prepareKey();
+                  if (!(await signNow(d.contract!.hash))) return;
+                }
+                await run("/fund", {}, "Резерв создан");
+              }}>
                 <Icon name="lock" size={18} /> {needsMySign ? "Подписать и зарезервировать" : "Зарезервировать"}
               </button>
               {(wallet?.free ?? 0) < d.target && <div className="note warn">Не хватает {rub(d.target - (wallet?.free ?? 0))}. Пополните кошелек на вкладке «Кошелек».</div>}

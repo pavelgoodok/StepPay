@@ -6,6 +6,7 @@ import { Ava, Icon, Initials, Sheet, Switch } from "@/components/ui";
 import { CropSheet } from "@/components/cropper";
 import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
 import { PROJECT_STATUS } from "@/lib/labels";
+import { createDeviceKey, deviceKeysAvailable, forgetStoredKey, getStoredKey } from "@/lib/keys";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
@@ -17,6 +18,8 @@ export default function Profile() {
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
   const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
   const [cropFile, setCropFile] = useState<File | null>(null);
+  const keys = usePoll(() => api<{ id: string; label: string; createdAt: number; active: boolean }[]>("/me/keys"), [user?.id]);
+  const [localKey, setLocalKey] = useState<string | null>(null);
   const [dark, setDark] = useState(false);
   const [notif, setNotif] = useState(false);
   const [edit, setEdit] = useState(false);
@@ -24,6 +27,10 @@ export default function Profile() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (user && deviceKeysAvailable()) void getStoredKey(user.id).then((k) => setLocalKey(k?.id ?? null)).catch(() => setLocalKey(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, keys.data]);
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
     if (typeof Notification !== "undefined") setNotif(Notification.permission === "granted");
@@ -59,6 +66,29 @@ export default function Profile() {
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function newKey() {
+    setBusy(true);
+    try {
+      await createDeviceKey(user!.id);
+      await keys.reload();
+      toast("Ключ подписи создан на этом устройстве");
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function revokeKey(id: string) {
+    if (!confirm("Отозвать ключ? Новые контракты им подписать будет нельзя, прежние подписи остаются в силе.")) return;
+    try {
+      await api(`/me/keys/${id}/revoke`, { method: "POST", body: {} });
+      if (user && localKey === id) await forgetStoredKey(user.id);
+      await keys.reload();
+    } catch (e) {
+      toast((e as Error).message, "err");
     }
   }
 
@@ -137,6 +167,27 @@ export default function Profile() {
           )}
         </div>
       )}
+
+      <div className="card stack">
+        <div className="title">Подпись контрактов</div>
+        <div className="sub">Контракт подписывается ключом, который создается на этом устройстве. Закрытый ключ из браузера не выгружается, на сервер уходит только открытая часть.</div>
+        {!deviceKeysAvailable() ? (
+          <div className="note warn" style={{ marginTop: 0 }}>Браузер не поддерживает ключи подписи. Откройте приложение в современном браузере по защищенному адресу.</div>
+        ) : (
+          <>
+            {(keys.data ?? []).map((k) => (
+              <div key={k.id} className="row between">
+                <div style={{ minWidth: 0 }}>
+                  <div className="ellipsis"><b>{k.label}</b>{localKey === k.id ? " · это устройство" : ""}</div>
+                  <div className="small muted mono">{k.id}{k.active ? "" : " · отозван"}</div>
+                </div>
+                {k.active && <button className="btn ghost sm" onClick={() => void revokeKey(k.id)}>Отозвать</button>}
+              </div>
+            ))}
+            {!localKey && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
+          </>
+        )}
+      </div>
 
       <div className="card" style={{ padding: "6px 18px" }}>
         <Link href="/receipts" className="setrow">

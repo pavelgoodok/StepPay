@@ -3,6 +3,7 @@ import { useState } from "react";
 import { contractHash, type ContractTerms } from "@steppay/engine";
 import type { DealFull } from "@/lib/api";
 import { dayLabel, rub } from "@/lib/format";
+import { verifyProofLocally } from "@/lib/keys";
 import { Icon, Sheet } from "./ui";
 
 const DAY = 86_400_000;
@@ -18,12 +19,22 @@ function rules(t: ContractTerms) {
 export function ContractCard({ d }: { d: DealFull }) {
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<"ok" | "bad" | null>(null);
+  const [sigs, setSigs] = useState<string | null>(null);
   if (!d.contract) return null;
   const ok = d.contractCheck.ok;
   const short = `${d.contract.hash.slice(0, 8)}…${d.contract.hash.slice(-6)}`;
 
   function verify() {
     setLocal(contractHash(d.terms) === d.contract!.hash ? "ok" : "bad");
+  }
+  async function verifySignatures() {
+    const proofs = Object.entries(d.signatures ?? {}).filter(([, v]) => v.proof);
+    const server = Object.keys(d.signatures ?? {}).length - proofs.length;
+    let ok = 0;
+    for (const [u, v] of proofs) if (await verifyProofLocally(v.proof!, { dealId: d.id, contract: v.hash, userId: u })) ok++;
+    if (proofs.length === 0) setSigs("Подписей ключами устройств пока нет");
+    else if (ok === proofs.length) setSigs(`Подписи ключами проверены на этом устройстве: ${ok}${server ? `. Серверных демо-подписей: ${server}, они здесь не проверяются` : ""}`);
+    else setSigs("Одна из подписей не прошла проверку");
   }
   function download() {
     const blob = new Blob([JSON.stringify({ dealId: d.id, hash: d.contract!.hash, sealedAt: d.contract!.sealedAt, terms: d.terms }, null, 2)], { type: "application/json" });
@@ -84,7 +95,15 @@ export function ContractCard({ d }: { d: DealFull }) {
                     </div>
                   );
                 })}
-                <div className="small muted" style={{ marginTop: 8 }}>Подпись серверная, демонстрационная. Юридически значимая подпись ключом на устройстве запланирована отдельным шагом.</div>
+                {d.signatureStatus.required.map((u) => {
+                  const sg = d.signatures?.[u];
+                  return sg && d.signatureStatus.signed.includes(u) ? (
+                    <div key={u} className="small muted" style={{ marginTop: 4 }}>{d.people[u]?.name}: {sg.proof ? `ключ устройства ${sg.proof.keyId}` : "демо-подпись сервера"}</div>
+                  ) : null;
+                })}
+                <div className="small muted" style={{ marginTop: 8 }}>Подпись ключом устройства создается на вашем телефоне, закрытый ключ не покидает его. Это не квалифицированная электронная подпись: юридическая сила требует удостоверяющего центра.</div>
+                {sigs && <div className="small" style={{ marginTop: 6 }}>{sigs}</div>}
+                <button className="btn ghost sm" style={{ paddingLeft: 0, marginTop: 4 }} onClick={() => void verifySignatures()}>Проверить подписи на этом устройстве</button>
               </div>
             )}
             <div className="note" style={{ marginTop: 0 }}>

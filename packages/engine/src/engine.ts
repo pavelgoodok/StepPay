@@ -2,6 +2,7 @@ import {
   DAY_MS,
   PLATFORM_ID,
   type ChainLink,
+  type SignatureProof,
   type Deal,
   type LedgerType,
   type Mode,
@@ -250,7 +251,7 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
 });
 
 /** Подпись стороны под хешем контракта. Работа начинается, когда деньги зарезервированы и все подписи на месте. */
-export const signContract = mutate((s, dealId: string, userId: UserId, at: number, sig: string) => {
+export const signContract = mutate((s, dealId: string, userId: UserId, at: number, sig: string, proof?: SignatureProof) => {
   const d = getDeal(s, dealId);
   if (!d.signing) fail("Эта сделка подписывается без отдельной подписи");
   if (!d.contract) fail("Контракт еще не зафиксирован: исполнитель не отправил условия");
@@ -258,8 +259,8 @@ export const signContract = mutate((s, dealId: string, userId: UserId, at: numbe
   if (!verifyContract(d).ok) fail("Условия сделки изменены после фиксации, подпись невозможна");
   if (!(requiredSignersOf(d) ?? []).includes(userId)) fail("Вы не сторона этого контракта");
   if (d.signatures?.[userId]?.hash === d.contract.hash) fail("Вы уже подписали контракт");
-  (d.signatures ??= {})[userId] = { at, hash: d.contract.hash, sig };
-  record(d, at, "signed", userId, { contract: d.contract.hash });
+  (d.signatures ??= {})[userId] = { at, hash: d.contract.hash, sig, ...(proof ? { proof } : {}) };
+  record(d, at, "signed", userId, { contract: d.contract.hash, method: proof ? "device" : "server", ...(proof ? { keyId: proof.keyId } : {}) });
   if (totalReserved(d) === d.target && signaturesComplete(d)) {
     activate(d);
     record(d, at, "activated", "system");

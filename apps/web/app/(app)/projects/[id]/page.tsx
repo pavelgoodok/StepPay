@@ -5,6 +5,7 @@ import { useState } from "react";
 import { PhotoGrid } from "@/components/photos";
 import { Ava, Icon, SegBar } from "@/components/ui";
 import { api, docSrc, photoSrc, type ProjectFull } from "@/lib/api";
+import { deviceKeysAvailable, ensureDeviceKey } from "@/lib/keys";
 import { dayLabel, rub } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL, PROJECT_STATUS } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
@@ -45,6 +46,7 @@ export default function ProjectPage() {
   const fundGrant = () =>
     act(async () => {
       if (!confirm(`Профинансировать грант на ${rub(p.goal)}? Сумма будет зарезервирована сразу.`)) return;
+      if (deviceKeysAvailable()) await ensureDeviceKey(user!.id).catch(() => undefined);
       const r = await api<{ dealId: string }>(`/projects/${id}/grant`, { method: "POST", body: {} });
       await refresh();
       router.push(`/deals/${r.dealId}`);

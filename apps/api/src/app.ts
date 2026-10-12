@@ -28,6 +28,7 @@ import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
+import { MAX_KEYS, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
 import { DEMO_USERS } from "./users";
@@ -56,6 +57,8 @@ export interface AppOptions {
   otpDelivery?: OtpDelivery;
   /** телефоны администраторов платформы */
   adminPhones?: string[];
+  /** device: подписывать можно только ключом устройства; any (по умолчанию): без ключа допускается серверная демо-подпись */
+  signaturePolicy?: "device" | "any";
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -99,12 +102,16 @@ export async function buildApp(opts: AppOptions) {
   const signFor = (dealId: string, hash: string, userId: string) => createHmac("sha256", `${opts.secret}:sign`).update(`${dealId}:${hash}:${userId}`).digest("hex");
   const signatureValid = (d: Deal, userId: string) => {
     const sg = d.signatures?.[userId];
-    return !!sg && !!d.contract && sg.hash === d.contract.hash && sg.sig === signFor(d.id, sg.hash, userId);
+    if (!sg || !d.contract || sg.hash !== d.contract.hash) return false;
+    if (sg.proof) return checkSignProof(sg.proof, { dealId: d.id, contract: sg.hash, userId }) === null;
+    return sg.sig === signFor(d.id, sg.hash, userId);
   };
   /** Подписывает за пользователя, если он сторона контракта и еще не подписал. */
   const signIfNeeded = (s: State, dealId: string, userId: string, at: number): State => {
     const d = s.deals[dealId];
     if (!d?.signing || !d.contract || d.status !== "funding") return s;
+    // у пользователя есть ключ или включена строгая политика: подписывает он сам, ключом устройства
+    if (opts.signaturePolicy === "device" || dir.hasActiveKey(userId)) return s;
     const st = signatureStatus(d);
     if (!st.required.includes(userId) || st.signed.includes(userId)) return s;
     return signContract(s, dealId, userId, at, signFor(dealId, d.contract.hash, userId));
@@ -433,7 +440,54 @@ export async function buildApp(opts: AppOptions) {
     "terms",
   );
   act("/deals/:id/propose", none, (s, p, me) => signIfNeeded(proposeDeal(s, p.id, me, now()), p.id, me, now()), "propose");
-  act("/deals/:id/sign", none, (s, p, me) => signContract(s, p.id, me, now(), signFor(p.id, s.deals[p.id]?.contract?.hash ?? "", me)), "sign");
+  act(
+    "/deals/:id/sign",
+    z.object({ proof: z.object({ keyId: z.string().max(40), message: z.string().max(600), signature: z.string().max(200) }).optional() }),
+    (s, p, me, b) => {
+      const d = s.deals[p.id];
+      if (!d?.contract) return signContract(s, p.id, me, now(), "", undefined); // движок вернет понятную ошибку
+      if (b.proof) {
+        const key = dir.activeKey(me, b.proof.keyId);
+        if (!key) throw new EngineError("Ключ не найден или отозван: создайте новый в профиле");
+        const proof = { alg: "ES256" as const, keyId: key.id, publicKey: key.publicKey, message: b.proof.message, signature: b.proof.signature };
+        const bad = checkSignProof(proof, { dealId: d.id, contract: d.contract.hash, userId: me }, now());
+        if (bad) throw new EngineError(bad);
+        return signContract(s, p.id, me, now(), `es256:${key.id}`, proof);
+      }
+      if (dir.hasActiveKey(me)) throw new EngineError("Подпишите контракт ключом устройства");
+      if (opts.signaturePolicy === "device") throw new EngineError("Создайте ключ подписи в профиле: серверная подпись отключена");
+      return signContract(s, p.id, me, now(), signFor(p.id, d.contract.hash, me));
+    },
+    "sign",
+  );
+
+  // ключи подписи на устройстве
+  app.get("/me/keys", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    return dir.keysOf(me).map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt, revokedAt: k.revokedAt, active: !k.revokedAt }));
+  });
+
+  app.post("/me/keys", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const b = z.object({ publicKey: z.string().max(400), label: z.string().trim().max(60).optional(), at: z.number(), signature: z.string().max(200) }).parse(req.body);
+    const bad = checkRegisterProof(me, b.publicKey, b.at, b.signature, now());
+    if (bad) return reply.code(400).send({ error: bad });
+    const id = keyIdOf(b.publicKey);
+    if (dir.keysOf(me).some((k) => k.id === id)) return reply.code(400).send({ error: "Этот ключ уже добавлен" });
+    if (dir.keysOf(me).filter((k) => !k.revokedAt).length >= MAX_KEYS) return reply.code(400).send({ error: `Не больше ${MAX_KEYS} активных ключей: отзовите ненужные` });
+    await dir.addKey(me, { id, publicKey: b.publicKey, label: b.label || "Это устройство", createdAt: now() });
+    return { id };
+  });
+
+  app.post("/me/keys/:id/revoke", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string().max(40) }).parse(req.params);
+    if (!(await dir.revokeKey(me, id, now()))) return reply.code(404).send({ error: "Ключ не найден" });
+    return { ok: true };
+  });
   act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me, now()), "reopen");
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(

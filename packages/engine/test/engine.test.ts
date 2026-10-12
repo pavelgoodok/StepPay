@@ -613,3 +613,17 @@ describe("привязка сделки к контракту в сети", () =
     expect(() => linkChain(b, "ch1", { ...link, chainId: 0 }, T0)).toThrow(EngineError);
   });
 });
+
+describe("подпись ключом устройства в движке", () => {
+  it("доказательство хранится вместе с подписью, метод попадает в журнал", () => {
+    let s = createDeal(topUp(createState(), "anna", 100 * R, T0), { id: "k1", mode: "own", title: "x", executorId: "ivan", ownerId: "anna", arbiterId: "expert", signed: true, stages: [{ title: "x", amount: 100 * R }], at: T0 });
+    const proof = { alg: "ES256" as const, keyId: "abcd", publicKey: "AAAA", message: "{}", signature: "BBBB" };
+    s = signContract(s, "k1", "ivan", T0 + 1, "es256:abcd", proof);
+    s = signContract(s, "k1", "anna", T0 + 2, "server-sig");
+    expect(s.deals.k1!.signatures!.ivan).toMatchObject({ sig: "es256:abcd", proof });
+    expect(s.deals.k1!.signatures!.anna!.proof).toBeUndefined();
+    const signed = s.deals.k1!.journal!.filter((e) => e.type === "signed");
+    expect(signed.map((e) => e.data)).toMatchObject([{ method: "device", keyId: "abcd" }, { method: "server" }]);
+    expect(verifyJournal(s.deals.k1!).ok).toBe(true);
+  });
+});

@@ -33,6 +33,8 @@ export interface AuthorProfile {
   email?: string;
 }
 
+import type { DeviceKey } from "./devicekeys";
+
 export interface RegisteredUser {
   id: string;
   phone: string;
@@ -40,6 +42,8 @@ export interface RegisteredUser {
   /** проверенный грантодатель: может финансировать проекты целиком */
   grantor?: boolean;
   author?: AuthorProfile;
+  /** ключи подписи на устройствах */
+  keys?: DeviceKey[];
   /** ссылка вида /uploads/... на аватарку */
   avatar?: string;
   createdAt: number;
@@ -83,6 +87,38 @@ export class Directory {
     const r = this.registered.get(id);
     if (!r) return undefined;
     return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor };
+  }
+
+  /** Ключи подписи. У демо-аккаунтов хранятся в памяти и пропадают при перезапуске. */
+  private demoKeys = new Map<string, DeviceKey[]>();
+
+  keysOf(id: string): DeviceKey[] {
+    return this.registered.get(id)?.keys ?? this.demoKeys.get(id) ?? [];
+  }
+
+  activeKey(id: string, keyId: string): DeviceKey | undefined {
+    return this.keysOf(id).find((k) => k.id === keyId && !k.revokedAt);
+  }
+
+  hasActiveKey(id: string): boolean {
+    return this.keysOf(id).some((k) => !k.revokedAt);
+  }
+
+  async addKey(id: string, key: DeviceKey) {
+    const r = this.registered.get(id);
+    if (r) {
+      r.keys = [...(r.keys ?? []), key];
+      await this.persist([...this.registered.values()]);
+    } else this.demoKeys.set(id, [...(this.demoKeys.get(id) ?? []), key]);
+  }
+
+  async revokeKey(id: string, keyId: string, at: number): Promise<boolean> {
+    const list = this.keysOf(id);
+    const k = list.find((x) => x.id === keyId && !x.revokedAt);
+    if (!k) return false;
+    k.revokedAt = at;
+    if (this.registered.has(id)) await this.persist([...this.registered.values()]);
+    return true;
   }
 
   isAdmin(id: string) {

@@ -52,6 +52,27 @@ export interface JournalEntry {
   hash: string;
 }
 
+/** Подпись ключом устройства: все, что нужно, чтобы проверить ее без сервера. */
+export interface SignatureProof {
+  alg: "ES256";
+  /** отпечаток открытого ключа */
+  keyId: string;
+  /** открытый ключ, SPKI в base64 */
+  publicKey: string;
+  /** подписанное сообщение целиком (JSON): сделка, хеш контракта, подписант, время */
+  message: string;
+  /** подпись ECDSA P-256 SHA-256, формат r||s, base64 */
+  signature: string;
+}
+
+export interface SignatureRecord {
+  at: number;
+  hash: string;
+  /** серверная подпись (демо) либо отпечаток ключа устройства */
+  sig: string;
+  proof?: SignatureProof;
+}
+
 /** Сделка, проведенная на контракте в сети: адреса и транзакции для проверки в обозревателе. */
 export interface ChainLink {
   network: string;
@@ -87,7 +108,7 @@ export interface Deal {
   /** контракт вступает в силу после подписей сторон (включается для сделок платформы) */
   signing?: boolean;
   /** подписи сторон под хешем контракта */
-  signatures?: Record<UserId, { at: number; hash: string; sig: string }>;
+  signatures?: Record<UserId, SignatureRecord>;
   /** прогон этой сделки на контракте в тестовой сети */
   chain?: ChainLink;
   /** журнал событий с цепочкой хешей */
