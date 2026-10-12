@@ -12,7 +12,8 @@ export type StageStatus =
   | "disputed" // спор, деньги заморожены
   | "failed"; // провален, остаток возвращен
 
-export type DealStatus = "funding" | "active" | "completed" | "cancelled";
+/** draft: исполнитель согласует условия, денег еще нет; funding: ждет резерва; дальше как раньше */
+export type DealStatus = "draft" | "funding" | "active" | "completed" | "cancelled";
 
 export interface Stage {
   id: string;
@@ -57,6 +58,8 @@ export interface Deal {
   autoAcceptMs: number;
   feeBps: number;
   createdAt: number;
+  /** связи с платформой: услуга, проект, описание задачи. Движок их не использует */
+  meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string };
 }
 
 export type LedgerType = "topup" | "reserve" | "payout" | "refund" | "fee";

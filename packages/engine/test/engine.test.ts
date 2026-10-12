@@ -10,6 +10,9 @@ import {
   fund,
   openDispute,
   replyDispute,
+  updateTerms,
+  proposeDeal,
+  reopenDeal,
   rejectStage,
   reservedBalance,
   resolveDispute,
@@ -291,3 +294,46 @@ describe("переписка по спору и причина закрытия"
     expect(() => replyDispute(s, "d1", "s1", "anna", "x", [], T0)).toThrow(/не в споре/);
   });
 });
+
+describe("согласование условий (услуги)", () => {
+  const draft = () => {
+    let s = createState();
+    s = topUp(s, "anna", 100_000 * R, T0);
+    return createDeal(s, { id: "t1", mode: "own", title: "Задача", executorId: "ivan", ownerId: "anna", status: "draft", meta: { serviceId: "svc1", chatId: "c1", description: "Описание" }, stages: [{ title: "Черновой этап", amount: 1 * R }], at: T0 });
+  };
+
+  it("в черновике деньги принимать нельзя, условия правит только исполнитель", () => {
+    let s = draft();
+    expect(s.deals.t1!.status).toBe("draft");
+    expect(() => fund(s, "t1", "anna", 1 * R, T0)).toThrow(/не отправил условия/);
+    expect(() => updateTerms(s, "t1", "anna", { title: "Мое" })).toThrow(EngineError);
+    s = updateTerms(s, "t1", "ivan", { title: "Ремонт ванной", description: "4 м2", stages: [{ title: "Плитка", amount: 70_000 * R }, { title: "Сантехника", amount: 30_000 * R }] });
+    expect(s.deals.t1).toMatchObject({ title: "Ремонт ванной", target: 100_000 * R, meta: { serviceId: "svc1", description: "4 м2" } });
+    expect(s.deals.t1!.stages.map((x) => x.id)).toEqual(["s1", "s2"]);
+    expect(() => updateTerms(s, "t1", "ivan", { stages: [{ title: "", amount: 5 }] })).toThrow(EngineError);
+  });
+
+  it("отправка условий открывает резерв; после резерва вернуть на правку нельзя", () => {
+    let s = updateTerms(draft(), "t1", "ivan", { stages: [{ title: "Плитка", amount: 100_000 * R }] });
+    expect(() => proposeDeal(s, "t1", "anna")).toThrow(EngineError);
+    s = proposeDeal(s, "t1", "ivan");
+    expect(s.deals.t1!.status).toBe("funding");
+    expect(() => updateTerms(s, "t1", "ivan", { title: "Поздно" })).toThrow(/верните сделку на согласование/);
+    const back = reopenDeal(s, "t1", "ivan"); // заказчик попросил поправить в чате
+    expect(back.deals.t1!.status).toBe("draft");
+    s = fund(s, "t1", "anna", 100_000 * R, T0);
+    expect(s.deals.t1!.status).toBe("active");
+    expect(() => reopenDeal(s, "t1", "ivan")).toThrow(EngineError);
+    expect(totalMoney(s)).toBe(toppedUp(s));
+  });
+
+  it("черновик можно отменить обеим сторонам, без движения денег; пустые условия не отправить", () => {
+    const d = draft();
+    expect(() => proposeDeal({ ...d, deals: { t1: { ...d.deals.t1!, stages: [], target: 0 } } }, "t1", "ivan")).toThrow(/добавьте этапы/);
+    expect(cancelDeal(d, "t1", "ivan", T0).deals.t1!.status).toBe("cancelled");
+    expect(cancelDeal(d, "t1", "anna", T0).deals.t1!.status).toBe("cancelled");
+    expect(() => cancelDeal(d, "t1", "stranger", T0)).toThrow(EngineError);
+    expect(() => createDeal(createState(), { id: "g", mode: "grant", title: "x", executorId: "a", ownerId: "b", status: "draft", stages: [{ title: "x", amount: 1 }], at: T0 })).toThrow(/только у личной/);
+  });
+});
+

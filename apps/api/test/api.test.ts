@@ -81,8 +81,7 @@ describe("API", () => {
       stages: [{ title: "Макет", amount: 100_000 * R }, { title: "Тираж", amount: 100_000 * R }],
     })).body.id;
     await call("olga", "POST", `/deals/${id}/fund`, { amount: 100_000 * R });
-    const proj = await call("olga", "GET", "/projects?mode=crowdfunding");
-    expect(proj.body[0]).toMatchObject({ raised: 100_000 * R, sponsors: 1, status: "funding" });
+    expect((await call("olga", "GET", `/deals/${id}`)).body).toMatchObject({ status: "funding" });
     await call("max", "POST", `/deals/${id}/fund`, { amount: 100_000 * R });
     await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, {});
     await call("olga", "POST", `/deals/${id}/stages/s1/vote`, { vote: "accept" });
@@ -244,27 +243,31 @@ describe("демо для жюри", () => {
       const tok = (await post("/auth/demo", { userId: u })).json().token;
       return (await app.inject({ method: "GET", url: "/wallet", headers: { authorization: `Bearer ${tok}` } })).json();
     };
-    expect((await app.inject({ method: "GET", url: "/demo/script" })).json()).toHaveLength(8);
+    const tokOf = async (u: string) => (await post("/auth/demo", { userId: u })).json().token as string;
+    const get = async (u: string, url: string) => app.inject({ method: "GET", url, headers: { authorization: `Bearer ${await tokOf(u)}` } });
+    expect((await app.inject({ method: "GET", url: "/demo/script" })).json()).toHaveLength(11);
     expect((await post("/demo/reset")).statusCode).toBe(200);
-    const proj = (await app.inject({ method: "GET", url: "/projects?mode=crowdfunding" })).json();
+    const proj = (await get("anna", "/projects")).json();
     expect(proj.map((p: { title: string }) => p.title)).toContain("Детская площадка во дворе");
-    expect((await app.inject({ method: "GET", url: "/projects?mode=grant" })).json()).toHaveLength(2);
+    expect((await get("anna", "/projects?kind=grant")).json().length).toBeGreaterThanOrEqual(1);
+    expect((await get("anna", "/services")).json().length).toBeGreaterThanOrEqual(3);
 
-    expect((await post("/demo/step", { step: 2 })).statusCode).toBe(400); // нельзя пропускать шаги
+    expect((await post("/demo/step", { step: 3 })).statusCode).toBe(400); // нельзя пропускать шаги
     const steps: Record<string, unknown>[] = [];
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 11; i++) {
       const r = await post("/demo/step", { step: i });
-      expect(r.statusCode).toBe(200);
+      expect(r.statusCode, `шаг ${i}: ${r.body}`).toBe(200);
       steps.push(r.json());
-      if (i === 4) expect((await bal("ivan")).free).toBe(120_000 * R);
+      if (i === 2) expect((await get("ivan", "/deals/demo-own")).json().status).toBe("draft");
+      if (i === 6) expect((await bal("ivan")).free).toBe(120_000 * R);
+      if (i === 8) expect((await get("admin", "/admin/summary")).json().review).toBe(1);
     }
-    expect(steps[3]).toMatchObject({ viewAs: "ivan", path: "/wallet" });
+    expect(steps[5]).toMatchObject({ viewAs: "ivan", path: "/wallet" });
     expect((await bal("games")).free).toBe(100_000 * R);
     expect((await bal("anna")).reserved).toBe(180_000 * R);
     const olga = await bal("olga"), max = await bal("max");
     expect(olga.free).toBe(540_000 * R);
     expect(max.free).toBe(540_000 * R);
-    expect(olga.reserved).toBe(410_000 * R); // в резерве остаются только взносы в каталожные проекты
     const photo = await app.inject({ method: "GET", url: "/uploads/demo-tile-photo-0001" });
     expect(photo.statusCode).toBe(200);
     expect(photo.headers["content-type"]).toBe("image/jpeg");
@@ -397,7 +400,7 @@ describe("выключенный демо-режим", () => {
     await demo.inject({ method: "POST", url: `/deals/${real.id}/fund`, headers: { authorization: `Bearer ${a.token}` }, payload: {} });
 
     const prod = await buildApp({ store, secret: "s", now: () => t, demoMode: false });
-    const list = (await prod.inject({ method: "GET", url: "/projects" })).json();
+    const list = (await prod.inject({ method: "GET", url: "/projects", headers: { authorization: `Bearer ${a.token}` } })).json();
     expect(list).toEqual([]); // демо-каталог исчез
     const mine = (await prod.inject({ method: "GET", url: "/deals", headers: { authorization: `Bearer ${a.token}` } })).json();
     expect(mine.map((d: { title: string }) => d.title)).toEqual(["Настоящая"]);

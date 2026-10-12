@@ -1,4 +1,4 @@
-export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter" | "user";
+export type Role = "customer" | "executor" | "sponsor" | "funder" | "arbiter" | "user" | "admin";
 
 export interface User {
   id: string;
@@ -19,13 +19,27 @@ export const DEMO_USERS: User[] = [
   { id: "tsj", name: "ТСЖ «Липки»", role: "executor", startBalance: 0 },
   { id: "fond", name: "Фонд «Развитие»", role: "funder", startBalance: 2_000_000 },
   { id: "expert", name: "Независимый приемщик", role: "arbiter", startBalance: 0 },
+  { id: "admin", name: "Администратор платформы", role: "admin", startBalance: 0 },
 ];
 
 /** Зарегистрированный пользователь: одна учетная запись на все роли, роль определяет сделка. */
+export type LegalStatus = "person" | "selfemployed" | "ip" | "org";
+
+/** Анкета автора проектов: заполняется один раз и проверяется при подаче проекта. */
+export interface AuthorProfile {
+  legalStatus: LegalStatus;
+  inn: string;
+  orgName?: string;
+  email?: string;
+}
+
 export interface RegisteredUser {
   id: string;
   phone: string;
   name: string;
+  /** проверенный грантодатель: может финансировать проекты целиком */
+  grantor?: boolean;
+  author?: AuthorProfile;
   /** ссылка вида /uploads/... на аватарку */
   avatar?: string;
   createdAt: number;
@@ -36,6 +50,7 @@ export interface PublicAccount {
   name: string;
   role: Role;
   avatar?: string;
+  grantor?: boolean;
 }
 
 /** Приводит российский номер к виду +79991234567; null, если это не номер. */
@@ -56,15 +71,53 @@ export class Directory {
     initial: RegisteredUser[] = [],
     /** при DEMO_MODE=off демо-аккаунты не входят и не ищутся, но приемщик споров нужен всегда */
     private demo = true,
+    /** телефоны администраторов (переменная ADMIN_PHONES) */
+    private adminPhones: string[] = [],
   ) {
     for (const r of initial) this.registered.set(r.id, r);
   }
 
   get(id: string): PublicAccount | undefined {
     const d = DEMO_USERS.find((x) => x.id === id);
-    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role };
+    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined };
     const r = this.registered.get(id);
-    return r ? { id: r.id, name: r.name, role: "user", avatar: r.avatar } : undefined;
+    if (!r) return undefined;
+    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor };
+  }
+
+  isAdmin(id: string) {
+    return this.get(id)?.role === "admin";
+  }
+
+  isGrantor(id: string) {
+    return !!this.get(id)?.grantor;
+  }
+
+  async setGrantor(id: string, value: boolean) {
+    const r = this.registered.get(id);
+    if (!r) return false;
+    r.grantor = value || undefined;
+    await this.persist([...this.registered.values()]);
+    return true;
+  }
+
+  /** анкеты демо-аккаунтов не хранятся в базе */
+  private demoAuthors = new Map<string, AuthorProfile>();
+
+  authorOf(id: string) {
+    return this.registered.get(id)?.author ?? this.demoAuthors.get(id);
+  }
+
+  async setAuthor(id: string, author: AuthorProfile) {
+    const r = this.registered.get(id);
+    if (!r) {
+      if (!this.demo || !DEMO_USERS.some((u) => u.id === id)) return false;
+      this.demoAuthors.set(id, author);
+      return true;
+    }
+    r.author = author;
+    await this.persist([...this.registered.values()]);
+    return true;
   }
 
   demoUsers(): PublicAccount[] {
@@ -104,7 +157,7 @@ export class Directory {
     const phone = normalizePhone(q);
     const needle = q.trim().toLowerCase();
     const pool: { id: string; name: string; phone?: string }[] = [
-      ...this.demoUsers().filter((u) => u.role !== "arbiter").map((u) => ({ id: u.id, name: u.name })),
+      ...this.demoUsers().filter((u) => u.role !== "arbiter" && u.role !== "admin").map((u) => ({ id: u.id, name: u.name })),
       ...[...this.registered.values()].map((r) => ({ id: r.id, name: r.name, phone: r.phone })),
     ];
     return pool

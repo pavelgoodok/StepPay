@@ -1,11 +1,15 @@
 import pg from "pg";
 import { createState, type State } from "@steppay/engine";
+import type { PlatformData } from "./platform";
 import type { RegisteredUser } from "./users";
 
 /** Хранилище целиком держит состояние движка. Для MVP (один инстанс) этого достаточно. */
 export interface StoredFile {
   mime: string;
   data: Buffer;
+  /** закрытый файл (документы проекта): отдается только владельцу и администраторам */
+  private?: boolean;
+  ownerId?: string;
 }
 
 export interface Store {
@@ -13,6 +17,8 @@ export interface Store {
   save(state: State): Promise<void>;
   loadUsers(): Promise<RegisteredUser[]>;
   saveUsers(users: RegisteredUser[]): Promise<void>;
+  loadPlatform(): Promise<PlatformData>;
+  savePlatform(data: PlatformData): Promise<void>;
   putFile(id: string, file: StoredFile): Promise<void>;
   getFile(id: string): Promise<StoredFile | null>;
 }
@@ -31,6 +37,13 @@ export class MemoryStore implements Store {
   }
   async saveUsers(users: RegisteredUser[]) {
     this.users = users;
+  }
+  private platform: PlatformData = { projects: [], services: [], threads: [] };
+  async loadPlatform() {
+    return this.platform;
+  }
+  async savePlatform(data: PlatformData) {
+    this.platform = data;
   }
   private files = new Map<string, StoredFile>();
   async putFile(id: string, file: StoredFile) {
@@ -55,6 +68,8 @@ export class PgStore implements Store {
     await this.pool.query(
       "create table if not exists files (id text primary key, mime text not null, data bytea not null, created_at timestamptz not null default now())",
     );
+    await this.pool.query("alter table files add column if not exists owner_id text");
+    await this.pool.query("alter table files add column if not exists private boolean not null default false");
     await this.pool.query(
       "create table if not exists app_state (id int primary key, state jsonb not null, updated_at timestamptz not null default now())",
     );
@@ -79,11 +94,22 @@ export class PgStore implements Store {
       [JSON.stringify(users)],
     );
   }
+  async loadPlatform(): Promise<PlatformData> {
+    const r = await this.pool.query("select state from app_state where id = 3");
+    return (r.rows[0]?.state as PlatformData | undefined) ?? { projects: [], services: [], threads: [] };
+  }
+  async savePlatform(data: PlatformData) {
+    await this.pool.query(
+      "insert into app_state (id, state) values (3, $1) on conflict (id) do update set state = excluded.state, updated_at = now()",
+      [JSON.stringify(data)],
+    );
+  }
   async putFile(id: string, file: StoredFile) {
-    await this.pool.query("insert into files (id, mime, data) values ($1, $2, $3) on conflict do nothing", [id, file.mime, file.data]);
+    await this.pool.query("insert into files (id, mime, data, owner_id, private) values ($1, $2, $3, $4, $5) on conflict do nothing", [id, file.mime, file.data, file.ownerId ?? null, !!file.private]);
   }
   async getFile(id: string): Promise<StoredFile | null> {
-    const r = await this.pool.query("select mime, data from files where id = $1", [id]);
-    return r.rows[0] ? { mime: r.rows[0].mime as string, data: Buffer.from(r.rows[0].data as Uint8Array) } : null;
+    const r = await this.pool.query("select mime, data, owner_id, private from files where id = $1", [id]);
+    const row = r.rows[0];
+    return row ? { mime: row.mime as string, data: Buffer.from(row.data as Uint8Array), ownerId: (row.owner_id as string | null) ?? undefined, private: !!row.private } : null;
   }
 }

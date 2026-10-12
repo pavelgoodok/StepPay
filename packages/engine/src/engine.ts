@@ -97,17 +97,21 @@ export interface CreateDealInput {
   stages: { id?: string; title: string; amount: Money; criteria?: string[] }[];
   autoAcceptDays?: number;
   feeBps?: number;
+  /** draft: условия согласует исполнитель (только «Свой проект»); по умолчанию funding */
+  status?: "draft" | "funding";
+  meta?: Deal["meta"];
   at: number;
 }
 
 export const createDeal = mutate((s, input: CreateDealInput) => {
   if (s.deals[input.id]) fail("Сделка уже существует");
-  if (input.stages.length === 0) fail("Нужен хотя бы один этап");
+  if (input.stages.length === 0 && input.status !== "draft") fail("Нужен хотя бы один этап");
   if (input.stages.some((x) => !Number.isInteger(x.amount) || x.amount <= 0))
     fail("Сумма этапа должна быть положительной");
   if (input.mode !== "crowdfunding" && !input.ownerId)
     fail("Для этого режима нужен заказчик/грантодатель");
   if (input.ownerId === input.executorId) fail("Заказчик и исполнитель должны различаться");
+  if (input.status === "draft" && input.mode !== "own") fail("Черновик бывает только у личной сделки");
 
   const stages: Stage[] = input.stages.map((x, i) => ({
     id: x.id ?? `s${i + 1}`,
@@ -126,13 +130,56 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     arbiterId: input.arbiterId,
     stages,
     target: stages.reduce((a, x) => a + x.amount, 0),
-    status: "funding",
+    status: input.status ?? "funding",
     reserves: {},
     contributed: {},
     autoAcceptMs: (input.autoAcceptDays ?? 3) * DAY_MS,
     feeBps: input.feeBps ?? 0,
     createdAt: input.at,
+    meta: input.meta,
   };
+});
+
+function toStages(items: NonNullable<CreateDealInput["stages"]>): Stage[] {
+  if (items.length === 0) fail("Нужен хотя бы один этап");
+  if (items.some((x) => !x.title.trim() || !Number.isInteger(x.amount) || x.amount <= 0)) fail("У каждого этапа нужны название и сумма");
+  return items.map((x, i) => ({ id: x.id ?? `s${i + 1}`, title: x.title.trim(), amount: x.amount, criteria: x.criteria ?? [], status: "pending", votes: {} }));
+}
+
+/** Согласование: исполнитель правит название, описание и этапы, пока условия не отправлены заказчику. */
+export const updateTerms = mutate(
+  (s, dealId: string, userId: UserId, patch: { title?: string; description?: string; stages?: CreateDealInput["stages"] }) => {
+    const d = getDeal(s, dealId);
+    if (d.status !== "draft") fail("Условия уже отправлены, чтобы изменить их, верните сделку на согласование");
+    if (userId !== d.executorId) fail("Условия правит исполнитель");
+    if (patch.title !== undefined) {
+      if (!patch.title.trim()) fail("Название не может быть пустым");
+      d.title = patch.title.trim();
+    }
+    if (patch.description !== undefined) d.meta = { ...d.meta, description: patch.description.trim() };
+    if (patch.stages) {
+      d.stages = toStages(patch.stages);
+      d.target = d.stages.reduce((a, x) => a + x.amount, 0);
+    }
+  },
+);
+
+/** Исполнитель отправляет условия заказчику: теперь заказчик может зарезервировать деньги. */
+export const proposeDeal = mutate((s, dealId: string, userId: UserId) => {
+  const d = getDeal(s, dealId);
+  if (d.status !== "draft") fail("Условия уже отправлены");
+  if (userId !== d.executorId) fail("Отправить условия может исполнитель");
+  if (d.stages.length === 0 || d.target <= 0) fail("Сначала добавьте этапы");
+  d.status = "funding";
+});
+
+/** Вернуть условия на правку, пока заказчик ничего не зарезервировал. */
+export const reopenDeal = mutate((s, dealId: string, userId: UserId) => {
+  const d = getDeal(s, dealId);
+  if (d.status !== "funding" || d.mode !== "own") fail("Вернуть на согласование нельзя");
+  if (userId !== d.executorId) fail("Вернуть условия может исполнитель");
+  if (totalReserved(d) > 0) fail("Заказчик уже зарезервировал деньги");
+  d.status = "draft";
 });
 
 function totalReserved(d: Deal): Money {
@@ -152,6 +199,7 @@ function activate(d: Deal) {
 /** Резерв денег. own/grant - ровно вся сумма от заказчика; crowdfunding - любые взносы до цели. */
 export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at: number) => {
   const d = getDeal(s, dealId);
+  if (d.status === "draft") fail("Исполнитель еще не отправил условия");
   if (d.status !== "funding") fail("Сделка уже не принимает деньги");
   if (!Number.isInteger(amount) || amount <= 0) fail("Сумма должна быть положительной");
 
@@ -355,6 +403,11 @@ export const resolveDispute = mutate(
 export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number) => {
   const d = getDeal(s, dealId);
   if (d.status === "completed" || d.status === "cancelled") fail("Сделка уже завершена");
+  if (d.status === "draft") {
+    if (userId !== d.executorId && userId !== d.ownerId) fail("Нет доступа к сделке");
+    d.status = "cancelled";
+    return;
+  }
   if (d.mode !== "crowdfunding" && userId !== d.ownerId) fail("Отменить может только заказчик");
   if (d.mode === "crowdfunding" && userId !== d.executorId) fail("Отменить может только автор");
   if (d.stages.some((x) => x.status === "submitted" || x.status === "disputed"))

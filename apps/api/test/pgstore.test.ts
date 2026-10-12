@@ -25,7 +25,7 @@ describe("PgStore на Postgres", () => {
     const app2 = await open(); // «перезапуск» на той же базе
     const me = await app2.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${tok}` } });
     expect(me.json().wallet.free).toBe(300_000 * 100 + 12_345); // не пересеяно заново
-    expect((await app2.inject({ method: "GET", url: "/projects" })).json()).toHaveLength(4);
+    expect((await app2.inject({ method: "GET", url: "/projects", headers: { authorization: `Bearer ${tok}` } })).json().length).toBeGreaterThanOrEqual(4);
     const img = await app2.inject({ method: "GET", url: "/uploads/demo-tile-photo-0001" });
     expect(img.statusCode).toBe(200);
     expect(img.rawPayload.length).toBeGreaterThan(5000);

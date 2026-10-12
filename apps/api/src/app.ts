@@ -16,6 +16,9 @@ import {
   resolveDispute,
   submitStage,
   tick,
+  updateTerms,
+  proposeDeal,
+  reopenDeal,
   topUp,
   voteStage,
   type Deal,
@@ -24,12 +27,16 @@ import {
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
-import { DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
-import { DEMO_SCRIPT, freshDemoState, purgeDemo, runDemoStep, seedUsers } from "./demo";
+import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
+import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
+import { DEMO_USERS } from "./users";
 import { executorStats, receiptsFor } from "./stats";
+import { stageCounts, summary } from "./summary";
 import type { Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
+import { Platform, PlatformError } from "./platform";
+import { registerPlatformRoutes } from "./routes-platform";
 import { Directory, maskPhone, normalizePhone } from "./users";
 
 const RUB = 100;
@@ -46,6 +53,8 @@ export interface AppOptions {
   demoMode?: boolean;
   /** способ доставки кода из SMS; по умолчанию демо (код показывается на экране) */
   otpDelivery?: OtpDelivery;
+  /** телефоны администраторов платформы */
+  adminPhones?: string[];
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -82,7 +91,9 @@ export async function buildApp(opts: AppOptions) {
   const planner = opts.planner ?? createPlanner();
   const hub = new Hub();
   const demoOn = opts.demoMode ?? true;
-  const dir = new Directory((users) => opts.store.saveUsers(users), await opts.store.loadUsers(), demoOn);
+  const adminPhones = (opts.adminPhones ?? []).map((p) => normalizePhone(p)).filter((p): p is string => !!p);
+  const dir = new Directory((users) => opts.store.saveUsers(users), await opts.store.loadUsers(), demoOn, adminPhones);
+  const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
   const otp = new OtpService(opts.secret, opts.otpDelivery ?? demoDelivery, now);
 
   let state: State = await opts.store.load();
@@ -92,15 +103,18 @@ export async function buildApp(opts: AppOptions) {
       await opts.store.save(state);
     }
   }
+  if (demoOn && opts.seedCatalog && platform.isEmpty()) await platform.reset(freshDemoPlatform(now()));
   if (!demoOn) {
     const cleaned = purgeDemo(state);
     if (cleaned.changed) {
       state = cleaned.state;
       await opts.store.save(state);
     }
+    await platform.purgeDemo(new Set(DEMO_USERS.map((u) => u.id)), (id) => !state.deals[id]);
   }
 
   await opts.store.putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
+  await opts.store.putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
 
   /** Все изменения последовательны: чтение-изменение-запись без гонок. */
   let queue: Promise<unknown> = Promise.resolve();
@@ -116,7 +130,7 @@ export async function buildApp(opts: AppOptions) {
   }
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
-    if (err instanceof EngineError) return reply.code(400).send({ error: err.message });
+    if (err instanceof EngineError || err instanceof PlatformError) return reply.code(400).send({ error: err.message });
     if (err instanceof z.ZodError) return reply.code(400).send({ error: "Неверные данные", issues: err.issues });
     return reply.code(err.statusCode ?? 500).send({ error: err.statusCode ? err.message : "Внутренняя ошибка" });
   });
@@ -203,13 +217,7 @@ export async function buildApp(opts: AppOptions) {
   };
   const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
-  // каталог проектов: краудфандинг и гранты
-  app.get("/projects", async (req) => {
-    const { mode } = z.object({ mode: z.enum(["crowdfunding", "grant"]).optional() }).parse(req.query);
-    return Object.values(state.deals)
-      .filter((d) => d.mode !== "own" && (!mode || d.mode === mode))
-      .map(sum);
-  });
+  registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief });
 
   // ── личное ──
   app.get("/me", async (req, reply) => {
@@ -305,7 +313,16 @@ export async function buildApp(opts: AppOptions) {
       reply: `${who} написал(а) в споре по этапу ${q}`,
       resolve: `Спор по этапу ${q} решен`,
       cancel: `Сделка «${d.title}» отменена, остаток возвращен`,
+      propose: `${who} отправил(а) условия по «${d.title}», можно резервировать`,
+      reopen: `${who} вернул(а) условия на правку: «${d.title}»`,
     };
+    if (kind === "propose" || kind === "reopen") {
+      if (d.meta?.chatId) void platform.post(d.meta.chatId, actor, kind === "propose" ? "Условия отправлены. Можно проверить этапы и зарезервировать деньги." : "Условия возвращены на правку.", "system", d.id);
+    }
+    if (kind === "terms") {
+      hub.send(people, "changed", { dealId: d.id });
+      return;
+    }
     const others = [...people].filter((p) => p !== actor && (kind !== "reply" && kind !== "dispute" ? p !== d.arbiterId : true));
     hub.send(others, "notify", { dealId: d.id, text: text[kind] ?? "Сделка обновлена" });
     hub.send(people, "changed", { dealId: d.id });
@@ -337,6 +354,18 @@ export async function buildApp(opts: AppOptions) {
     if (!d) throw new EngineError("Сделка не найдена");
     return fund(s, p.id, me, b.amount ?? d.target, now());
   }, "fund");
+  act(
+    "/deals/:id/terms",
+    z.object({
+      title: z.string().trim().min(1).max(120).optional(),
+      description: z.string().trim().max(2000).optional(),
+      stages: z.array(z.object({ title: z.string().trim().min(1).max(120), amount: money, criteria: z.array(z.string().trim().max(200)).max(6).optional() })).max(8).optional(),
+    }),
+    (s, p, me, b) => updateTerms(s, p.id, me, b),
+    "terms",
+  );
+  act("/deals/:id/propose", none, (s, p, me) => proposeDeal(s, p.id, me), "propose");
+  act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me), "reopen");
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(
     "/deals/:id/stages/:stageId/submit",
@@ -377,15 +406,15 @@ export async function buildApp(opts: AppOptions) {
       if (Date.now() - lastReset < 2000) return reply.code(429).send({ error: "Подождите пару секунд" });
       lastReset = Date.now();
       await transact(() => ({ state: freshDemoState(now()), result: true }));
+      await platform.reset(freshDemoPlatform(now()));
       hub.send(everyone, "changed", {});
       return { ok: true };
     });
     app.post("/demo/step", async (req) => {
       const { step } = z.object({ step: z.number().int().min(1).max(DEMO_SCRIPT.length) }).parse(req.body);
-      const narration = await transact((s) => {
-        const out = runDemoStep(s, step, now());
-        return { state: out.state, result: out.narration };
-      });
+      const prep = await prepareDemoStep(platform, step, now());
+      const narration = await transact((s) => ({ state: prep.apply(s), result: prep.narration }));
+      await prep.after?.();
       hub.send(everyone, "changed", {});
       hub.send([narration.viewAs], "notify", { dealId: "", text: narration.title });
       return { step, total: DEMO_SCRIPT.length, ...narration };
@@ -442,23 +471,33 @@ export async function buildApp(opts: AppOptions) {
     hub.add(id, reply.raw);
   });
 
-  // фото: клиент уменьшает картинку и присылает data URL, в сделках хранится только ссылка
-  const MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
-  app.post("/uploads", async (req, reply) => {
-    if (!authed(req, reply)) return;
-    const { dataUrl } = z.object({ dataUrl: z.string() }).parse(req.body);
-    const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
-    if (!m) return reply.code(400).send({ error: "Нужна картинка JPEG, PNG или WebP" });
+  // файлы: клиент присылает data URL. Фото публичные по ссылке, документы проектов закрытые
+  app.post("/uploads", { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { dataUrl, private: isPrivate } = z.object({ dataUrl: z.string(), private: z.boolean().optional() }).parse(req.body);
+    const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!m) return reply.code(400).send({ error: "Подходят JPEG, PNG, WebP и PDF" });
     const data = Buffer.from(m[2]!, "base64");
-    if (data.length > 900 * 1024) return reply.code(413).send({ error: "Фото слишком большое" });
+    const pdf = m[1] === "application/pdf";
+    if (pdf && !isPrivate) return reply.code(400).send({ error: "PDF можно загружать только как документ" });
+    if (data.length > (pdf ? 5 * 1024 * 1024 : 900 * 1024)) return reply.code(413).send({ error: pdf ? "Файл больше 5 МБ" : "Фото слишком большое" });
     const id = randomUUID();
-    await opts.store.putFile(id, { mime: m[1]!, data });
+    await opts.store.putFile(id, { mime: m[1]!, data, private: !!isPrivate, ownerId: me });
     return { url: `/uploads/${id}` };
   });
   app.get("/uploads/:id", async (req, reply) => {
     const { id } = z.object({ id: z.string().regex(/^[\w-]{8,64}$/) }).parse(req.params);
     const f = await opts.store.getFile(id);
     if (!f) return reply.code(404).send({ error: "Файл не найден" });
+    if (f.private) {
+      const { token } = z.object({ token: z.string().optional() }).parse(req.query);
+      const h = req.headers.authorization;
+      const who = verifyToken(opts.secret, token ?? (h?.startsWith("Bearer ") ? h.slice(7) : undefined));
+      if (!who || !dir.get(who)) return reply.code(401).send({ error: "Требуется вход" });
+      if (who !== f.ownerId && !dir.isAdmin(who)) return reply.code(403).send({ error: "Документ доступен только автору и администраторам" });
+      return reply.header("content-type", f.mime).header("cache-control", "private, no-store").header("content-disposition", "inline").header("cross-origin-resource-policy", "cross-origin").send(f.data);
+    }
     return reply
       .header("content-type", f.mime)
       .header("cache-control", "public, max-age=31536000, immutable")
@@ -493,27 +532,4 @@ export async function buildApp(opts: AppOptions) {
   });
 
   return app;
-}
-
-function stageCounts(d: Deal) {
-  const done = d.stages.filter((x) => x.status === "accepted").length;
-  return { done, total: d.stages.length };
-}
-
-function summary(d: Deal) {
-  const raised = Object.values(d.contributed).reduce((a, b) => a + b, 0);
-  const current = d.stages.find((x) => ["active", "submitted", "disputed"].includes(x.status));
-  return {
-    id: d.id,
-    mode: d.mode,
-    title: d.title,
-    status: d.status,
-    executorId: d.executorId,
-    ownerId: d.ownerId,
-    target: d.target,
-    raised,
-    sponsors: Object.keys(d.contributed).length,
-    stages: stageCounts(d),
-    currentStage: current ? { id: current.id, title: current.title, status: current.status } : null,
-  };
 }
