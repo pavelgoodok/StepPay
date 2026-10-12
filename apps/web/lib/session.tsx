@@ -6,6 +6,8 @@ import { rub } from "./format";
 interface Session {
   user: PublicUser | null;
   wallet: Wallet | null;
+  /** возможности сервера: пополнение без оплаты есть только в демо */
+  features: { topup: boolean };
   users: PublicUser[];
   ready: boolean;
   refresh(): Promise<void>;
@@ -33,6 +35,7 @@ export const useSession = () => {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [features, setFeatures] = useState({ topup: true });
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "ok" | "err" }[]>([]);
@@ -47,8 +50,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; features?: { topup: boolean } }>("/me");
       setUser(me.user);
+      if (me.features) setFeatures(me.features);
       setWallet(me.wallet);
       if (lastFree.current !== null && me.wallet.free > lastFree.current) {
         toast(`Поступило ${rub(me.wallet.free - lastFree.current)}`);
@@ -78,23 +82,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // живые обновления: сервер сам сообщает об изменениях; опрос остается запасным
   const uid = user?.id;
   useEffect(() => {
-    const token = getToken();
-    if (!uid || !token || typeof EventSource === "undefined") return;
-    const es = new EventSource(`${API_URL}/events?token=${encodeURIComponent(token)}`);
-    es.addEventListener("changed", () => {
-      void refresh();
-      listeners.forEach((cb) => cb());
-    });
-    es.addEventListener("notify", (e) => {
-      const { text } = JSON.parse((e as MessageEvent).data) as { text: string };
-      toast(text);
+    if (!uid || typeof EventSource === "undefined") return;
+    let es: EventSource | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    // в адресе запроса идет билет на 2 минуты, а не постоянный токен: при обрыве берем новый
+    const connect = async () => {
       try {
-        if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") new Notification("StepPay", { body: text, icon: "/logo.png" });
+        const { ticket } = await api<{ ticket: string }>("/auth/ticket", { method: "POST", body: {} });
+        if (stopped) return;
+        es = new EventSource(`${API_URL}/events?ticket=${encodeURIComponent(ticket)}`);
+        es.addEventListener("changed", () => {
+          void refresh();
+          listeners.forEach((cb) => cb());
+        });
+        es.addEventListener("notify", (e) => {
+          const { text } = JSON.parse((e as MessageEvent).data) as { text: string };
+          toast(text);
+          try {
+            if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") new Notification("StepPay", { body: text, icon: "/logo.png" });
+          } catch {
+            /* уведомления недоступны - остается тост */
+          }
+        });
+        es.onerror = () => {
+          es?.close();
+          if (!stopped) timer = setTimeout(() => void connect(), 3000);
+        };
       } catch {
-        /* уведомления недоступны - остается тост */
+        if (!stopped) timer = setTimeout(() => void connect(), 8000);
       }
-    });
-    return () => es.close();
+    };
+    void connect();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      es?.close();
+    };
   }, [uid, refresh, toast]);
 
   const login = useCallback(
@@ -124,7 +148,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, users, ready, refresh, login, completeLogin, logout, toast }}>
+    <Ctx.Provider value={{ user, wallet, features, users, ready, refresh, login, completeLogin, logout, toast }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

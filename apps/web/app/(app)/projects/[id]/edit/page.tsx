@@ -7,7 +7,7 @@ import { CropSheet } from "@/components/cropper";
 import { PhotoPicker } from "@/components/photos";
 import { StageEditor, emptyRow, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { Icon, SegBar } from "@/components/ui";
-import { api, docSrc, photoSrc, uploadDataUrl, uploadDoc, type AuthorProfile, type ProjectDoc, type ProjectFull } from "@/lib/api";
+import { api, openDoc, photoSrc, uploadDataUrl, uploadDoc, type AuthorProfile, type ProjectDoc, type ProjectFull } from "@/lib/api";
 import { rub, toKopecks } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL } from "@/lib/labels";
 import { useSession } from "@/lib/session";
@@ -216,7 +216,7 @@ export default function EditProject() {
             {files.map((f) => (
               <div key={f.id} className="picked">
                 <Icon name="check" size={18} />
-                <a className="grow ellipsis" href={docSrc(f.url)} target="_blank" rel="noreferrer">{f.name}</a>
+                <button className="grow ellipsis" style={{ textAlign: "left" }} onClick={() => void openDoc(f.url).catch((e: Error) => toast(e.message, "err"))}>{f.name}</button>
                 <button className="iconbtn" aria-label="Убрать" onClick={() => setDocs(docs.filter((x) => x.id !== f.id))}><Icon name="x" size={16} /></button>
               </div>
             ))}

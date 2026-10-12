@@ -4,6 +4,8 @@ import { MemoryStore, PgStore, type Store } from "./store";
 const secret = process.env.AUTH_SECRET ?? (process.env.NODE_ENV === "production" ? "" : "dev-secret");
 if (!secret) throw new Error("AUTH_SECRET обязателен в production");
 
+if (process.env.NODE_ENV === "production" && !process.env.CORS_ORIGIN) console.warn("CORS_ORIGIN не задан: запросы с других адресов будут отклонены");
+
 let store: Store;
 if (process.env.DATABASE_URL) {
   const pgStore = new PgStore(process.env.DATABASE_URL);
@@ -14,7 +16,7 @@ if (process.env.DATABASE_URL) {
   store = new MemoryStore();
 }
 
-const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
+const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
 console.log(`StepPay API on :${port}`);

@@ -25,7 +25,7 @@ import {
   type Deal,
   type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal, linkChain } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
-import { makeToken, verifyToken } from "./auth";
+import { makeTicket, makeToken, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
 import { MAX_KEYS, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
@@ -58,6 +58,10 @@ export interface AppOptions {
   /** телефоны администраторов платформы */
   adminPhones?: string[];
   /** device: подписывать можно только ключом устройства; any (по умолчанию): без ключа допускается серверная демо-подпись */
+  /** пополнение кошелька без оплаты: по умолчанию только в демо-режиме */
+  allowTopup?: boolean;
+  /** ограничение частоты запросов с одного адреса за минуту */
+  rateLimit?: { general: number; auth: number; uploads: number };
   signaturePolicy?: "device" | "any";
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
@@ -88,9 +92,10 @@ function involved(d: Deal, userId: string) {
 }
 
 export async function buildApp(opts: AppOptions) {
-  const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024 });
+  // за прокси платформы (Railway) настоящий адрес клиента приходит в X-Forwarded-For
+  const app = Fastify({ logger: false, bodyLimit: 2 * 1024 * 1024, trustProxy: process.env.NODE_ENV === "production" });
   const origins = opts.corsOrigin?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
-  await app.register(cors, { origin: origins.length ? origins : true });
+  await app.register(cors, { origin: origins.length ? origins : process.env.NODE_ENV === "production" ? false : true });
   const now = opts.now ?? Date.now;
   const planner = opts.planner ?? createPlanner();
   const hub = new Hub();
@@ -165,9 +170,38 @@ export async function buildApp(opts: AppOptions) {
     return reply.code(err.statusCode ?? 500).send({ error: err.statusCode ? err.message : "Внутренняя ошибка" });
   });
 
+  // ── защита: ограничение частоты запросов и заголовки ──
+  const limits = opts.rateLimit ?? { general: 600, auth: 120, uploads: 30 };
+  const hits = new Map<string, number[]>();
+  const over = (key: string, max: number) => {
+    const t = Date.now();
+    const list = (hits.get(key) ?? []).filter((x) => t - x < 60_000);
+    list.push(t);
+    hits.set(key, list);
+    if (hits.size > 5000) for (const [k, v] of hits) if (v.every((x) => t - x >= 60_000)) hits.delete(k);
+    return list.length > max;
+  };
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.url === "/health") return;
+    const ip = req.ip;
+    const bucket = req.url.startsWith("/auth") ? ["auth", limits.auth] : req.url.startsWith("/uploads") && req.method === "POST" ? ["uploads", limits.uploads] : ["all", limits.general];
+    if (over(`${bucket[0]}:${ip}`, bucket[1] as number)) return reply.code(429).header("retry-after", "30").send({ error: "Слишком много запросов, подождите минуту" });
+  });
+  const hsts = process.env.NODE_ENV === "production";
+  app.addHook("onSend", async (_req, reply, payload) => {
+    reply.header("x-content-type-options", "nosniff").header("referrer-policy", "no-referrer").header("x-frame-options", "DENY");
+    if (hsts) reply.header("strict-transport-security", "max-age=15552000");
+    const type = String(reply.getHeader("content-type") ?? "");
+    if (type.includes("json")) {
+      reply.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'");
+      if (!reply.getHeader("cache-control")) reply.header("cache-control", "no-store");
+    }
+    return payload;
+  });
+
   const authed = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const h = req.headers.authorization;
-    const id = verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
+    const id = verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined, Date.now(), (u) => dir.sessionsFrom(u));
     if (!id || !dir.get(id)) {
       reply.code(401).send({ error: "Требуется вход" });
       return null;
@@ -185,7 +219,7 @@ export async function buildApp(opts: AppOptions) {
     const { userId } = z.object({ userId: z.string() }).parse(req.body);
     const u = dir.demoUsers().find((x) => x.id === userId);
     if (!u) return reply.code(404).send({ error: "Нет такого демо-пользователя" });
-    return { token: makeToken(opts.secret, u.id), user: { id: u.id, name: u.name, role: u.role } };
+    return { token: makeToken(opts.secret, u.id, Date.now()), user: { id: u.id, name: u.name, role: u.role } };
   });
 
   // регистрация и вход по телефону: код приходит по SMS (в демо показывается на экране)
@@ -215,7 +249,7 @@ export async function buildApp(opts: AppOptions) {
     }
     if (!ok) return reply.code(400).send({ error: "Неверный код" });
     const user = existing ?? (await dir.register(phone, b.name!, now()));
-    return { token: makeToken(opts.secret, user.id), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const } };
+    return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const } };
   });
 
   // поиск исполнителя при создании сделки: точный номер или имя от 3 букв
@@ -255,7 +289,7 @@ export async function buildApp(opts: AppOptions) {
     if (!id) return;
     const u = dir.get(id)!;
     const phone = dir.phoneOf(id);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed } };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -271,7 +305,24 @@ export async function buildApp(opts: AppOptions) {
     };
   });
 
+  /** Билет на 2 минуты для адреса запроса: поток событий и закрытые файлы. Долгоживущий токен в ссылки не попадает. */
+  app.post("/auth/ticket", async (req, reply) => {
+    const id = authed(req, reply);
+    if (!id) return;
+    return { ticket: makeTicket(opts.secret, id, Date.now()) };
+  });
+
+  /** Завершает все сессии: токены, выданные раньше этого момента, перестают действовать. */
+  app.post("/auth/logout-all", async (req, reply) => {
+    const id = authed(req, reply);
+    if (!id) return;
+    await dir.revokeSessions(id, Date.now());
+    return { ok: true };
+  });
+
+  const topupAllowed = opts.allowTopup ?? demoOn;
   app.post("/wallet/topup", async (req, reply) => {
+    if (!topupAllowed) return reply.code(403).send({ error: "Пополнение подключается к платежной платформе и пока недоступно" });
     const id = authed(req, reply);
     if (!id) return;
     const { amount } = z.object({ amount: money }).parse(req.body);
@@ -319,6 +370,7 @@ export async function buildApp(opts: AppOptions) {
       const next = linkChain(s, id, chain, now());
       return { state: next, result: next.deals[id]! };
     });
+    await platform.logAudit(me, "Привязан прогон на контракте", id, `${chain.network}, транзакций ${chain.txs.length}`);
     const people = [out.executorId, out.ownerId, ...Object.keys(out.contributed)].filter((x): x is string => !!x);
     hub.send(people, "notify", { dealId: id, text: `Сделка «${out.title}» проведена на контракте в сети ${chain.network}: транзакции доступны в сделке` });
     hub.send(people, "changed", { dealId: id });
@@ -577,8 +629,8 @@ export async function buildApp(opts: AppOptions) {
 
   // события в реальном времени (SSE). Токен в query: EventSource не умеет заголовки.
   app.get("/events", async (req, reply) => {
-    const { token } = z.object({ token: z.string() }).parse(req.query);
-    const id = verifyToken(opts.secret, token);
+    const { ticket } = z.object({ ticket: z.string() }).parse(req.query);
+    const id = verifyTicket(opts.secret, ticket, Date.now());
     if (!id || !dir.get(id)) return reply.code(401).send({ error: "Требуется вход" });
     reply.hijack();
     const reqOrigin = req.headers.origin;
@@ -614,11 +666,12 @@ export async function buildApp(opts: AppOptions) {
     const f = await opts.store.getFile(id);
     if (!f) return reply.code(404).send({ error: "Файл не найден" });
     if (f.private) {
-      const { token } = z.object({ token: z.string().optional() }).parse(req.query);
+      const { ticket } = z.object({ ticket: z.string().optional() }).parse(req.query);
       const h = req.headers.authorization;
-      const who = verifyToken(opts.secret, token ?? (h?.startsWith("Bearer ") ? h.slice(7) : undefined));
+      const who = ticket ? verifyTicket(opts.secret, ticket, Date.now()) : verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined, Date.now(), (u) => dir.sessionsFrom(u));
       if (!who || !dir.get(who)) return reply.code(401).send({ error: "Требуется вход" });
       if (who !== f.ownerId && !dir.isAdmin(who)) return reply.code(403).send({ error: "Документ доступен только автору и администраторам" });
+      if (who !== f.ownerId) await platform.logAudit(who, "Просмотр документа проекта", id, f.ownerId ? `автор ${dir.get(f.ownerId)?.name ?? f.ownerId}` : undefined);
       return reply.header("content-type", f.mime).header("cache-control", "private, no-store").header("content-disposition", "inline").header("cross-origin-resource-policy", "cross-origin").send(f.data);
     }
     return reply

@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { PhotoGrid } from "@/components/photos";
 import { Ava, Icon, SegBar } from "@/components/ui";
-import { api, docSrc, photoSrc, type ProjectFull } from "@/lib/api";
+import { api, openDoc, photoSrc, type ProjectFull } from "@/lib/api";
 import { deviceKeysAvailable, ensureDeviceKey } from "@/lib/keys";
 import { dayLabel, rub } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL, PROJECT_STATUS } from "@/lib/labels";
@@ -120,7 +120,7 @@ export default function ProjectPage() {
         <div className="card stack">
           <div className="title">Документы</div>
           {p.docs.filter((d) => d.kind === "doc").map((d) => (
-            <a key={d.id} className="picked" href={docSrc(d.url)} target="_blank" rel="noreferrer"><Icon name="check" size={18} /><span className="grow ellipsis">{d.name}</span><Icon name="arrow" size={16} /></a>
+            <button key={d.id} className="picked" style={{ textAlign: "left" }} onClick={() => void openDoc(d.url).catch((e: Error) => toast(e.message, "err"))}><Icon name="check" size={18} /><span className="grow ellipsis">{d.name}</span><Icon name="arrow" size={16} /></button>
           ))}
         </div>
       )}

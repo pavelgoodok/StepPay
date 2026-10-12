@@ -236,6 +236,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const b = z.object({ action: z.enum(["approve", "reject", "changes"]), comment: z.string().trim().max(1000).optional() }).parse(req.body);
     const p = await platform.decide(id, me, b.action, b.comment);
+    await platform.logAudit(me, b.action === "approve" ? "Проект одобрен" : b.action === "reject" ? "Проект отклонен" : "Проект возвращен на доработку", id, p.title);
     let dealId: string | undefined;
     if (b.action === "approve" && p.kind === "crowdfunding") {
       // краудфандинг открывается сразу: сделка ждет взносов спонсоров
@@ -250,19 +251,26 @@ export function registerPlatformRoutes(c: Ctx) {
     return projectView(p, me);
   });
 
+  app.get("/admin/audit", async (req, reply) => {
+    if (!adminOnly(req, reply)) return;
+    return platform.auditLog().slice(0, 200).map((e) => ({ ...e, byName: brief(e.by).name }));
+  });
+
   app.get("/admin/grantors", async (req, reply) => {
     if (!adminOnly(req, reply)) return;
     return dir.allIds().filter((id) => dir.isGrantor(id)).map(brief);
   });
 
   app.post("/admin/grantors", async (req, reply) => {
-    if (!adminOnly(req, reply)) return;
+    const me = adminOnly(req, reply);
+    if (!me) return;
     const b = z.object({ phone: z.string().max(40), value: z.boolean() }).parse(req.body);
     const { normalizePhone } = await import("./users");
     const phone = normalizePhone(b.phone);
     const u = phone ? dir.byPhone(phone) : undefined;
     if (!u) return reply.code(404).send({ error: "Пользователь с таким номером не найден" });
     await dir.setGrantor(u.id, b.value);
+    await platform.logAudit(me, b.value ? "Назначен грантодатель" : "Снят грантодатель", u.id, brief(u.id).name);
     return { ok: true, user: brief(u.id) };
   });
 

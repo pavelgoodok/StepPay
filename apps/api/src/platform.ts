@@ -82,10 +82,20 @@ export interface Thread {
   updatedAt: number;
 }
 
+export interface AuditEvent {
+  at: number;
+  by: string;
+  action: string;
+  target?: string;
+  detail?: string;
+}
+
 export interface PlatformData {
   projects: Project[];
   services: Service[];
   threads: Thread[];
+  /** действия администраторов и доступ к закрытым данным */
+  audit?: AuditEvent[];
 }
 
 export class PlatformError extends Error {}
@@ -139,6 +149,18 @@ export class Platform {
 
   private id(prefix: string) {
     return `${prefix}_${randomUUID().slice(0, 8)}`;
+  }
+
+  /** Записывает действие администратора или доступ к закрытым данным. Хранятся последние 1000 записей. */
+  async logAudit(by: string, action: string, target?: string, detail?: string) {
+    const list = (this.data.audit ??= []);
+    list.push({ at: this.now(), by, action, ...(target ? { target } : {}), ...(detail ? { detail: detail.slice(0, 200) } : {}) });
+    if (list.length > 1000) list.splice(0, list.length - 1000);
+    await this.save();
+  }
+
+  auditLog(): AuditEvent[] {
+    return [...(this.data.audit ?? [])].reverse();
   }
 
   get snapshot() {

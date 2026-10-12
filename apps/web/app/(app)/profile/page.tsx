@@ -202,6 +202,14 @@ export default function Profile() {
         <div className="setrow">
           <span className="setic"><Icon name="clock" size={20} /></span><span className="grow"><b>Уведомления на устройстве</b><div className="small muted">Когда сделка требует внимания</div></span><Switch on={notif} onChange={notifications} label="Уведомления" />
         </div>
+        <button className="setrow" onClick={async () => {
+          if (!confirm("Завершить сессии на всех устройствах? Войти заново нужно будет везде, включая это устройство.")) return;
+          try { await api("/auth/logout-all", { method: "POST", body: {} }); } catch { /* сессия уже недействительна */ }
+          logout();
+          router.replace("/login");
+        }}>
+          <span className="setic"><Icon name="shield" size={20} /></span><span className="grow"><b>Выйти на всех устройствах</b><div className="small muted">Если потеряли телефон или не доверяете устройству</div></span>
+        </button>
         <button className="setrow" onClick={() => { logout(); router.replace("/login"); }}>
           <span className="setic"><Icon name="logout" size={20} /></span><span className="grow"><b>Выйти</b></span>
         </button>

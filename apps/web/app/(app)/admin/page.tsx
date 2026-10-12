@@ -22,6 +22,7 @@ export default function Admin() {
   const sum = usePoll(() => api<Record<Tab | "services", number>>("/admin/summary"), []);
   const list = usePoll(() => api<ProjectItem[]>(`/admin/projects?status=${tab}`), [tab]);
   const grantors = usePoll(() => api<Person[]>("/admin/grantors"), []);
+  const audit = usePoll(() => api<{ at: number; byName: string; action: string; target?: string; detail?: string }[]>("/admin/audit"), []);
 
   if (!user) return null;
   if (user.role !== "admin") return <div className="page"><div className="note bad">Раздел только для администраторов</div></div>;
@@ -78,6 +79,17 @@ export default function Admin() {
           <input className="input" inputMode="tel" placeholder="+7 900 000 00 00" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={phone.replace(/\D/g, "").length < 10} onClick={() => setGrantor(true)}>Добавить</button>
         </div>
+      </div>
+
+      <div className="sec"><h2>Журнал действий</h2></div>
+      <div className="card stack">
+        {audit.data?.length === 0 && <div className="sub">Пока пусто</div>}
+        {audit.data?.slice(0, 30).map((e, i) => (
+          <div key={i}>
+            <div className="row between"><b>{e.action}</b><span className="small muted" style={{ whiteSpace: "nowrap" }}>{dayLabel(e.at)}</span></div>
+            <div className="small muted">{e.byName}{e.detail ? ` · ${e.detail}` : ""}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -10,7 +10,7 @@ import { useSession, usePoll } from "@/lib/session";
 const ICON: Record<string, string> = { topup: "plus", reserve: "lock", payout: "check", refund: "swap", fee: "shield" };
 
 export default function WalletPage() {
-  const { toast, refresh } = useSession();
+  const { toast, refresh, features } = useSession();
   const { data, reload } = usePoll(() => api<WalletView>("/wallet"), []);
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -46,7 +46,11 @@ export default function WalletPage() {
       </div>
 
       <div className="btns">
-        <button className="btn soft" onClick={() => setOpen(true)}><Icon name="plus" size={18} /> Пополнить</button>
+        {features.topup ? (
+          <button className="btn soft" onClick={() => setOpen(true)}><Icon name="plus" size={18} /> Пополнить</button>
+        ) : (
+          <button className="btn soft" onClick={() => toast("Пополнение подключается к платежной платформе")}><Icon name="plus" size={18} /> Пополнить</button>
+        )}
         <button className="btn soft" onClick={() => toast("В демо переводы отключены")}><Icon name="arrow" size={18} /> Перевести</button>
       </div>
 

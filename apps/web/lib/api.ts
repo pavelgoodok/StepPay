@@ -136,11 +136,17 @@ export async function uploadAvatar(file: File): Promise<string> {
   return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl: c.toDataURL("image/jpeg", 0.86) } })).url;
 }
 
-/** Приватный документ открывается по ссылке с токеном: так его можно показать в новой вкладке. */
-export const docSrc = (url: string) => {
-  const t = getToken();
-  return API_URL + url + (t ? `?token=${encodeURIComponent(t)}` : "");
-};
+/** Закрытый документ открывается в новой вкладке по билету на 2 минуты, постоянный токен в ссылку не попадает. */
+export async function openDoc(url: string): Promise<void> {
+  const w = window.open("", "_blank");
+  try {
+    const { ticket } = await api<{ ticket: string }>("/auth/ticket", { method: "POST", body: {} });
+    if (w) w.location.href = `${API_URL}${url}?ticket=${encodeURIComponent(ticket)}`;
+  } catch (e) {
+    w?.close();
+    throw e;
+  }
+}
 
 /** PDF до 5 МБ, доступен только автору и администраторам. */
 export async function uploadDoc(file: File): Promise<string> {

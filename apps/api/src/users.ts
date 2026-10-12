@@ -42,6 +42,8 @@ export interface RegisteredUser {
   /** проверенный грантодатель: может финансировать проекты целиком */
   grantor?: boolean;
   author?: AuthorProfile;
+  /** токены, выданные не позже этого момента, отозваны */
+  sessionsFrom?: number;
   /** ключи подписи на устройствах */
   keys?: DeviceKey[];
   /** ссылка вида /uploads/... на аватарку */
@@ -87,6 +89,21 @@ export class Directory {
     const r = this.registered.get(id);
     if (!r) return undefined;
     return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor };
+  }
+
+  private demoSessionsFrom = new Map<string, number>();
+
+  sessionsFrom(id: string): number {
+    return this.registered.get(id)?.sessionsFrom ?? this.demoSessionsFrom.get(id) ?? 0;
+  }
+
+  /** Завершает все сессии пользователя: ранее выданные токены перестают действовать. */
+  async revokeSessions(id: string, at: number) {
+    const r = this.registered.get(id);
+    if (r) {
+      r.sessionsFrom = at;
+      await this.persist([...this.registered.values()]);
+    } else this.demoSessionsFrom.set(id, at);
   }
 
   /** Ключи подписи. У демо-аккаунтов хранятся в памяти и пропадают при перезапуске. */

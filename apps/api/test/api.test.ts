@@ -214,9 +214,10 @@ describe("репутация, чеки, события", () => {
     const reqs: http.ClientRequest[] = [];
     const listen = async (u: string) => {
       const chunks: string[] = [];
-      const t = await tok(u);
+      const bearer = await tok(u);
+      const t = (await app.inject({ method: "POST", url: "/auth/ticket", headers: { authorization: `Bearer ${bearer}` } })).json().ticket as string;
       await new Promise<void>((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/events?token=${t}`, (res) => {
+        const req = http.get(`http://127.0.0.1:${port}/events?ticket=${t}`, (res) => {
           res.setEncoding("utf8");
           res.on("data", (c: string) => { chunks.push(c); if (chunks.join("").includes(": connected")) resolve(); });
         });
@@ -234,7 +235,7 @@ describe("репутация, чеки, события", () => {
     expect(got).toContain("event: notify");
     expect(got).toContain("зарезервировал");
     expect(olga.join("")).not.toContain("event: notify");
-    expect((await app.inject({ method: "GET", url: "/events?token=bad.token" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url: "/events?ticket=bad.ticket" })).statusCode).toBe(401);
     reqs.forEach((r) => r.destroy());
     await app.close();
   });
