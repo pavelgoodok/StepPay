@@ -56,6 +56,37 @@ export function StageBars({ done, total, working }: { done: number; total: numbe
   );
 }
 
+export function Ava({ name, size }: { name: string; size?: "sm" | "lg" }) {
+  return <div className={`ava ${size ?? ""}`}>{initialsOf(name)}</div>;
+}
+
+function initialsOf(name: string) {
+  return name
+    .replace(/[«»"]/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+}
+
+/** Этапы кружками: принятые закрашены, текущий обведен */
+export function StageDots({ done, total, working }: { done: number; total: number; working?: boolean }) {
+  return (
+    <div className="dots" aria-label={`Этапов принято ${done} из ${total}`}>
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className={`dot-i ${i < done ? "done" : i === done && working ? "cur" : ""}`}>
+          {i < done ? <Icon name="check" size={12} /> : i + 1}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function Switch({ on, onChange, label }: { on: boolean; onChange(v: boolean): void; label: string }) {
+  return <button type="button" role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? "on" : ""}`} onClick={() => onChange(!on)} />;
+}
+
 export function Initials({ name }: { name: string }) {
   const t = name
     .replace(/[«»"]/g, "")
@@ -70,7 +101,7 @@ export function Initials({ name }: { name: string }) {
 const P: Record<string, string> = {
   x: "M6 6l12 12M18 6L6 18",
   plus: "M12 5v14M5 12h14",
-  deals: "M3 12l4-4 4 3 3-3 7 6M5 15l3 3 3-1 2 2 4-3",
+  deals: "M11 17l2 2a1 1 0 1 0 3-3M14 14l2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4M21 3l1 11h-2M3 3L2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8",
   sprout: "M12 21v-8m0 0c0-4-3-6-7-6 0 4 3 6 7 6zm0 0c0-3 2-5 6-5 0 3-2 5-6 5z",
   wallet: "M4 7a2 2 0 012-2h11v3M4 7v10a2 2 0 002 2h13a1 1 0 001-1V9a1 1 0 00-1-1H6a2 2 0 01-2-2zM16 14h2",
   user: "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0",
@@ -104,7 +135,7 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
-/** Сумма с плавным пересчётом; при росте вылетают «монеты» — деньги дошли. */
+/** Сумма с плавным пересчетом; при росте вылетают «монеты» - деньги дошли. */
 export function Money({ value, burst = true }: { value: number; burst?: boolean }) {
   const [shown, setShown] = useState(value);
   const [pop, setPop] = useState(0);

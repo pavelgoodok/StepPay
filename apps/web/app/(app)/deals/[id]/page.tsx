@@ -16,7 +16,7 @@ const CLOSED_BY: Record<string, string> = {
   owner: "Принят заказчиком",
   votes: "Решение спонсоров",
   auto: "Принят автоматически: ответа не было 3 дня",
-  arbiter: "Решение независимого приёмщика",
+  arbiter: "Решение независимого приемщика",
 };
 
 export default function DealPage() {
@@ -108,14 +108,14 @@ export default function DealPage() {
             <>
               <div className="row between"><b>Собрано {rub(raised)}</b><span className="muted">из {rub(d.target)}</span></div>
               <div className="meter"><b style={{ width: `${(raised / d.target) * 100}%` }} /></div>
-              <div className="small muted">{d.summary.sponsors} спонсоров. Автор получает деньги только за принятые этапы — не сдан этап, остаток вернётся вам.</div>
+              <div className="small muted">{d.summary.sponsors} спонсоров. Автор получает деньги только за принятые этапы - не сдан этап, остаток вернется вам.</div>
               {!isExec && (
                 <>
                   <div className="chips">
                     {[1000, 5000, 10000, 50000].filter((v) => toKopecks(v) <= missing).map((v) => (
                       <button key={v} className="opt" onClick={() => setAmount(String(v))}>{rub(toKopecks(v))}</button>
                     ))}
-                    <button className="opt" onClick={() => setAmount(String(Math.floor(missing / 100)))}>Всё недостающее</button>
+                    <button className="opt" onClick={() => setAmount(String(Math.floor(missing / 100)))}>Все недостающее</button>
                   </div>
                   <input className="input" inputMode="numeric" placeholder="Сумма, ₽" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} />
                   <button className="btn" disabled={busy || !Number(amount)} onClick={() => run("/fund", { amount: toKopecks(Number(amount)) }, "Деньги зарезервированы")}>
@@ -132,10 +132,10 @@ export default function DealPage() {
               <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={() => run("/fund", {}, "Резерв создан")}>
                 <Icon name="lock" size={18} /> Зарезервировать
               </button>
-              {(wallet?.free ?? 0) < d.target && <div className="note warn">Не хватает {rub(d.target - (wallet?.free ?? 0))}. Пополните кошелёк на вкладке «Кошелёк».</div>}
+              {(wallet?.free ?? 0) < d.target && <div className="note warn">Не хватает {rub(d.target - (wallet?.free ?? 0))}. Пополните кошелек на вкладке «Кошелек».</div>}
             </>
           ) : (
-            <div className="row"><Icon name="clock" size={22} /><div className="sub">Ждём, пока {d.mode === "grant" ? "грантодатель" : "заказчик"} зарезервирует деньги</div></div>
+            <div className="row"><Icon name="clock" size={22} /><div className="sub">Ждем, пока {d.mode === "grant" ? "грантодатель" : "заказчик"} зарезервирует деньги</div></div>
           )}
         </div>
       )}
@@ -148,7 +148,7 @@ export default function DealPage() {
           return (
             <div key={s.id} className={`node ${s.status}`}>
               <div className="dot">{s.status === "accepted" ? <Icon name="check" size={18} /> : i + 1}</div>
-              <div className="body card" style={{ boxShadow: s.status === "active" || s.status === "submitted" ? undefined : "none" }}>
+              <div className={`body card ${s.status === "pending" || s.status === "accepted" ? "flat" : ""}`}>
                 <div className="row between">
                   <div className="title">{s.title}</div>
                   <b className="mono">{rub(s.amount)}</b>
@@ -166,7 +166,7 @@ export default function DealPage() {
                     <div className="small muted"><b>Спор</b></div>
                     {s.messages.map((m, k) => (
                       <div key={k} className={`msg ${m.by === me ? "me" : ""}`}>
-                        <div className="who">{nameOf(users, m.by)}{m.by === d.arbiterId ? " · приёмщик" : ""}</div>
+                        <div className="who">{nameOf(users, m.by)}{m.by === d.arbiterId ? " · приемщик" : ""}</div>
                         {m.text}
                         <PhotoGrid photos={m.photos} />
                       </div>
@@ -188,7 +188,7 @@ export default function DealPage() {
 
                 {s.status === "submitted" && (
                   <div className="stack" style={{ marginTop: 12 }}>
-                    {d.mode !== "grant" && <div className="note warn"><Icon name="clock" size={14} /> Автоприёмка через {timeLeft(left)}</div>}
+                    {d.mode !== "grant" && <div className="note warn"><Icon name="clock" size={14} /> Автоприемка через {timeLeft(left)}</div>}
                     {!crowd && isOwner && (
                       <div className="btns">
                         <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/approve`, {}, "Этап принят, деньги отправлены")}>Принял</button>
@@ -199,8 +199,8 @@ export default function DealPage() {
                       <>
                         <div className="small muted">Приняли {Math.round((votesAccept / Math.max(1, raised)) * 100)}% спонсоров по весу взносов{voted ? ` · ваш голос: ${voted === "accept" ? "за" : "против"}` : ""}</div>
                         <div className="btns">
-                          <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/vote`, { vote: "accept" }, "Голос учтён")}>Принять</button>
-                          <button className="btn danger" disabled={busy} onClick={() => run(`/stages/${s.id}/vote`, { vote: "reject" }, "Голос учтён")}>Отклонить</button>
+                          <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/vote`, { vote: "accept" }, "Голос учтен")}>Принять</button>
+                          <button className="btn danger" disabled={busy} onClick={() => run(`/stages/${s.id}/vote`, { vote: "reject" }, "Голос учтен")}>Отклонить</button>
                         </div>
                       </>
                     )}
@@ -221,7 +221,7 @@ export default function DealPage() {
                     <button className="btn danger" disabled={busy} onClick={() => { setAsk({ kind: "refund", stage: s }); setText(""); }}>Вернуть</button>
                   </div>
                 )}
-                {s.status === "disputed" && !isArbiter && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приёмщика</div>}
+                {s.status === "disputed" && !isArbiter && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приемщика</div>}
               </div>
             </div>
           );
@@ -238,7 +238,7 @@ export default function DealPage() {
       )}
 
       {canCancel && (
-        <button className="btn danger" disabled={busy} onClick={() => confirm("Отменить сделку? Неиспользованный резерв вернётся.") && run("/cancel", {}, "Сделка отменена, остаток возвращён")}>
+        <button className="btn danger" disabled={busy} onClick={() => confirm("Отменить сделку? Неиспользованный резерв вернется.") && run("/cancel", {}, "Сделка отменена, остаток возвращен")}>
           Отменить сделку и вернуть остаток
         </button>
       )}
@@ -248,11 +248,11 @@ export default function DealPage() {
         const title = { submit: `Сдать этап «${ask.stage.title}»`, reject: "Причина отказа", dispute: "Причина спора", reply: "Сообщение в споре", pay: "Выплатить исполнителю", refund: "Вернуть деньги заказчику" }[k];
         const needText = k === "reject" || k === "dispute";
         const hasPhotos = k === "submit" || k === "reply";
-        const label = { submit: "Сдать на приёмку", reject: "Отправить отказ", dispute: "Открыть спор", reply: "Отправить", pay: "Подтвердить выплату", refund: "Подтвердить возврат" }[k];
+        const label = { submit: "Сдать на приемку", reject: "Отправить отказ", dispute: "Открыть спор", reply: "Отправить", pay: "Подтвердить выплату", refund: "Подтвердить возврат" }[k];
         const base = `/stages/${ask.stage.id}`;
         const go = () => {
-          if (k === "submit") return run(`${base}/submit`, { note: text.trim() || undefined, photos }, "Этап сдан, ждём приёмки");
-          if (k === "reject") return run(`${base}/reject`, { reason: text }, d.mode === "grant" ? "Этап отклонён, остаток возвращён" : "Отказ отправлен, открыт спор");
+          if (k === "submit") return run(`${base}/submit`, { note: text.trim() || undefined, photos }, "Этап сдан, ждем приемки");
+          if (k === "reject") return run(`${base}/reject`, { reason: text }, d.mode === "grant" ? "Этап отклонен, остаток возвращен" : "Отказ отправлен, открыт спор");
           if (k === "dispute") return run(`${base}/dispute`, { reason: text }, "Спор открыт");
           if (k === "reply") return run(`${base}/reply`, { text, photos }, "Сообщение отправлено");
           return run(`${base}/resolve`, { decision: k, comment: text.trim() || undefined }, k === "pay" ? "Решено: выплатить исполнителю" : "Решено: вернуть заказчику");

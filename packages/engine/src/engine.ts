@@ -69,7 +69,7 @@ export function splitProRata(amount: Money, weights: Record<UserId, Money>): Rec
   return Object.fromEntries(parts.map((p) => [p.id, p.base]));
 }
 
-// ───────────────────────── кошелёк ─────────────────────────
+// ───────────────────────── кошелек ─────────────────────────
 
 export const topUp = mutate((s, userId: UserId, amount: Money, at: number) => {
   if (!Number.isInteger(amount) || amount <= 0) fail("Сумма должна быть положительной");
@@ -149,7 +149,7 @@ function activate(d: Deal) {
   if (first) first.status = "active";
 }
 
-/** Резерв денег. own/grant — ровно вся сумма от заказчика; crowdfunding — любые взносы до цели. */
+/** Резерв денег. own/grant - ровно вся сумма от заказчика; crowdfunding - любые взносы до цели. */
 export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at: number) => {
   const d = getDeal(s, dealId);
   if (d.status !== "funding") fail("Сделка уже не принимает деньги");
@@ -244,13 +244,13 @@ export const submitStage = mutate(
   },
 );
 
-/** Приёмка: own — заказчик, grant — грантодатель. В краудфандинге принимают голосованием. */
+/** Приемка: own - заказчик, grant - грантодатель. В краудфандинге принимают голосованием. */
 export const approveStage = mutate((s, dealId: string, stageId: string, userId: UserId, at: number) => {
   const d = getDeal(s, dealId);
   const st = getStage(d, stageId);
   if (d.mode === "crowdfunding") fail("В краудфандинге этап принимают голосованием");
   if (userId !== d.ownerId) fail("Принять этап может только заказчик");
-  if (st.status !== "submitted") fail("Этап не ожидает приёмки");
+  if (st.status !== "submitted") fail("Этап не ожидает приемки");
   acceptStage(s, d, st, at, "owner");
 });
 
@@ -264,7 +264,7 @@ export const rejectStage = mutate(
     const st = getStage(d, stageId);
     if (d.mode === "crowdfunding") fail("В краудфандинге этап оценивают голосованием");
     if (userId !== d.ownerId) fail("Отказать может только заказчик");
-    if (st.status !== "submitted") fail("Этап не ожидает приёмки");
+    if (st.status !== "submitted") fail("Этап не ожидает приемки");
     if (!reason.trim()) fail("Отказ возможен только с причиной");
     if (d.mode === "grant") {
       st.disputeReason = reason;
@@ -277,7 +277,7 @@ export const rejectStage = mutate(
   },
 );
 
-/** Голос спонсора (вес = внесённая сумма). >50% «за» — принят, >50% «против» — провал и возврат. */
+/** Голос спонсора (вес = внесенная сумма). >50% «за» - принят, >50% «против» - провал и возврат. */
 export const voteStage = mutate(
   (
     s,
@@ -290,7 +290,7 @@ export const voteStage = mutate(
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
     if (d.mode !== "crowdfunding") fail("Голосование только в краудфандинге");
-    if (st.status !== "submitted") fail("Этап не ожидает приёмки");
+    if (st.status !== "submitted") fail("Этап не ожидает приемки");
     if ((d.contributed[userId] ?? 0) <= 0) fail("Голосовать могут только спонсоры");
     st.votes[userId] = vote;
     const total = totalContributed(d);
@@ -308,7 +308,7 @@ export const openDispute = mutate(
   (s, dealId: string, stageId: string, userId: UserId, reason: string, at: number) => {
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
-    if (d.mode !== "own") fail("Споры по приёмщику есть только в режиме «Свой проект»");
+    if (d.mode !== "own") fail("Споры по приемщику есть только в режиме «Свой проект»");
     if (userId !== d.ownerId && userId !== d.executorId) fail("Нет доступа к сделке");
     if (st.status !== "submitted") fail("Спор можно открыть только по сданному этапу");
     if (!reason.trim()) fail("Укажите причину");
@@ -318,7 +318,7 @@ export const openDispute = mutate(
   },
 );
 
-/** Реплика в споре: стороны сделки добавляют аргументы и фото, приёмщик — вопросы. */
+/** Реплика в споре: стороны сделки добавляют аргументы и фото, приемщик - вопросы. */
 export const replyDispute = mutate(
   (s, dealId: string, stageId: string, userId: UserId, text: string, photos: string[], at: number) => {
     const d = getDeal(s, dealId);
@@ -330,7 +330,7 @@ export const replyDispute = mutate(
   },
 );
 
-/** Решение независимого приёмщика: pay — выплатить исполнителю, refund — вернуть деньги заказчику. */
+/** Решение независимого приемщика: pay - выплатить исполнителю, refund - вернуть деньги заказчику. */
 export const resolveDispute = mutate(
   (
     s,
@@ -343,27 +343,27 @@ export const resolveDispute = mutate(
   ) => {
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
-    if (!d.arbiterId || userId !== d.arbiterId) fail("Решить спор может только приёмщик");
+    if (!d.arbiterId || userId !== d.arbiterId) fail("Решить спор может только приемщик");
     if (st.status !== "disputed") fail("Этап не в споре");
     const note = comment?.trim() || undefined;
     if (decision === "pay") acceptStage(s, d, st, at, "arbiter", note);
-    else failDeal(s, d, st, at, "Спор решён в пользу заказчика", "arbiter", note);
+    else failDeal(s, d, st, at, "Спор решен в пользу заказчика", "arbiter", note);
   },
 );
 
-/** Отмена сделки заказчиком: возвращается всё, кроме этапов на сдаче/в споре — их нужно сначала закрыть. */
+/** Отмена сделки заказчиком: возвращается все, кроме этапов на сдаче/в споре - их нужно сначала закрыть. */
 export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number) => {
   const d = getDeal(s, dealId);
   if (d.status === "completed" || d.status === "cancelled") fail("Сделка уже завершена");
   if (d.mode !== "crowdfunding" && userId !== d.ownerId) fail("Отменить может только заказчик");
   if (d.mode === "crowdfunding" && userId !== d.executorId) fail("Отменить может только автор");
   if (d.stages.some((x) => x.status === "submitted" || x.status === "disputed"))
-    fail("Сначала закройте этап на приёмке или в споре");
+    fail("Сначала закройте этап на приемке или в споре");
   d.status = "cancelled";
   refundAll(s, d, at, "Сделка отменена");
 });
 
-/** Часы: автоприёмка через autoAcceptMs без ответа (own и краудфандинг). */
+/** Часы: автоприемка через autoAcceptMs без ответа (own и краудфандинг). */
 export const tick = mutate((s, now: number) => {
   for (const d of Object.values(s.deals)) {
     if (d.status !== "active" || d.mode === "grant") continue;
@@ -374,7 +374,7 @@ export const tick = mutate((s, now: number) => {
         now - st.submittedAt >= d.autoAcceptMs
       ) {
         acceptStage(s, d, st, now, "auto");
-        break; // один этап за тик, следующий начнёт новый круг
+        break; // один этап за тик, следующий начнет новый круг
       }
     }
   }

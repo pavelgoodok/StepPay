@@ -10,7 +10,7 @@ const TABS = [
   { href: "/deals", label: "Сделки", icon: "deals" },
   { href: "/projects", label: "Проекты", icon: "sprout" },
   null,
-  { href: "/wallet", label: "Кошелёк", icon: "wallet" },
+  { href: "/wallet", label: "Кошелек", icon: "wallet" },
   { href: "/profile", label: "Профиль", icon: "user" },
 ];
 
@@ -48,7 +48,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {TABS.map((t) =>
           t ? (
             <Link key={t.href} href={t.href} className={`tab ${path.startsWith(t.href) ? "on" : ""}`}>
-              <Icon name={t.icon} />
+              <span className="ti"><Icon name={t.icon} /></span>
               {t.label}
             </Link>
           ) : (

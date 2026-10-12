@@ -10,7 +10,7 @@ if (process.env.DATABASE_URL) {
   await pgStore.init();
   store = pgStore;
 } else {
-  console.warn("DATABASE_URL не задан — данные хранятся в памяти и пропадут при перезапуске");
+  console.warn("DATABASE_URL не задан - данные хранятся в памяти и пропадут при перезапуске");
   store = new MemoryStore();
 }
 

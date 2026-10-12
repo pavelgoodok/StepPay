@@ -10,7 +10,7 @@ type Mode = "own" | "crowdfunding" | "grant";
 const MODES: { id: Mode; title: string; text: string; icon: string }[] = [
   { id: "own", title: "Свой проект", text: "Ремонт, сайт, свадьба: платите исполнителю по этапам", icon: "hammer" },
   { id: "crowdfunding", title: "Краудфандинг", text: "Соберите деньги на идею, спонсоры защищены", icon: "crowd" },
-  { id: "grant", title: "Грант", text: "Выдайте деньги по этапам с готовой отчётностью", icon: "award" },
+  { id: "grant", title: "Грант", text: "Выдайте деньги по этапам с готовой отчетностью", icon: "award" },
 ];
 const TPL_ICON: Record<string, string> = { bath: "bath", kitchen: "kitchen", bolt: "bolt", laptop: "laptop", ring: "ring" };
 
@@ -117,7 +117,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       <Sheet onClose={onClose}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.receipt} alt="" />
-        <h2>Что создаём?</h2>
+        <h2>Что создаем?</h2>
         <p className="sub" style={{ textAlign: "center", marginBottom: 16 }}>Деньги уходят только за принятые этапы</p>
         <div className="stack">
           {MODES.map((m) => (
@@ -132,7 +132,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
           ))}
         </div>
         <p className="small muted" style={{ textAlign: "center", marginTop: 16 }}>
-          <Icon name="lock" size={14} /> Цифровые рубли — без комиссии для граждан
+          <Icon name="lock" size={14} /> Цифровые рубли - без комиссии для граждан
         </p>
       </Sheet>
     );
@@ -157,7 +157,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
           </div>
           {aiSource && (
             <div className="small muted">
-              {aiSource === "claude" ? "Этапы составлены Claude. Проверьте и поправьте при необходимости." : "AI сейчас недоступен — подобран ближайший шаблон. Этапы можно изменить."}
+              {aiSource === "claude" ? "Этапы составлены Claude. Проверьте и поправьте при необходимости." : "AI сейчас недоступен - подобран ближайший шаблон. Этапы можно изменить."}
             </div>
           )}
         </div>
@@ -229,7 +229,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
           </>
         )}
         <button className="btn" disabled={!valid || busy} onClick={submit}>
-          {busy ? "Создаём…" : `Создать${sum ? ` · ${rub(toKopecks(sum))}` : ""}`}
+          {busy ? "Создаем…" : `Создать${sum ? ` · ${rub(toKopecks(sum))}` : ""}`}
         </button>
       </div>
     </Sheet>

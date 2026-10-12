@@ -20,7 +20,7 @@ export function seedUsers(s: State, at: number): State {
   return next;
 }
 
-/** Каталог проектов, чтобы вкладка «Проекты» не была пустой (названия — из макетов). */
+/** Каталог проектов, чтобы вкладка «Проекты» не была пустой (названия - из макетов). */
 export function seedCatalog(s: State, at: number): State {
   const sponsors = (st: State, id: string, parts: [string, number][]) => parts.reduce((acc, [who, rub]) => fund(acc, id, who, rub * R, at), st);
   let n = s;
@@ -67,13 +67,13 @@ export interface Narration {
 }
 
 export const DEMO_SCRIPT = [
-  "Анна создаёт ремонт ванной за 300 000 ₽ в 4 этапа",
-  "Анна резервирует деньги — у Ивана «300 000 ₽ зарезервировано»",
-  "Иван сдаёт этап «Плитка» с фото",
-  "Анна жмёт «Принял» — у Ивана сразу +120 000 ₽",
+  "Анна создает ремонт ванной за 300 000 ₽ в 4 этапа",
+  "Анна резервирует деньги - у Ивана «300 000 ₽ зарезервировано»",
+  "Иван сдает этап «Плитка» с фото",
+  "Анна жмет «Принял» - у Ивана сразу +120 000 ₽",
   "Тот же движок: краудфандинг настольной игры на 300 000 ₽",
-  "Два спонсора вносят по 150 000 ₽ — проект стартует",
-  "Автор сдаёт «Макет», спонсоры принимают — автору 100 000 ₽",
+  "Два спонсора вносят по 150 000 ₽ - проект стартует",
+  "Автор сдает «Макет», спонсоры принимают - автору 100 000 ₽",
   "Автор срывает «Тираж»: остаток 200 000 ₽ возвращается спонсорам",
 ];
 
@@ -85,13 +85,13 @@ export function runDemoStep(s: State, step: number, at: number): { state: State;
         state: createDeal(s, {
           id: "demo-own", mode: "own", title: "Ремонт ванной", executorId: "ivan", ownerId: "anna", arbiterId: "expert",
           stages: [
-            { id: "s1", title: "Плитка", amount: 120_000 * R, criteria: ["Швы ровные", "Плитка без сколов", "Уровень соблюдён"] },
+            { id: "s1", title: "Плитка", amount: 120_000 * R, criteria: ["Швы ровные", "Плитка без сколов", "Уровень соблюден"] },
             { id: "s2", title: "Электрика", amount: 60_000 * R, criteria: ["Проводка проложена", "Розетки установлены"] },
             { id: "s3", title: "Сантехника", amount: 90_000 * R, criteria: ["Приборы установлены", "Нет протечек"] },
             { id: "s4", title: "Чистовая отделка", amount: 30_000 * R, criteria: ["Уборка после работ"] },
           ], at,
         }),
-        narration: { title: "Сделка создана", text: "Анна разбила ремонт на 4 этапа. Суммы и критерии приёмки зафиксированы до начала работ.", viewAs: "anna", path: "/deals/demo-own" },
+        narration: { title: "Сделка создана", text: "Анна разбила ремонт на 4 этапа. Суммы и критерии приемки зафиксированы до начала работ.", viewAs: "anna", path: "/deals/demo-own" },
       };
     case 2:
       return {
@@ -100,13 +100,13 @@ export function runDemoStep(s: State, step: number, at: number): { state: State;
       };
     case 3:
       return {
-        state: submitStage(s, "demo-own", "s1", "ivan", { note: "Плитка уложена, швы затёрты, всё по уровню", photos: [PHOTO] }, at),
-        narration: { title: "Этап сдан", text: "Иван приложил фото. Если Анна не ответит 3 дня — этап примется автоматически.", viewAs: "anna", path: "/deals/demo-own" },
+        state: submitStage(s, "demo-own", "s1", "ivan", { note: "Плитка уложена, швы затерты, все по уровню", photos: [PHOTO] }, at),
+        narration: { title: "Этап сдан", text: "Иван приложил фото. Если Анна не ответит 3 дня - этап примется автоматически.", viewAs: "anna", path: "/deals/demo-own" },
       };
     case 4:
       return {
         state: approveStage(s, "demo-own", "s1", "anna", at),
-        narration: { title: "Этап принят — деньги у исполнителя", text: "Анна нажала «Принял»: Иван мгновенно получил 120 000 ₽, остальные 180 000 ₽ остаются в резерве.", viewAs: "ivan", path: "/wallet" },
+        narration: { title: "Этап принят - деньги у исполнителя", text: "Анна нажала «Принял»: Иван мгновенно получил 120 000 ₽, остальные 180 000 ₽ остаются в резерве.", viewAs: "ivan", path: "/wallet" },
       };
     case 5:
       return {
@@ -114,21 +114,21 @@ export function runDemoStep(s: State, step: number, at: number): { state: State;
           id: "demo-crowd", mode: "crowdfunding", title: "Тираж настольной игры", executorId: "games",
           stages: [{ id: "s1", title: "Макет", amount: 100_000 * R, criteria: ["Готов макет и правила"] }, { id: "s2", title: "Тираж", amount: 200_000 * R, criteria: ["Тираж отпечатан и отправлен спонсорам"] }], at,
         }),
-        narration: { title: "Тот же движок — другой режим", text: "Краудфандинг: платит не один человек, а много спонсоров, а этап принимают голосованием. Механика та же.", viewAs: "olga", path: "/deals/demo-crowd" },
+        narration: { title: "Тот же движок - другой режим", text: "Краудфандинг: платит не один человек, а много спонсоров, а этап принимают голосованием. Механика та же.", viewAs: "olga", path: "/deals/demo-crowd" },
       };
     case 6: {
       const n = fund(fund(s, "demo-crowd", "olga", 150_000 * R, at), "demo-crowd", "max", 150_000 * R, at);
-      return { state: n, narration: { title: "Сбор завершён", text: "Ольга и Максим внесли по 150 000 ₽. Деньги не у автора, а в резерве до приёмки этапов.", viewAs: "games", path: "/deals/demo-crowd" } };
+      return { state: n, narration: { title: "Сбор завершен", text: "Ольга и Максим внесли по 150 000 ₽. Деньги не у автора, а в резерве до приемки этапов.", viewAs: "games", path: "/deals/demo-crowd" } };
     }
     case 7: {
       let n = submitStage(s, "demo-crowd", "s1", "games", { note: "Макет и правила готовы" }, at);
       n = voteStage(voteStage(n, "demo-crowd", "s1", "olga", "accept", at), "demo-crowd", "s1", "max", "accept", at);
-      return { state: n, narration: { title: "Первый этап принят", text: "Спонсоры проголосовали «за» — автор получил 100 000 ₽ за макет.", viewAs: "games", path: "/wallet" } };
+      return { state: n, narration: { title: "Первый этап принят", text: "Спонсоры проголосовали «за» - автор получил 100 000 ₽ за макет.", viewAs: "games", path: "/wallet" } };
     }
     case 8: {
       let n = submitStage(s, "demo-crowd", "s2", "games", { note: "Тираж задерживается, отправим часть" }, at);
       n = voteStage(n, "demo-crowd", "s2", "olga", "reject", at);
-      return { state: n, narration: { title: "Проект не сдал этап — остаток вернулся", text: "Спонсоры отклонили этап. Невыплаченные 200 000 ₽ вернулись Ольге и Максиму по 100 000 ₽ — без споров и заявлений.", viewAs: "olga", path: "/wallet" } };
+      return { state: n, narration: { title: "Проект не сдал этап - остаток вернулся", text: "Спонсоры отклонили этап. Невыплаченные 200 000 ₽ вернулись Ольге и Максиму по 100 000 ₽ - без споров и заявлений.", viewAs: "olga", path: "/wallet" } };
     }
     default:
       throw new Error("Нет такого шага сценария");

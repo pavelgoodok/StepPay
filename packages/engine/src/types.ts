@@ -1,16 +1,16 @@
-/** Все суммы — в копейках (целые числа). */
+/** Все суммы - в копейках (целые числа). */
 export type Money = number;
 export type UserId = string;
 
 export type Mode = "own" | "crowdfunding" | "grant";
 
 export type StageStatus =
-  | "pending" // ждёт своей очереди
+  | "pending" // ждет своей очереди
   | "active" // исполнитель работает
-  | "submitted" // сдан, ждёт приёмки
+  | "submitted" // сдан, ждет приемки
   | "accepted" // принят, деньги выплачены
   | "disputed" // спор, деньги заморожены
-  | "failed"; // провален, остаток возвращён
+  | "failed"; // провален, остаток возвращен
 
 export type DealStatus = "funding" | "active" | "completed" | "cancelled";
 
@@ -25,7 +25,7 @@ export interface Stage {
   /** голоса спонсоров (только краудфандинг) */
   votes: Record<UserId, "accept" | "reject">;
   disputeReason?: string;
-  /** переписка по спору: причина, ответы сторон, пояснения приёмщика */
+  /** переписка по спору: причина, ответы сторон, пояснения приемщика */
   messages?: DisputeMessage[];
   /** как этап был закрыт */
   resolution?: { by: "owner" | "votes" | "auto" | "arbiter"; decision: "accepted" | "failed"; comment?: string; at: number };
@@ -45,12 +45,12 @@ export interface Deal {
   executorId: UserId;
   /** own: заказчик, grant: грантодатель, crowdfunding: не задан (голосование) */
   ownerId?: UserId;
-  /** независимый приёмщик для споров */
+  /** независимый приемщик для споров */
   arbiterId?: UserId;
   stages: Stage[];
   target: Money;
   status: DealStatus;
-  /** сколько ещё зарезервировано каждым плательщиком */
+  /** сколько еще зарезервировано каждым плательщиком */
   reserves: Record<UserId, Money>;
   /** сколько внесено в сумме (для весов голосования и пропорционального возврата) */
   contributed: Record<UserId, Money>;

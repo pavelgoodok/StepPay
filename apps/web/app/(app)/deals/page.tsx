@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { IMG, Icon, Initials, Logo, Money, StageBars } from "@/components/ui";
+import { DealCard } from "@/components/deal-card";
+import { IMG, Icon, Initials, Logo, Money } from "@/components/ui";
 import { api, type DealSummary } from "@/lib/api";
 import { rub } from "@/lib/format";
-import { dealChip, nameOf } from "@/lib/labels";
+import { nameOf } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
 export default function Deals() {
@@ -75,27 +76,9 @@ export default function Deals() {
         </div>
       )}
       <div className="grid2">
-      {mine.map((d) => {
-        const chip = dealChip(d);
-        const other = view === "exec" ? nameOf(users, d.ownerId ?? "Спонсоры") : nameOf(users, d.executorId);
-        const paidShare = d.target ? Math.round((d.stages.done / d.stages.total) * 100) : 0;
-        return (
-          <Link key={d.id} href={`/deals/${d.id}`} className={`card tap dealcard ${chip.tone}`}>
-            <div className="row between">
-              <div className="grow">
-                <div className="title ellipsis">{d.title}</div>
-                <div className="sub ellipsis">{other}</div>
-              </div>
-              <span className={`chip ${chip.tone}`}>{chip.text}</span>
-            </div>
-            <StageBars done={d.stages.done} total={d.stages.total} working={d.status === "active"} />
-            <div className="row between small muted">
-              <span>Этап {Math.min(d.stages.done + 1, d.stages.total)} из {d.stages.total}</span>
-              <span className="mono">{rub(d.target)} · {paidShare}%</span>
-            </div>
-          </Link>
-        );
-      })}
+        {mine.map((d) => (
+          <DealCard key={d.id} d={d} who={view === "exec" ? nameOf(users, d.ownerId ?? "Спонсоры") : nameOf(users, d.executorId)} />
+        ))}
       </div>
     </div>
   );

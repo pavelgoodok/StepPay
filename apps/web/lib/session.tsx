@@ -75,7 +75,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [refresh]);
 
-  // живые обновления: сервер сам сообщает об изменениях; опрос остаётся запасным
+  // живые обновления: сервер сам сообщает об изменениях; опрос остается запасным
   const uid = user?.id;
   useEffect(() => {
     const token = getToken();
@@ -91,7 +91,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       try {
         if (document.visibilityState === "hidden" && "Notification" in window && Notification.permission === "granted") new Notification("StepPay", { body: text, icon: "/logo.png" });
       } catch {
-        /* уведомления недоступны — остаётся тост */
+        /* уведомления недоступны - остается тост */
       }
     });
     return () => es.close();

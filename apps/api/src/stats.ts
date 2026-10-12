@@ -7,7 +7,7 @@ export interface PublicProfile {
   autoAccepted: number;
   dealsCompleted: number;
   received: number;
-  /** 1–5, сглаженная доля принятых этапов; null, пока нет закрытых этапов */
+  /** 1-5, сглаженная доля принятых этапов; null, пока нет закрытых этапов */
   rating: number | null;
 }
 
@@ -40,7 +40,7 @@ export interface Receipt {
   payerId: string | null;
 }
 
-/** Демо-чеки самозанятого по каждой выплате за этап (в продукте — чек «Мой налог» через API ФНС). */
+/** Демо-чеки самозанятого по каждой выплате за этап (в продукте - чек «Мой налог» через API ФНС). */
 export function receiptsFor(s: State, userId: string): Receipt[] {
   return s.ledger
     .filter((l) => l.type === "payout" && l.userId === userId && l.dealId)
@@ -52,7 +52,7 @@ export function receiptsFor(s: State, userId: string): Receipt[] {
         number: `${new Date(l.at).getFullYear()}-${String(l.id).padStart(6, "0")}`,
         at: l.at,
         amount: l.amount,
-        service: `Работы по этапу «${stage?.title ?? "—"}», проект «${d?.title ?? "—"}»`,
+        service: `Работы по этапу «${stage?.title ?? "-"}», проект «${d?.title ?? "-"}»`,
         dealId: l.dealId!,
         payerId: d?.ownerId ?? null,
       };

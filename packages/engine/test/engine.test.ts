@@ -24,7 +24,7 @@ import {
 const R = 100; // рубль в копейках
 const T0 = 1_000_000;
 
-/** Деньги не создаются и не пропадают: свободные + резервы = всё пополненное. */
+/** Деньги не создаются и не пропадают: свободные + резервы = все пополненное. */
 function totalMoney(s: State) {
   const free = Object.values(s.wallets).reduce((a, b) => a + b, 0);
   const reserved = Object.values(s.deals).flatMap((d) => Object.values(d.reserves)).reduce((a, b) => a + b, 0);
@@ -57,7 +57,7 @@ describe("splitProRata", () => {
 });
 
 describe("режим «Свой проект» (демо из презентации)", () => {
-  it("резерв → сдача → приёмка → выплата", () => {
+  it("резерв → сдача → приемка → выплата", () => {
     let s = createState();
     s = topUp(s, "anna", 300_000 * R, T0);
     s = bathroom(s);
@@ -81,7 +81,7 @@ describe("режим «Свой проект» (демо из презентац
     expect(totalMoney(s)).toBe(toppedUp(s));
   });
 
-  it("автоприёмка через 3 дня без ответа", () => {
+  it("автоприемка через 3 дня без ответа", () => {
     let s = createState();
     s = topUp(s, "anna", 300_000 * R, T0);
     s = bathroom(s);
@@ -94,7 +94,7 @@ describe("режим «Свой проект» (демо из презентац
     expect(freeBalance(s, "ivan")).toBe(30_000 * R);
   });
 
-  it("отказ только с причиной, спор замораживает деньги, приёмщик решает", () => {
+  it("отказ только с причиной, спор замораживает деньги, приемщик решает", () => {
     let s = createState();
     s = topUp(s, "anna", 300_000 * R, T0);
     s = bathroom(s);
@@ -104,7 +104,7 @@ describe("режим «Свой проект» (демо из презентац
     s = rejectStage(s, "d1", "s1", "anna", "Не вывезен мусор", T0);
     expect(s.deals.d1!.stages[0]!.status).toBe("disputed");
     expect(freeBalance(s, "ivan")).toBe(0);
-    // автоприёмка спор не обходит
+    // автоприемка спор не обходит
     s = tick(s, T0 + 10 * DAY_MS);
     expect(s.deals.d1!.stages[0]!.status).toBe("disputed");
 
@@ -116,7 +116,7 @@ describe("режим «Свой проект» (демо из презентац
     expect(totalMoney(refund)).toBe(toppedUp(refund));
   });
 
-  it("исполнитель тоже может открыть спор, чужой — нет", () => {
+  it("исполнитель тоже может открыть спор, чужой - нет", () => {
     let s = createState();
     s = topUp(s, "anna", 300_000 * R, T0);
     s = bathroom(s);
@@ -145,7 +145,7 @@ describe("режим «Свой проект» (демо из презентац
     s = topUp(s, "anna", 300_000 * R, T0);
     s = createDeal(s, {
       id: "d2", mode: "own", title: "Сайт", executorId: "ivan", ownerId: "anna",
-      stages: [{ title: "Дизайн", amount: 100_000 * R }, { title: "Вёрстка", amount: 200_000 * R }],
+      stages: [{ title: "Дизайн", amount: 100_000 * R }, { title: "Верстка", amount: 200_000 * R }],
       feeBps: 100, at: T0,
     });
     s = fund(s, "d2", "anna", 300_000 * R, T0);
@@ -191,7 +191,7 @@ describe("режим «Краудфандинг»", () => {
     expect(totalMoney(s)).toBe(toppedUp(s));
   });
 
-  it("провал этапа — остаток возвращается спонсорам пропорционально (демо)", () => {
+  it("провал этапа - остаток возвращается спонсорам пропорционально (демо)", () => {
     let s = setup();
     s = fund(s, "c1", "c", 100_000 * R, T0);
     s = submitStage(s, "c1", "s1", "author", {}, T0);
@@ -207,7 +207,7 @@ describe("режим «Краудфандинг»", () => {
     expect(totalMoney(s)).toBe(toppedUp(s));
   });
 
-  it("голосовать может только спонсор; автоприёмка при молчании", () => {
+  it("голосовать может только спонсор; автоприемка при молчании", () => {
     let s = setup();
     s = fund(s, "c1", "c", 100_000 * R, T0);
     s = submitStage(s, "c1", "s1", "author", {}, T0);
@@ -216,7 +216,7 @@ describe("режим «Краудфандинг»", () => {
     expect(s.deals.c1!.stages[0]!.status).toBe("accepted");
   });
 
-  it("сбор не завершён — автор отменяет, спонсоры получают взносы", () => {
+  it("сбор не завершен - автор отменяет, спонсоры получают взносы", () => {
     let s = setup();
     s = cancelDeal(s, "c1", "author", T0);
     expect(freeBalance(s, "a")).toBe(100_000 * R);
@@ -225,7 +225,7 @@ describe("режим «Краудфандинг»", () => {
 });
 
 describe("режим «Грант»", () => {
-  it("отказ грантодателя — деньги не уходят, остаток возвращается; автоприёмки нет", () => {
+  it("отказ грантодателя - деньги не уходят, остаток возвращается; автоприемки нет", () => {
     let s = createState();
     s = topUp(s, "fund", 500_000 * R, T0);
     s = createDeal(s, {
@@ -237,7 +237,7 @@ describe("режим «Грант»", () => {
     s = submitStage(s, "g1", "s1", "ngo", {}, T0);
     s = tick(s, T0 + 30 * DAY_MS);
     expect(s.deals.g1!.stages[0]!.status).toBe("submitted");
-    s = rejectStage(s, "g1", "s1", "fund", "Нет отчётных документов", T0);
+    s = rejectStage(s, "g1", "s1", "fund", "Нет отчетных документов", T0);
     expect(freeBalance(s, "ngo")).toBe(0);
     expect(freeBalance(s, "fund")).toBe(500_000 * R);
     expect(s.deals.g1!.status).toBe("cancelled");
@@ -254,23 +254,23 @@ describe("переписка по спору и причина закрытия"
     return rejectStage(s, "d1", "s1", "anna", "Не вывезен мусор", T0 + 1);
   };
 
-  it("причина отказа становится первой репликой; стороны и приёмщик отвечают, чужие — нет", () => {
+  it("причина отказа становится первой репликой; стороны и приемщик отвечают, чужие - нет", () => {
     let s = disputed();
     expect(s.deals.d1!.stages[0]!.messages).toEqual([{ by: "anna", text: "Не вывезен мусор", at: T0 + 1 }]);
     s = replyDispute(s, "d1", "s1", "ivan", "Вывезли, вот фото", ["/uploads/a"], T0 + 2);
-    s = replyDispute(s, "d1", "s1", "expert", "Уточните объём", [], T0 + 3);
+    s = replyDispute(s, "d1", "s1", "expert", "Уточните объем", [], T0 + 3);
     expect(s.deals.d1!.stages[0]!.messages).toHaveLength(3);
     expect(s.deals.d1!.stages[0]!.messages![1]!.photos).toEqual(["/uploads/a"]);
     expect(() => replyDispute(s, "d1", "s1", "stranger", "я тоже", [], T0)).toThrow(EngineError);
     expect(() => replyDispute(s, "d1", "s1", "ivan", "  ", [], T0)).toThrow(EngineError);
   });
 
-  it("решение приёмщика сохраняет комментарий и автора решения", () => {
+  it("решение приемщика сохраняет комментарий и автора решения", () => {
     const s = resolveDispute(disputed(), "d1", "s1", "expert", "pay", T0 + 5, "  Фото подтверждают  ");
     expect(s.deals.d1!.stages[0]!.resolution).toEqual({ by: "arbiter", decision: "accepted", comment: "Фото подтверждают", at: T0 + 5 });
   });
 
-  it("фиксируется, кто принял этап: заказчик или автоприёмка", () => {
+  it("фиксируется, кто принял этап: заказчик или автоприемка", () => {
     let s = createState();
     s = topUp(s, "anna", 300_000 * R, T0);
     s = bathroom(s);

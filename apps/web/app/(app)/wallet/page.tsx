@@ -35,7 +35,7 @@ export default function WalletPage() {
 
   return (
     <div className="page">
-      <h1 className="h1">Кошелёк</h1>
+      <h1 className="h1">Кошелек</h1>
       <div className="hero">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
@@ -67,7 +67,7 @@ export default function WalletPage() {
 
       <div className="card row" style={{ background: "var(--blue-soft)", boxShadow: "none" }}>
         <Icon name="shield" size={30} />
-        <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан — без комиссии (в демо — эмуляция)</div></div>
+        <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
       </div>
 
       <h2 className="title">История</h2>
@@ -95,7 +95,7 @@ export default function WalletPage() {
         <Sheet onClose={() => setOpen(false)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="art" src={IMG.card} alt="" />
-          <h2>Пополнить кошелёк</h2>
+          <h2>Пополнить кошелек</h2>
           <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>Демо: деньги появятся мгновенно</p>
           <div className="stack">
             <div className="chips" style={{ justifyContent: "center" }}>

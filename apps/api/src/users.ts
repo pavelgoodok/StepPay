@@ -18,14 +18,16 @@ export const DEMO_USERS: User[] = [
   { id: "studio", name: "ФинТех Студия", role: "executor", startBalance: 0 },
   { id: "tsj", name: "ТСЖ «Липки»", role: "executor", startBalance: 0 },
   { id: "fond", name: "Фонд «Развитие»", role: "funder", startBalance: 2_000_000 },
-  { id: "expert", name: "Независимый приёмщик", role: "arbiter", startBalance: 0 },
+  { id: "expert", name: "Независимый приемщик", role: "arbiter", startBalance: 0 },
 ];
 
-/** Зарегистрированный пользователь: одна учётная запись на все роли, роль определяет сделка. */
+/** Зарегистрированный пользователь: одна учетная запись на все роли, роль определяет сделка. */
 export interface RegisteredUser {
   id: string;
   phone: string;
   name: string;
+  /** коротко о себе, показывается в публичной карточке */
+  about?: string;
   createdAt: number;
 }
 
@@ -51,7 +53,7 @@ export class Directory {
   constructor(
     private persist: (users: RegisteredUser[]) => Promise<void>,
     initial: RegisteredUser[] = [],
-    /** при DEMO_MODE=off демо-аккаунты не входят и не ищутся, но приёмщик споров нужен всегда */
+    /** при DEMO_MODE=off демо-аккаунты не входят и не ищутся, но приемщик споров нужен всегда */
     private demo = true,
   ) {
     for (const r of initial) this.registered.set(r.id, r);
@@ -87,12 +89,17 @@ export class Directory {
     return user;
   }
 
-  async rename(id: string, name: string) {
+  async updateProfile(id: string, patch: { name?: string; about?: string }) {
     const r = this.registered.get(id);
     if (!r) return false;
-    r.name = name;
+    if (patch.name !== undefined) r.name = patch.name;
+    if (patch.about !== undefined) r.about = patch.about || undefined;
     await this.persist([...this.registered.values()]);
     return true;
+  }
+
+  aboutOf(id: string) {
+    return this.registered.get(id)?.about;
   }
 
   /** Поиск исполнителя: точный номер или начало имени (от 3 букв). Демо-аккаунты показываются только в демо-режиме. */

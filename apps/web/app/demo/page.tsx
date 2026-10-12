@@ -102,7 +102,7 @@ export default function Demo() {
 
         {finished ? (
           <div className="card stack" style={{ textAlign: "center" }}>
-            <div className="title">Сценарий завершён</div>
+            <div className="title">Сценарий завершен</div>
             <div className="sub">Один движок: ремонт, краудфандинг и грант. Деньги ушли за принятый этап и вернулись за проваленный.</div>
           </div>
         ) : (
@@ -114,16 +114,16 @@ export default function Demo() {
         <div className="card stack" style={{ gap: 10 }}>
           {script.map((s, i) => (
             <div key={i} className="row" style={{ opacity: i < done ? 1 : i === done ? 1 : 0.55 }}>
-              <div className="avatar" style={{ width: 30, height: 30, fontSize: 13, background: i < done ? "linear-gradient(135deg,#0fae68,#2bd48a)" : i === done ? undefined : "var(--line)", color: i > done ? "var(--muted)" : "#fff" }}>
-                {i < done ? <Icon name="check" size={16} /> : i + 1}
-              </div>
+              <span className={`dot-i ${i < done ? "done" : i === done ? "cur" : ""}`} style={{ width: 28, height: 28 }}>
+                {i < done ? <Icon name="check" size={14} /> : i + 1}
+              </span>
               <div className="grow" style={{ fontWeight: i === done ? 700 : 500 }}>{s}</div>
             </div>
           ))}
         </div>
 
         <button className="btn ghost" disabled={busy} onClick={reset}>Сбросить данные и начать заново</button>
-        <p className="small muted">Все участники — демо-пользователи, деньги — эмуляция кошелька цифрового рубля.</p>
+        <p className="small muted">Все участники - демо-пользователи, деньги - эмуляция кошелька цифрового рубля.</p>
       </div>
     </div>
   );

@@ -56,7 +56,7 @@ const money = z.number().int().positive().max(100_000_000 * RUB);
 const createBody = z.object({
   mode: z.enum(["own", "crowdfunding", "grant"]),
   title: z.string().trim().min(1).max(120),
-  /** own/grant: исполнитель; для краудфандинга игнорируется (автор — вы) */
+  /** own/grant: исполнитель; для краудфандинга игнорируется (автор - вы) */
   executorId: z.string().optional(),
   arbiterId: z.string().optional(),
   /** либо шаблон + общая сумма, либо явные этапы */
@@ -69,7 +69,7 @@ const createBody = z.object({
   autoAcceptDays: z.number().int().min(1).max(30).optional(),
 });
 
-/** Деньги — в копейках. Заказчик/грантодатель видит сделку целиком; чужие сделки доступны только участникам и в каталоге проектов. */
+/** Деньги - в копейках. Заказчик/грантодатель видит сделку целиком; чужие сделки доступны только участникам и в каталоге проектов. */
 function involved(d: Deal, userId: string) {
   return d.executorId === userId || d.ownerId === userId || d.arbiterId === userId || (d.contributed[userId] ?? 0) > 0;
 }
@@ -182,12 +182,12 @@ export async function buildApp(opts: AppOptions) {
     return dir.search(q, me);
   });
 
-  app.post("/me/name", async (req, reply) => {
+  app.post("/me/profile", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
-    const { name } = z.object({ name: z.string().trim().min(2).max(60) }).parse(req.body);
-    if (!(await dir.rename(me, name))) return reply.code(400).send({ error: "Имя демо-аккаунта изменить нельзя" });
-    return { ok: true, name };
+    const patch = z.object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60).optional(), about: z.string().trim().max(160, "О себе не длиннее 160 символов").optional() }).parse(req.body);
+    if (!(await dir.updateProfile(me, patch))) return reply.code(400).send({ error: "Профиль демо-аккаунта изменить нельзя" });
+    return { ok: true, name: dir.get(me)!.name, about: dir.aboutOf(me) ?? "" };
   });
 
   // каталог проектов: краудфандинг и гранты
@@ -204,7 +204,7 @@ export async function buildApp(opts: AppOptions) {
     if (!id) return;
     const u = dir.get(id)!;
     const phone = dir.phoneOf(id);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined, about: dir.aboutOf(id) ?? "" }, wallet: walletOf(state, id) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -272,21 +272,21 @@ export async function buildApp(opts: AppOptions) {
   });
 
   // ── действия по сделке ──
-  /** Кому и что сообщить после действия: остальным участникам сделки приходит уведомление, всем — сигнал обновиться. */
+  /** Кому и что сообщить после действия: остальным участникам сделки приходит уведомление, всем - сигнал обновиться. */
   const announce = (d: Deal, actor: string, kind: string, stageTitle: string, amount: number) => {
     const people = new Set([d.executorId, d.ownerId, d.arbiterId, ...Object.keys(d.contributed)].filter((x): x is string => !!x));
     const who = dir.get(actor)?.name ?? "Участник";
     const q = `«${stageTitle}»`;
     const text: Record<string, string> = {
       fund: `${who} зарезервировал(а) деньги по «${d.title}»`,
-      submit: `${who} сдал(а) этап ${q} — проверьте`,
+      submit: `${who} сдал(а) этап ${q} - проверьте`,
       approve: `Этап ${q} принят: ${rub(amount)} уже у исполнителя`,
-      reject: d.mode === "grant" ? `Этап ${q} отклонён, остаток возвращён` : `Отказ по этапу ${q}: открыт спор`,
+      reject: d.mode === "grant" ? `Этап ${q} отклонен, остаток возвращен` : `Отказ по этапу ${q}: открыт спор`,
       vote: `${who} проголосовал(а) по этапу ${q}`,
       dispute: `Открыт спор по этапу ${q}`,
       reply: `${who} написал(а) в споре по этапу ${q}`,
-      resolve: `Спор по этапу ${q} решён`,
-      cancel: `Сделка «${d.title}» отменена, остаток возвращён`,
+      resolve: `Спор по этапу ${q} решен`,
+      cancel: `Сделка «${d.title}» отменена, остаток возвращен`,
     };
     const others = [...people].filter((p) => p !== actor && (kind !== "reply" && kind !== "dispute" ? p !== d.arbiterId : true));
     hub.send(others, "notify", { dealId: d.id, text: text[kind] ?? "Сделка обновлена" });
@@ -374,7 +374,7 @@ export async function buildApp(opts: AppOptions) {
     });
   }
 
-  // AI-помощник: описание работы -> этапы с долями и критериями приёмки
+  // AI-помощник: описание работы -> этапы с долями и критериями приемки
   const lastAi = new Map<string, number[]>();
   app.post("/ai/plan", async (req, reply) => {
     const me = authed(req, reply);
@@ -391,7 +391,7 @@ export async function buildApp(opts: AppOptions) {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const u = dir.get(id);
     if (!u) return reply.code(404).send({ error: "Пользователь не найден" });
-    return { id: u.id, name: u.name, role: u.role, ...executorStats(state, id) };
+    return { id: u.id, name: u.name, role: u.role, about: dir.aboutOf(id) ?? "", ...executorStats(state, id) };
   });
 
   app.get("/receipts", async (req, reply) => {
@@ -443,7 +443,7 @@ export async function buildApp(opts: AppOptions) {
       .send(f.data);
   });
 
-  // часы автоприёмки: вызывается по таймеру сервера, а также вручную для демо
+  // часы автоприемки: вызывается по таймеру сервера, а также вручную для демо
   const runTick = async () => {
     const before = state;
     await transact((s) => ({ state: tick(s, now()), result: true }));

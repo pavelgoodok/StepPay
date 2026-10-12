@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { PgStore } from "../src/store";
 
-/** PGlite — настоящий Postgres в WASM: проверяем реальный SQL и то, что данные переживают перезапуск API. */
+/** PGlite - настоящий Postgres в WASM: проверяем реальный SQL и то, что данные переживают перезапуск API. */
 const asPool = (db: PGlite) =>
   ({ query: async (text: string, params?: unknown[]) => ({ rows: (await db.query(text, params)).rows }) }) as unknown as Pick<pg.Pool, "query">;
 

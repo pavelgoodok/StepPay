@@ -4,7 +4,7 @@ import { SessionProvider } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "StepPay — оплата по шагам",
+  title: "StepPay - оплата по шагам",
   description: "Деньги резервируются в цифровых рублях и уходят исполнителю только за принятый этап",
   icons: { icon: "/logo.png" },
 };

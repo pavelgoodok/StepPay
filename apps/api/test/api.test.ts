@@ -34,7 +34,7 @@ describe("API", () => {
     expect(r.statusCode).toBe(401);
   });
 
-  it("демо-сценарий: ремонт по шаблону, резерв, приёмка, выплата", async () => {
+  it("демо-сценарий: ремонт по шаблону, резерв, приемка, выплата", async () => {
     const { call } = await setup();
     const me = await call("anna", "GET", "/me");
     expect(me.body.wallet.free).toBe(300_000 * R);
@@ -61,7 +61,7 @@ describe("API", () => {
     expect(list.body[0].stages).toEqual({ done: 1, total: 4 });
   });
 
-  it("автоприёмка срабатывает через /system/tick спустя 3 дня", async () => {
+  it("автоприемка срабатывает через /system/tick спустя 3 дня", async () => {
     const { call } = await setup();
     const id = (await call("anna", "POST", "/deals", {
       mode: "own", title: "Сайт", executorId: "ivan", stages: [{ title: "Дизайн", amount: 10_000 * R }],
@@ -89,7 +89,7 @@ describe("API", () => {
     expect((await call("ivan", "GET", "/me")).body.wallet.free).toBe(100_000 * R);
   });
 
-  it("грант: фонд отклоняет этап — остаток возвращается", async () => {
+  it("грант: фонд отклоняет этап - остаток возвращается", async () => {
     const { call } = await setup();
     const id = (await call("fond", "POST", "/deals", {
       mode: "grant", title: "Культура районов", executorId: "ivan", stages: [{ title: "Закупка", amount: 50_000 * R }],
@@ -98,7 +98,7 @@ describe("API", () => {
     await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, {});
     const bad = await call("fond", "POST", `/deals/${id}/stages/s1/reject`, { reason: "" });
     expect(bad.status).toBe(400);
-    await call("fond", "POST", `/deals/${id}/stages/s1/reject`, { reason: "Нет отчёта" });
+    await call("fond", "POST", `/deals/${id}/stages/s1/reject`, { reason: "Нет отчета" });
     expect((await call("fond", "GET", "/me")).body.wallet.free).toBe(2_000_000 * R);
   });
 
@@ -142,7 +142,7 @@ describe("AI-планировщик", () => {
     expect(p.source).toBe("template");
     expect(p.title).toBe("Ремонт ванной");
     expect(p.stages.reduce((a, s) => a + s.share, 0)).toBe(100);
-    const generic = templatePlan({ description: "Сделать что-то неопределённое", mode: "own" });
+    const generic = templatePlan({ description: "Сделать что-то неопределенное", mode: "own" });
     expect(generic.stages).toHaveLength(3);
     expect((await createPlanner("").plan({ description: "Сайт для пекарни", mode: "own" })).source).toBe("template");
   });
@@ -181,7 +181,7 @@ describe("репутация, чеки, события", () => {
 
     const id = (await call("anna", "POST", "/deals", {
       mode: "own", title: "Сайт", executorId: "ivan",
-      stages: [{ title: "Дизайн", amount: 10_000 * R }, { title: "Вёрстка", amount: 20_000 * R }],
+      stages: [{ title: "Дизайн", amount: 10_000 * R }, { title: "Верстка", amount: 20_000 * R }],
     })).body.id;
     await call("anna", "POST", `/deals/${id}/fund`, {});
     await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, {});
@@ -197,11 +197,11 @@ describe("репутация, чеки, события", () => {
     const rc = await call("ivan", "GET", "/receipts");
     expect(rc.body).toHaveLength(2);
     expect(rc.body[0]).toMatchObject({ amount: 20_000 * R, payer: "Анна Смирнова", executor: "Иван Петров" });
-    expect(rc.body[0].service).toContain("Вёрстка");
+    expect(rc.body[0].service).toContain("Верстка");
     expect((await call("anna", "GET", "/receipts")).body).toHaveLength(0);
   });
 
-  it("SSE: участник сделки получает уведомление, посторонний — нет", async () => {
+  it("SSE: участник сделки получает уведомление, посторонний - нет", async () => {
     const { app, call } = await setup();
     await app.listen({ port: 0, host: "127.0.0.1" });
     const port = (app.server.address() as { port: number }).port;
@@ -286,7 +286,7 @@ describe("регистрация и вход по телефону", () => {
   const post = (app: Awaited<ReturnType<typeof mk>>, url: string, payload: object, token?: string) =>
     app.inject({ method: "POST", url, payload, headers: token ? { authorization: `Bearer ${token}` } : {} });
 
-  it("новый пользователь: код, имя, вход; повторный вход даёт тот же аккаунт", async () => {
+  it("новый пользователь: код, имя, вход; повторный вход дает тот же аккаунт", async () => {
     const app = await mk();
     expect((await post(app, "/auth/otp/request", { phone: "12345" })).statusCode).toBe(400);
     const r1 = (await post(app, "/auth/otp/request", { phone: "8 (999) 123-45-67" })).json();
@@ -295,18 +295,18 @@ describe("регистрация и вход по телефону", () => {
 
     // без имени нельзя, и код при этом не сгорает
     expect((await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode })).statusCode).toBe(400);
-    const wrong = await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode === "000000" ? "111111" : "000000", name: "Пётр" });
+    const wrong = await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode === "000000" ? "111111" : "000000", name: "Петр" });
     expect(wrong.statusCode).toBe(400);
-    const ok = (await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Пётр Сидоров" })).json();
-    expect(ok).toMatchObject({ isNew: true, user: { name: "Пётр Сидоров", role: "user" } });
+    const ok = (await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Петр Сидоров" })).json();
+    expect(ok).toMatchObject({ isNew: true, user: { name: "Петр Сидоров", role: "user" } });
     // код одноразовый
-    expect((await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Пётр" })).statusCode).toBe(400);
+    expect((await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Петр" })).statusCode).toBe(400);
 
     const me = await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${ok.token}` } });
     expect(me.json().user.phone).toBe("+7 999 ***-**-67");
     expect(me.json().wallet).toEqual({ free: 0, reserved: 0 });
 
-    t += 31_000; // повторный запрос кода разрешён через 30 секунд
+    t += 31_000; // повторный запрос кода разрешен через 30 секунд
     const r2 = (await post(app, "/auth/otp/request", { phone: "+7 999 123 45 67" })).json();
     expect(r2.isNew).toBe(false);
     const again = (await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r2.demoCode })).json();
@@ -324,7 +324,7 @@ describe("регистрация и вход по телефону", () => {
 
     t += 31_000;
     const fresh = (await post(app, "/auth/otp/request", { phone: "+79990000001" })).json();
-    t += 6 * 60_000; // код живёт 5 минут
+    t += 6 * 60_000; // код живет 5 минут
     const late = await post(app, "/auth/otp/verify", { phone: "+79990000001", code: fresh.demoCode, name: "Анна" });
     expect(late.json().error).toContain("устарел");
   });
@@ -374,7 +374,7 @@ describe("регистрация и вход по телефону", () => {
     expect((await a2.inject({ method: "GET", url: "/auth/demo-users" })).json()).toEqual([]);
     const demoToken = (await post(a1, "/auth/demo", { userId: "anna" })).json().token;
     expect((await a2.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${demoToken}` } })).statusCode).toBe(401);
-    // приёмщик споров доступен всегда: на нём держится механизм споров
+    // приемщик споров доступен всегда: на нем держится механизм споров
     const ex = (await post(a2, "/deals", { mode: "own", title: "X", executorId: u.user.id, stages: [{ title: "A", amount: 100 }] }, u.token));
     expect(ex.statusCode).toBe(400); // нельзя быть исполнителем самому себе
   });
@@ -402,6 +402,25 @@ describe("выключенный демо-режим", () => {
     expect(mine.map((d: { title: string }) => d.title)).toEqual(["Настоящая"]);
     const w = (await prod.inject({ method: "GET", url: "/wallet", headers: { authorization: `Bearer ${a.token}` } })).json();
     expect(w.free + w.reserved).toBe(10_000 * R); // деньги настоящего пользователя целы
+  });
+});
+
+describe("настройки профиля", () => {
+  it("имя и о себе меняются, видны в публичной карточке; демо-аккаунт изменить нельзя", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t });
+    const r = (await app.inject({ method: "POST", url: "/auth/otp/request", payload: { phone: "+79990000020" } })).json();
+    const u = (await app.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone: "+79990000020", code: r.demoCode, name: "Старое имя" } })).json();
+    const h = { authorization: `Bearer ${u.token}` };
+    const upd = await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" } });
+    expect(upd.json()).toMatchObject({ ok: true, name: "Новое имя" });
+    expect((await app.inject({ method: "GET", url: "/me", headers: h })).json().user).toMatchObject({ name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" });
+    expect((await app.inject({ method: "GET", url: `/users/${u.user.id}/public` })).json()).toMatchObject({ name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" });
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { about: "x".repeat(161) } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { name: "А" } })).statusCode).toBe(400);
+    await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { about: "" } });
+    expect((await app.inject({ method: "GET", url: `/users/${u.user.id}/public` })).json().about).toBe("");
+    const demo = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "anna" } })).json();
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: { authorization: `Bearer ${demo.token}` }, payload: { name: "Взлом" } })).statusCode).toBe(400);
   });
 });
 

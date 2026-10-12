@@ -101,16 +101,18 @@ export default function Login() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="StepPay" />
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={IMG.safe} alt="" />
-        <div className="brand-copy">
-          <h1>Оплата по шагам</h1>
-          <p>Деньги резервируются в цифровых рублях и уходят исполнителю только за принятый этап.</p>
-          <ul className="points">
-            <li><Icon name="shield" size={18} /> Резерв подтверждает готовность платить</li>
-            <li><Icon name="check" size={18} /> Выплата только за принятый этап</li>
-            <li><Icon name="swap" size={18} /> Остаток возвращается автоматически</li>
-          </ul>
+        <div className="brand-grid">
+          <div className="brand-copy">
+            <h1>Оплата по шагам</h1>
+            <p>Деньги резервируются в цифровых рублях и уходят исполнителю только за принятый этап.</p>
+            <ul className="points">
+              <li><Icon name="shield" size={18} /> Резерв подтверждает готовность платить</li>
+              <li><Icon name="check" size={18} /> Выплата только за принятый этап</li>
+              <li><Icon name="swap" size={18} /> Остаток возвращается автоматически</li>
+            </ul>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="art" src={IMG.safe} alt="" />
         </div>
       </div>
 
