@@ -6,7 +6,7 @@
 
 ```bash
 pnpm install
-pnpm --filter @steppay/contracts test              # сценарии, ~5 секунд
+pnpm --filter @steppay/contracts test              # сценарии контракта и сравнение с ядром, ~10 секунд
 pnpm --filter @steppay/contracts test:invariants   # случайные действия с проверкой инвариантов, ~1 минута
 ```
 
@@ -19,6 +19,8 @@ pnpm --filter @steppay/contracts test:invariants   # случайные дейс
 | `contracts/StepEscrow.sol` | Сам контракт |
 | `contracts/TestRub.sol` | Тестовый токен с двумя знаками (копейки), заменяет цифровой рубль |
 | `test/StepEscrow.test.js` | Сценарии: три режима, подписи, споры, автоприемка, комиссия, отмена, округления |
+| `test/conformance.test.js` | Общие сценарии рельсов: контракт и ядро сделок обязаны дать одинаковые результаты |
+| `rails/evm-rail.js` | Адаптер контракта к интерфейсу `MoneyRail` из ядра |
 | `test/invariants.test.js` | Шесть случайных прогонов по 160 действий, инварианты проверяются после каждого |
 
 ## Соответствие ядру

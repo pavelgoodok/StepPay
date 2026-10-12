@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test test/StepEscrow.test.js",
+    "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js",
     "test:invariants": "hardhat test test/invariants.test.js",
     "test:all": "hardhat test"
   },
@@ -13,6 +13,8 @@
     "chai": "^4.5.0",
     "ethers": "^6.13.0",
     "hardhat": "^2.26.0",
-    "solc": "0.8.28"
+    "solc": "0.8.28",
+    "tsx": "^4.19.0",
+    "@steppay/engine": "workspace:*"
   }
 }
