@@ -10,6 +10,7 @@ import {
   createState,
   type State, signContract } from "@steppay/engine";
 import { DEMO_DOC_ID, DEMO_PHOTO_ID } from "./demo-photo";
+import { DEMO_COVER_IDS } from "./demo-covers";
 import { innFromNine } from "./inn";
 import type { PlatformData, Platform, Project, Service } from "./platform";
 import { DEMO_USERS } from "./users";
@@ -63,13 +64,14 @@ export const freshDemoState = (at: number) => seedCatalog(seedUsers(createState(
 
 /** Каталог платформы для демо: одобренные проекты (связаны со сделками выше), проект на проверке и карточки услуг. */
 export function freshDemoPlatform(at: number): PlatformData {
-  const photo = { id: "ph1", name: "Фото проекта", url: `/uploads/${DEMO_PHOTO_ID}`, kind: "photo" as const };
+  const cover = (i: number) => ({ id: "cv", name: "Обложка", url: `/uploads/${DEMO_COVER_IDS[i]}`, kind: "photo" as const });
+  const coverOf: Record<string, number> = { p_budget: 0, p_yard: 3, p_edu: 2, p_culture: 4, p_library: 1, p_album: 5 };
   const doc = { id: "d1", name: "Смета.pdf", url: `/uploads/${DEMO_DOC_ID}`, kind: "doc" as const };
   const mk = (id: string, ownerId: string, kind: Project["kind"], title: string, summary: string, category: string, stages: [string, number][], extra: Partial<Project> = {}): Project => ({
     id, ownerId, kind, title, summary, category,
     description: `${summary} Работаем по этапам: каждый этап принимается и оплачивается отдельно. Смета и план работ приложены к заявке.`,
     stages: stages.map(([t, rub]) => ({ title: t, amount: rub * R, criteria: [] })),
-    docs: [photo, doc], status: "approved", history: [{ at, by: "admin", action: "approve" }], createdAt: at, updatedAt: at, ...extra,
+    docs: [cover(coverOf[id] ?? 0), doc], status: "approved", history: [{ at, by: "admin", action: "approve" }], createdAt: at, updatedAt: at, ...extra,
   });
   const projects: Project[] = [
     mk("p_budget", "studio", "crowdfunding", "Приложение для семейного бюджета", "Приложение, где семья ведет общий бюджет и копит на цели вместе.", "Технологии", [["Прототип", 240_000], ["Разработка", 400_000], ["Запуск", 160_000]], { dealId: "seed-budget" }),
@@ -168,7 +170,7 @@ export async function prepareDemoStep(platform: Platform, step: number, at: numb
         summary: "Выпускаем тираж настольной игры для компании от двух до пяти человек.",
         description: "Игра готова на уровне прототипа, правила проверены на десятках партий. Собираем на печать макета и тиража. Каждый этап принимают спонсоры, деньги выплачиваются по мере готовности.",
         stages: [{ title: "Макет", amount: 100_000 * R, criteria: ["Готов макет и правила"] }, { title: "Тираж", amount: 200_000 * R, criteria: ["Тираж отпечатан и отправлен спонсорам"] }],
-        docs: [{ id: "ph1", name: "Фото прототипа", url: PHOTO, kind: "photo" }, { id: "d1", name: "Смета на печать.pdf", url: `/uploads/${DEMO_DOC_ID}`, kind: "doc" }],
+        docs: [{ id: "cv", name: "Обложка", url: `/uploads/${DEMO_COVER_IDS[2]}`, kind: "photo" }, { id: "d1", name: "Смета на печать.pdf", url: `/uploads/${DEMO_DOC_ID}`, kind: "doc" }],
       });
       await platform.submitProject(p.id, "games");
       return { apply: same, narration: { title: "Проект на проверке", text: "Автор заполнил анкету, приложил фото и смету и отправил проект. Заявка появилась в панели администратора.", viewAs: "admin", path: "/admin" } };

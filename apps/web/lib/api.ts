@@ -218,3 +218,8 @@ export interface PlanResult {
   reason?: { code: string; text: string };
   stages: { title: string; share: number; criteria: string[] }[];
 }
+
+/** Загружает уже подготовленную картинку (после обрезки); возвращает ссылку вида /uploads/... */
+export async function uploadDataUrl(dataUrl: string): Promise<string> {
+  return (await api<{ url: string }>("/uploads", { method: "POST", body: { dataUrl } })).url;
+}

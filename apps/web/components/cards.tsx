@@ -4,18 +4,25 @@ import type { ProjectItem, ServiceItem } from "@/lib/api";
 import { photoSrc } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { KIND_LABEL, PROJECT_STATUS } from "@/lib/labels";
-import { Ava, SegBar } from "./ui";
+import { Ava, Icon, SegBar } from "./ui";
+
+const CAT_ICON: Record<string, string> = { "Игры": "bolt", "Музыка и творчество": "ring", "Технологии": "laptop", "Образование": "award", "Городская среда": "sprout", "Социальные проекты": "crowd" };
+const catTone = (c: string) => [...c].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 4;
+
+/** Обложка проекта; без фото показывается плоская плашка с иконкой категории. */
+export function Cover({ url, category }: { url?: string; category: string }) {
+  if (url) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img className="cover" src={photoSrc(url)} alt="" />;
+  }
+  return <div className={`cover none tone${catTone(category)}`}><Icon name={CAT_ICON[category] ?? "flag"} size={44} /></div>;
+}
 
 export function ProjectCard({ p, href, showStatus }: { p: ProjectItem; href?: string; showStatus?: boolean }) {
   const st = p.status ? PROJECT_STATUS[p.status] : null;
   return (
     <Link href={href ?? `/projects/${p.id}`} className="card tap lcard">
-      {p.cover ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className="cover" src={photoSrc(p.cover)} alt="" />
-      ) : (
-        <div className="cover none" />
-      )}
+      <Cover url={p.cover} category={p.category} />
       <div className="pc-body">
         <div className="row between">
           <span className="small muted">{KIND_LABEL[p.kind]} · {p.category}</span>

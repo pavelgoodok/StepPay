@@ -28,6 +28,7 @@ import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
+import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
 import { DEMO_USERS } from "./users";
 import { executorStats, receiptsFor } from "./stats";
@@ -135,6 +136,7 @@ export async function buildApp(opts: AppOptions) {
   }
 
   await opts.store.putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
+  for (let i = 0; i < DEMO_COVERS.length; i++) await opts.store.putFile(DEMO_COVER_IDS[i]!, { mime: "image/jpeg", data: DEMO_COVERS[i]! });
   await opts.store.putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
 
   /** Все изменения последовательны: чтение-изменение-запись без гонок. */

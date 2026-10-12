@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Ava, Icon, Initials, Sheet, Switch } from "@/components/ui";
-import { api, uploadAvatar, type ProjectItem, type ServiceItem } from "@/lib/api";
+import { CropSheet } from "@/components/cropper";
+import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
 import { PROJECT_STATUS } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
@@ -15,6 +16,7 @@ export default function Profile() {
   const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
   const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [dark, setDark] = useState(false);
   const [notif, setNotif] = useState(false);
   const [edit, setEdit] = useState(false);
@@ -44,11 +46,11 @@ export default function Profile() {
     toast(r === "granted" ? "Уведомления включены" : "Уведомления запрещены в браузере", r === "granted" ? "ok" : "err");
   }
 
-  async function pickAvatar(file: File | undefined) {
-    if (!file) return;
+  async function saveAvatar(dataUrl: string) {
+    setCropFile(null);
     setBusy(true);
     try {
-      const url = await uploadAvatar(file);
+      const url = await uploadDataUrl(dataUrl);
       await api("/me/profile", { method: "POST", body: { avatar: url } });
       await refresh();
       toast("Фото обновлено");
@@ -91,7 +93,7 @@ export default function Profile() {
           {registered && (
             <button className="ava-btn" aria-label="Сменить фото" disabled={busy} onClick={() => fileRef.current?.click()}><Icon name="camera" size={18} /></button>
           )}
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pickAvatar(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setCropFile(f); if (fileRef.current) fileRef.current.value = ""; }} />
         </div>
         {registered && user.avatar && <button className="btn ghost sm" onClick={removeAvatar}>Удалить фото</button>}
         <h1 className="h1" style={{ fontSize: 28, marginTop: 8 }}>{user.name}</h1>
@@ -171,6 +173,7 @@ export default function Profile() {
       )}
       <p className="small muted" style={{ textAlign: "center" }}>StepPay, оплата по шагам в цифровых рублях. Версия 0.7</p>
 
+      {cropFile && <CropSheet file={cropFile} aspect={1} round outWidth={384} title="Фото профиля" onDone={(u) => void saveAvatar(u)} onClose={() => setCropFile(null)} />}
       {edit && (
         <Sheet onClose={() => setEdit(false)}>
           <h2>Профиль</h2>

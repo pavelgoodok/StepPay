@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { PhotoGrid } from "@/components/photos";
 import { Ava, Icon, SegBar } from "@/components/ui";
-import { api, docSrc, type ProjectFull } from "@/lib/api";
+import { api, docSrc, photoSrc, type ProjectFull } from "@/lib/api";
 import { dayLabel, rub } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL, PROJECT_STATUS } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
@@ -63,7 +63,11 @@ export default function ProjectPage() {
         {p.summary && <div className="sub" style={{ marginTop: 4 }}>{p.summary}</div>}
       </div>
 
-      <PhotoGrid photos={p.photos.map((x) => x.url)} />
+      {p.cover && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="pcover" src={photoSrc(p.cover)} alt="" />
+      )}
+      <PhotoGrid photos={p.photos.map((x) => x.url).filter((u) => u !== p.cover)} />
 
       <div className="row">
         <Ava name={p.owner.name} src={p.owner.avatar} />
