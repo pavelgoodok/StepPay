@@ -1,4 +1,4 @@
-import type { Deal, LedgerEntry } from "@steppay/engine";
+import type { ContractTerms, Deal, LedgerEntry } from "@steppay/engine";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -52,7 +52,12 @@ export interface Template {
   icon: string;
   stages: { title: string; share: number; criteria: string[] }[];
 }
-export type DealFull = Deal & { summary: DealSummary; people: Record<string, Person> };
+export type DealFull = Deal & {
+  summary: DealSummary;
+  people: Record<string, Person>;
+  contractCheck: { sealed: boolean; ok: boolean; expected?: string; actual: string };
+  terms: ContractTerms;
+};
 
 const TOKEN_KEY = "steppay.token";
 export const getToken = () => {

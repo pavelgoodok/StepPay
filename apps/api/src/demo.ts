@@ -150,7 +150,7 @@ export async function prepareDemoStep(platform: Platform, step: number, at: numb
     }
     case 3:
       return {
-        apply: (s) => proposeDeal(updateTerms(s, "demo-own", "ivan", { stages: DEMO_STAGES }), "demo-own", "ivan"),
+        apply: (s) => proposeDeal(updateTerms(s, "demo-own", "ivan", { stages: DEMO_STAGES }), "demo-own", "ivan", at),
         after: async () => void (thread() && (await platform.post(thread()!.id, "ivan", "Условия отправлены. Можно проверить этапы и зарезервировать деньги.", "system", "demo-own"))),
         narration: { title: "Условия отправлены", text: "Иван разбил работу на 4 этапа с суммами и критериями приемки. Анна видит условия и может их принять.", viewAs: "anna", path: "/deals/demo-own" },
       };

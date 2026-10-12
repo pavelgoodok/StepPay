@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp } from "../src/app";
 import { MemoryStore } from "../src/store";
+import { createHash } from "node:crypto";
 import { validInn, innFromNine } from "../src/inn";
 
 const R = 100;
@@ -132,5 +133,24 @@ describe("услуги и согласование задачи", () => {
     expect(after.status).toBe("active");
     const chat = (await call("anna", "GET", `/chats/${th.id}`)).body;
     expect(chat.messages.some((m: { kind: string }) => m.kind === "system")).toBe(true);
+  });
+});
+
+describe("контракт сделки в API", () => {
+  it("хеш фиксируется при отправке условий и проверяется независимо", async () => {
+    const { call } = await setup();
+    const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
+    const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    expect((await call("anna", "GET", `/deals/${id}/contract`)).body.contract).toBeNull(); // в согласовании контракта нет
+    await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R, criteria: ["Швы ровные"] }] });
+    await call("ivan", "POST", `/deals/${id}/propose`);
+    const c = (await call("anna", "GET", `/deals/${id}/contract`)).body;
+    expect(c.contract.hash).toHaveLength(64);
+    expect(c.check).toMatchObject({ sealed: true, ok: true });
+    expect(createHash("sha256").update(c.canonical, "utf8").digest("hex")).toBe(c.contract.hash); // проверка без нашего кода
+    const d = (await call("anna", "GET", `/deals/${id}`)).body;
+    expect(d.contractCheck.ok).toBe(true);
+    expect(d.terms.stages[0].title).toBe("Плитка");
   });
 });

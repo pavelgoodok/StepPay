@@ -22,6 +22,12 @@ import {
   topUp,
   voteStage,
   type State,
+  CONTRACT_VERSION,
+  canonicalJson,
+  contractHash,
+  contractTerms,
+  sha256Hex,
+  verifyContract,
 } from "../src";
 
 const R = 100; // рубль в копейках
@@ -315,8 +321,8 @@ describe("согласование условий (услуги)", () => {
 
   it("отправка условий открывает резерв; после резерва вернуть на правку нельзя", () => {
     let s = updateTerms(draft(), "t1", "ivan", { stages: [{ title: "Плитка", amount: 100_000 * R }] });
-    expect(() => proposeDeal(s, "t1", "anna")).toThrow(EngineError);
-    s = proposeDeal(s, "t1", "ivan");
+    expect(() => proposeDeal(s, "t1", "anna", T0)).toThrow(EngineError);
+    s = proposeDeal(s, "t1", "ivan", T0);
     expect(s.deals.t1!.status).toBe("funding");
     expect(() => updateTerms(s, "t1", "ivan", { title: "Поздно" })).toThrow(/верните сделку на согласование/);
     const back = reopenDeal(s, "t1", "ivan"); // заказчик попросил поправить в чате
@@ -329,7 +335,7 @@ describe("согласование условий (услуги)", () => {
 
   it("черновик можно отменить обеим сторонам, без движения денег; пустые условия не отправить", () => {
     const d = draft();
-    expect(() => proposeDeal({ ...d, deals: { t1: { ...d.deals.t1!, stages: [], target: 0 } } }, "t1", "ivan")).toThrow(/добавьте этапы/);
+    expect(() => proposeDeal({ ...d, deals: { t1: { ...d.deals.t1!, stages: [], target: 0 } } }, "t1", "ivan", T0)).toThrow(/добавьте этапы/);
     expect(cancelDeal(d, "t1", "ivan", T0).deals.t1!.status).toBe("cancelled");
     expect(cancelDeal(d, "t1", "anna", T0).deals.t1!.status).toBe("cancelled");
     expect(() => cancelDeal(d, "t1", "stranger", T0)).toThrow(EngineError);
@@ -337,3 +343,91 @@ describe("согласование условий (услуги)", () => {
   });
 });
 
+
+describe("контракт сделки", () => {
+  it("SHA-256 совпадает с эталонными значениями", () => {
+    expect(sha256Hex("")).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    expect(sha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    expect(sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")).toBe("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    expect(sha256Hex("Оплата по шагам")).toHaveLength(64);
+  });
+
+  it("каноническая запись не зависит от порядка ключей", () => {
+    expect(canonicalJson({ b: 1, a: [2, { d: undefined, c: null }] })).toBe('{"a":[2,{"c":null}],"b":1}');
+  });
+
+  const deal = () => {
+    let s = createState();
+    s = topUp(s, "anna", 100_000 * R, T0);
+    return createDeal(s, { id: "c1", mode: "own", title: "Ремонт", executorId: "ivan", ownerId: "anna", stages: [{ title: "Плитка", amount: 60_000 * R, criteria: ["Швы ровные"] }, { title: "Сантехника", amount: 40_000 * R }], at: T0 });
+  };
+
+  it("хеш фиксируется при создании и не зависит от хода работ", () => {
+    let s = deal();
+    const sealed = s.deals.c1!.contract!;
+    expect(sealed).toMatchObject({ v: CONTRACT_VERSION, sealedAt: T0 });
+    expect(sealed.hash).toHaveLength(64);
+    expect(verifyContract(s.deals.c1!)).toMatchObject({ sealed: true, ok: true });
+    s = fund(s, "c1", "anna", 100_000 * R, T0);
+    s = submitStage(s, "c1", "s1", "ivan", { note: "готово" }, T0);
+    s = approveStage(s, "c1", "s1", "anna", T0);
+    expect(s.deals.c1!.contract!.hash).toBe(sealed.hash); // статусы и деньги условий не меняют
+    expect(verifyContract(s.deals.c1!).ok).toBe(true);
+  });
+
+  it("любое изменение условий меняет хеш", () => {
+    const d = deal().deals.c1!;
+    const base = contractHash(contractTerms(d));
+    const changed = (patch: (x: typeof d) => void) => {
+      const c = structuredClone(d);
+      patch(c);
+      return contractHash(contractTerms(c));
+    };
+    expect(changed((x) => (x.stages[0]!.amount += 1))).not.toBe(base);
+    expect(changed((x) => (x.stages[0]!.criteria = []))).not.toBe(base);
+    expect(changed((x) => (x.executorId = "petr"))).not.toBe(base);
+    expect(changed((x) => (x.autoAcceptMs += 1))).not.toBe(base);
+    expect(changed((x) => (x.feeBps = 100))).not.toBe(base);
+    expect(changed((x) => (x.title = "Другое"))).not.toBe(base);
+  });
+
+  it("подмена условий после фиксации останавливает резерв, выплату и автоприемку", () => {
+    let s = deal();
+    const tampered = (st: State) => {
+      const c = structuredClone(st);
+      c.deals.c1!.stages[0]!.amount = 90_000 * R;
+      return c;
+    };
+    expect(() => fund(tampered(s), "c1", "anna", 100_000 * R, T0)).toThrow(/изменены после фиксации/);
+    s = fund(s, "c1", "anna", 100_000 * R, T0);
+    const funded = s;
+    s = submitStage(s, "c1", "s1", "ivan", {}, T0);
+    expect(() => approveStage(tampered(s), "c1", "s1", "anna", T0)).toThrow(/изменены после фиксации/);
+    const stuck = tick(tampered(s), T0 + 10 * DAY_MS);
+    expect(stuck.deals.c1!.stages[0]!.status).toBe("submitted"); // автоприемка не платит по подмененным условиям
+    // отмена и возврат остаются доступными: деньги можно вернуть всегда
+    expect(cancelDeal(tampered(funded), "c1", "anna", T0).deals.c1!.status).toBe("cancelled");
+  });
+
+  it("черновик не имеет контракта, отправка условий его фиксирует, возврат на правку снимает", () => {
+    let s = createDeal(topUp(createState(), "anna", 100 * R, T0), { id: "d1", mode: "own", title: "Задача", executorId: "ivan", ownerId: "anna", status: "draft", stages: [], at: T0 });
+    expect(s.deals.d1!.contract).toBeUndefined();
+    s = updateTerms(s, "d1", "ivan", { stages: [{ title: "Работа", amount: 100 * R }] });
+    s = proposeDeal(s, "d1", "ivan", T0 + 5);
+    expect(s.deals.d1!.contract).toMatchObject({ sealedAt: T0 + 5 });
+    const first = s.deals.d1!.contract!.hash;
+    s = reopenDeal(s, "d1", "ivan");
+    expect(s.deals.d1!.contract).toBeUndefined();
+    s = updateTerms(s, "d1", "ivan", { stages: [{ title: "Работа", amount: 90 * R }] });
+    s = proposeDeal(s, "d1", "ivan", T0 + 9);
+    expect(s.deals.d1!.contract!.hash).not.toBe(first);
+  });
+
+  it("сделка без контракта (созданная раньше) фиксируется при первом резерве", () => {
+    const s0 = deal();
+    const legacy = structuredClone(s0);
+    delete legacy.deals.c1!.contract;
+    const s = fund(legacy, "c1", "anna", 100_000 * R, T0 + 7);
+    expect(s.deals.c1!.contract).toMatchObject({ sealedAt: T0 + 7, hash: s0.deals.c1!.contract!.hash });
+  });
+});

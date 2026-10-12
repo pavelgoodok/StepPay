@@ -9,6 +9,7 @@ import {
   type State,
   type UserId,
 } from "./types";
+import { sealContract, verifyContract } from "./contract";
 
 export class EngineError extends Error {}
 
@@ -138,6 +139,7 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     createdAt: input.at,
     meta: input.meta,
   };
+  if (input.status !== "draft") sealContract(s.deals[input.id]!, input.at);
 });
 
 function toStages(items: NonNullable<CreateDealInput["stages"]>): Stage[] {
@@ -165,12 +167,13 @@ export const updateTerms = mutate(
 );
 
 /** Исполнитель отправляет условия заказчику: теперь заказчик может зарезервировать деньги. */
-export const proposeDeal = mutate((s, dealId: string, userId: UserId) => {
+export const proposeDeal = mutate((s, dealId: string, userId: UserId, at: number) => {
   const d = getDeal(s, dealId);
   if (d.status !== "draft") fail("Условия уже отправлены");
   if (userId !== d.executorId) fail("Отправить условия может исполнитель");
   if (d.stages.length === 0 || d.target <= 0) fail("Сначала добавьте этапы");
   d.status = "funding";
+  sealContract(d, at);
 });
 
 /** Вернуть условия на правку, пока заказчик ничего не зарезервировал. */
@@ -180,6 +183,7 @@ export const reopenDeal = mutate((s, dealId: string, userId: UserId) => {
   if (userId !== d.executorId) fail("Вернуть условия может исполнитель");
   if (totalReserved(d) > 0) fail("Заказчик уже зарезервировал деньги");
   d.status = "draft";
+  delete d.contract;
 });
 
 function totalReserved(d: Deal): Money {
@@ -188,6 +192,12 @@ function totalReserved(d: Deal): Money {
 
 function totalContributed(d: Deal): Money {
   return Object.values(d.contributed).reduce((a, b) => a + b, 0);
+}
+
+/** Условия не должны меняться после фиксации. Сделки без контракта (созданные раньше) фиксируются при первом движении денег. */
+function assertContract(d: Deal, at: number) {
+  if (!d.contract) return sealContract(d, at);
+  if (!verifyContract(d).ok) fail("Условия сделки изменены после фиксации, операция остановлена");
 }
 
 function activate(d: Deal) {
@@ -201,6 +211,7 @@ export const fund = mutate((s, dealId: string, userId: UserId, amount: Money, at
   const d = getDeal(s, dealId);
   if (d.status === "draft") fail("Исполнитель еще не отправил условия");
   if (d.status !== "funding") fail("Сделка уже не принимает деньги");
+  assertContract(d, at);
   if (!Number.isInteger(amount) || amount <= 0) fail("Сумма должна быть положительной");
 
   if (d.mode === "crowdfunding") {
@@ -252,6 +263,7 @@ function refundAll(s: State, d: Deal, at: number, note: string) {
 type ClosedBy = NonNullable<Stage["resolution"]>["by"];
 
 function acceptStage(s: State, d: Deal, stage: Stage, at: number, by: ClosedBy, comment?: string) {
+  assertContract(d, at);
   payout(s, d, stage, at);
   stage.status = "accepted";
   stage.resolution = { by, decision: "accepted", comment, at };
@@ -420,6 +432,7 @@ export const cancelDeal = mutate((s, dealId: string, userId: UserId, at: number)
 export const tick = mutate((s, now: number) => {
   for (const d of Object.values(s.deals)) {
     if (d.status !== "active" || d.mode === "grant") continue;
+    if (d.contract && !verifyContract(d).ok) continue; // условия подменены: автоприемка не выплачивает
     for (const st of d.stages) {
       if (
         st.status === "submitted" &&

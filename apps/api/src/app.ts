@@ -22,8 +22,7 @@ import {
   topUp,
   voteStage,
   type Deal,
-  type State,
-} from "@steppay/engine";
+  type State, canonicalJson, contractTerms, sealContract, verifyContract } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
 import { makeToken, verifyToken } from "./auth";
 import { Hub } from "./hub";
@@ -102,6 +101,13 @@ export async function buildApp(opts: AppOptions) {
       state = opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now());
       await opts.store.save(state);
     }
+  }
+  // сделки, созданные до появления контрактов, получают контракт с хешем текущих условий
+  const unsealed = Object.values(state.deals).filter((d) => d.status !== "draft" && !d.contract);
+  if (unsealed.length > 0) {
+    state = structuredClone(state);
+    for (const d of Object.values(state.deals)) if (d.status !== "draft" && !d.contract) sealContract(d, d.createdAt);
+    await opts.store.save(state);
   }
   if (demoOn && opts.seedCatalog && platform.isEmpty()) await platform.reset(freshDemoPlatform(now()));
   if (!demoOn) {
@@ -266,7 +272,16 @@ export async function buildApp(opts: AppOptions) {
       for (const u of Object.keys(st.votes)) ids.add(u);
       for (const m of st.messages ?? []) ids.add(m.by);
     }
-    return { ...d, summary: sum(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+    return { ...d, summary: sum(d), contractCheck: verifyContract(d), terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+  });
+
+  /** Контракт для разбора и независимой проверки: условия, каноническая запись и хеш. SHA-256 канонической записи должен совпасть с hash. */
+  app.get("/deals/:id/contract", async (req, reply) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const d = state.deals[id];
+    if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
+    const terms = contractTerms(d);
+    return { dealId: d.id, contract: d.contract ?? null, check: verifyContract(d), terms, canonical: canonicalJson(terms) };
   });
 
   app.post("/deals", async (req, reply) => {
@@ -364,7 +379,7 @@ export async function buildApp(opts: AppOptions) {
     (s, p, me, b) => updateTerms(s, p.id, me, b),
     "terms",
   );
-  act("/deals/:id/propose", none, (s, p, me) => proposeDeal(s, p.id, me), "propose");
+  act("/deals/:id/propose", none, (s, p, me) => proposeDeal(s, p.id, me, now()), "propose");
   act("/deals/:id/reopen", none, (s, p, me) => reopenDeal(s, p.id, me), "reopen");
   act("/deals/:id/cancel", none, (s, p, me) => cancelDeal(s, p.id, me, now()), "cancel");
   act(

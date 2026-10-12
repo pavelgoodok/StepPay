@@ -59,6 +59,8 @@ export interface Deal {
   feeBps: number;
   createdAt: number;
   /** связи с платформой: услуга, проект, описание задачи. Движок их не использует */
+  /** зафиксированный контракт: хеш условий на момент, когда они стали окончательными */
+  contract?: { v: number; hash: string; sealedAt: number };
   meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string };
 }
 
