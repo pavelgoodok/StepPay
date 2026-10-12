@@ -185,9 +185,9 @@ export async function buildApp(opts: AppOptions) {
   app.post("/me/profile", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
-    const patch = z.object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60).optional(), about: z.string().trim().max(160, "О себе не длиннее 160 символов").optional() }).parse(req.body);
+    const patch = z.object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60) }).parse(req.body);
     if (!(await dir.updateProfile(me, patch))) return reply.code(400).send({ error: "Профиль демо-аккаунта изменить нельзя" });
-    return { ok: true, name: dir.get(me)!.name, about: dir.aboutOf(me) ?? "" };
+    return { ok: true, name: dir.get(me)!.name };
   });
 
   // каталог проектов: краудфандинг и гранты
@@ -204,7 +204,7 @@ export async function buildApp(opts: AppOptions) {
     if (!id) return;
     const u = dir.get(id)!;
     const phone = dir.phoneOf(id);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined, about: dir.aboutOf(id) ?? "" }, wallet: walletOf(state, id) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -386,12 +386,11 @@ export async function buildApp(opts: AppOptions) {
     return planner.plan(b);
   });
 
-  // публичная карточка исполнителя: без входа, только репутация
-  app.get("/users/:id/public", async (req, reply) => {
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const u = dir.get(id);
-    if (!u) return reply.code(404).send({ error: "Пользователь не найден" });
-    return { id: u.id, name: u.name, role: u.role, about: dir.aboutOf(id) ?? "", ...executorStats(state, id) };
+  // личная статистика исполнителя: видна только самому пользователю
+  app.get("/me/stats", async (req, reply) => {
+    const id = authed(req, reply);
+    if (!id) return;
+    return executorStats(state, id);
   });
 
   app.get("/receipts", async (req, reply) => {

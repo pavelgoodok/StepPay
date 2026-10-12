@@ -26,8 +26,6 @@ export interface RegisteredUser {
   id: string;
   phone: string;
   name: string;
-  /** коротко о себе, показывается в публичной карточке */
-  about?: string;
   createdAt: number;
 }
 
@@ -89,17 +87,12 @@ export class Directory {
     return user;
   }
 
-  async updateProfile(id: string, patch: { name?: string; about?: string }) {
+  async updateProfile(id: string, patch: { name?: string }) {
     const r = this.registered.get(id);
     if (!r) return false;
     if (patch.name !== undefined) r.name = patch.name;
-    if (patch.about !== undefined) r.about = patch.about || undefined;
     await this.persist([...this.registered.values()]);
     return true;
-  }
-
-  aboutOf(id: string) {
-    return this.registered.get(id)?.about;
   }
 
   /** Поиск исполнителя: точный номер или начало имени (от 3 букв). Демо-аккаунты показываются только в демо-режиме. */

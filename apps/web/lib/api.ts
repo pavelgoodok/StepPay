@@ -9,7 +9,6 @@ export interface PublicUser {
   role: Role;
   /** маскированный номер, только у зарегистрированных */
   phone?: string;
-  about?: string;
 }
 export interface FoundUser {
   id: string;

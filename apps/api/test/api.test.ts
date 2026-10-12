@@ -174,10 +174,11 @@ describe("AI-планировщик", () => {
 });
 
 describe("репутация, чеки, события", () => {
-  it("публичная карточка считает рейтинг по закрытым этапам; чеки по выплатам", async () => {
+  it("статистика и рейтинг считаются по закрытым этапам и закрыты от посторонних; чеки по выплатам", async () => {
     const { app, call } = await setup();
-    const fresh = await app.inject({ method: "GET", url: "/users/ivan/public" });
-    expect(fresh.json()).toMatchObject({ name: "Иван Петров", rating: null, acceptedStages: 0 });
+    expect((await call("ivan", "GET", "/me/stats")).body).toMatchObject({ rating: null, acceptedStages: 0 });
+    expect((await app.inject({ method: "GET", url: "/me/stats" })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url: "/users/ivan/public" })).statusCode).toBe(404); // публичной карточки нет
 
     const id = (await call("anna", "POST", "/deals", {
       mode: "own", title: "Сайт", executorId: "ivan",
@@ -189,10 +190,9 @@ describe("репутация, чеки, события", () => {
     await call("ivan", "POST", `/deals/${id}/stages/s2/submit`, {});
     await call("anna", "POST", `/deals/${id}/stages/s2/approve`);
 
-    const pub = (await app.inject({ method: "GET", url: "/users/ivan/public" })).json();
+    const pub = (await call("ivan", "GET", "/me/stats")).body;
     expect(pub).toMatchObject({ acceptedStages: 2, failedStages: 0, dealsCompleted: 1, received: 30_000 * R });
     expect(pub.rating).toBe(5);
-    expect((await app.inject({ method: "GET", url: "/users/nobody/public" })).statusCode).toBe(404);
 
     const rc = await call("ivan", "GET", "/receipts");
     expect(rc.body).toHaveLength(2);
@@ -360,7 +360,7 @@ describe("регистрация и вход по телефону", () => {
     await app.inject({ method: "POST", url: `/deals/${deal.id}/stages/s1/approve`, headers: h, payload: {} });
     const me = (await app.inject({ method: "GET", url: "/me", headers: mh })).json();
     expect(me.wallet.free).toBe(5_000 * R);
-    expect((await app.inject({ method: "GET", url: `/users/${master.user.id}/public` })).json()).toMatchObject({ name: "Сергей Мастеров", acceptedStages: 1 });
+    expect((await app.inject({ method: "GET", url: "/me/stats", headers: mh })).json()).toMatchObject({ acceptedStages: 1 });
   });
 
   it("пользователи переживают перезапуск; демо-вход отключается вместе с демо-режимом", async () => {
@@ -406,21 +406,15 @@ describe("выключенный демо-режим", () => {
 });
 
 describe("настройки профиля", () => {
-  it("имя и о себе меняются, видны в публичной карточке; демо-аккаунт изменить нельзя", async () => {
+  it("имя меняется; слишком короткое отвергается; демо-аккаунт изменить нельзя", async () => {
     const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => t });
     const r = (await app.inject({ method: "POST", url: "/auth/otp/request", payload: { phone: "+79990000020" } })).json();
     const u = (await app.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone: "+79990000020", code: r.demoCode, name: "Старое имя" } })).json();
     const h = { authorization: `Bearer ${u.token}` };
-    const upd = await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" } });
-    expect(upd.json()).toMatchObject({ ok: true, name: "Новое имя" });
-    expect((await app.inject({ method: "GET", url: "/me", headers: h })).json().user).toMatchObject({ name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" });
-    expect((await app.inject({ method: "GET", url: `/users/${u.user.id}/public` })).json()).toMatchObject({ name: "Новое имя", about: "Делаю ремонт ванных, 8 лет опыта" });
-    expect((await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { about: "x".repeat(161) } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { name: "Новое имя" } })).json()).toMatchObject({ ok: true, name: "Новое имя" });
+    expect((await app.inject({ method: "GET", url: "/me", headers: h })).json().user).toMatchObject({ name: "Новое имя" });
     expect((await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { name: "А" } })).statusCode).toBe(400);
-    await app.inject({ method: "POST", url: "/me/profile", headers: h, payload: { about: "" } });
-    expect((await app.inject({ method: "GET", url: `/users/${u.user.id}/public` })).json().about).toBe("");
     const demo = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "anna" } })).json();
     expect((await app.inject({ method: "POST", url: "/me/profile", headers: { authorization: `Bearer ${demo.token}` }, payload: { name: "Взлом" } })).statusCode).toBe(400);
   });
 });
-

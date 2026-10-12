@@ -11,12 +11,11 @@ const ROLE: Record<string, string> = { customer: "Заказчик", executor: "
 export default function Profile() {
   const { user, users, login, logout, toast, refresh } = useSession();
   const router = useRouter();
-  const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number; about: string }>(`/users/${user?.id}/public`), [user?.id]);
+  const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const [dark, setDark] = useState(false);
   const [notif, setNotif] = useState(false);
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState("");
-  const [about, setAbout] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -44,7 +43,7 @@ export default function Profile() {
   async function save() {
     setBusy(true);
     try {
-      await api("/me/profile", { method: "POST", body: { name, about } });
+      await api("/me/profile", { method: "POST", body: { name } });
       await refresh();
       setEdit(false);
       toast("Профиль сохранен");
@@ -61,9 +60,8 @@ export default function Profile() {
         <Ava name={user.name} size="lg" />
         <h1 className="h1" style={{ fontSize: 28, marginTop: 8 }}>{user.name}</h1>
         <div className="muted">{ROLE[user.role]}{user.phone ? ` · ${user.phone}` : ""}</div>
-        {data?.about && <p style={{ marginTop: 8, maxWidth: 360, lineHeight: 1.45 }}>{data.about}</p>}
         {registered && (
-          <button className="btn soft sm" style={{ marginTop: 12 }} onClick={() => { setName(user.name); setAbout(data?.about ?? ""); setEdit(true); }}>
+          <button className="btn soft sm" style={{ marginTop: 12 }} onClick={() => { setName(user.name); setEdit(true); }}>
             <Icon name="user" size={16} /> Редактировать профиль
           </button>
         )}
@@ -76,9 +74,6 @@ export default function Profile() {
       </div>
 
       <div className="card" style={{ padding: "6px 18px" }}>
-        <Link href={`/u/${user.id}`} className="setrow">
-          <span className="setic"><Icon name="user" size={20} /></span><span className="grow"><b>Моя публичная карточка</b><div className="small muted">Что видят другие о вас</div></span><Icon name="arrow" size={18} />
-        </Link>
         <Link href="/receipts" className="setrow">
           <span className="setic"><Icon name="check" size={20} /></span><span className="grow"><b>Мои чеки</b><div className="small muted">По выплатам за этапы</div></span><Icon name="arrow" size={18} />
         </Link>
@@ -119,11 +114,6 @@ export default function Profile() {
           <div className="stack" style={{ marginTop: 16, gap: 16 }}>
             <div className="field"><label>Имя</label><input className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></div>
             <div className="field"><label>Номер телефона</label><input className="input" value={user.phone ?? ""} disabled /></div>
-            <div className="field">
-              <label>О себе</label>
-              <textarea className="input" maxLength={160} placeholder="Чем занимаетесь, какой опыт. Увидят в публичной карточке" value={about} onChange={(e) => setAbout(e.target.value)} />
-              <span className="small muted" style={{ textAlign: "right" }}>{about.length} из 160</span>
-            </div>
             <button className="btn" disabled={busy || name.trim().length < 2} onClick={save}>{busy ? <span className="spin" /> : "Сохранить"}</button>
           </div>
         </Sheet>
