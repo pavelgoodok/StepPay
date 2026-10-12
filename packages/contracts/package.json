@@ -1,0 +1,18 @@
+{
+  "name": "@steppay/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test test/StepEscrow.test.js",
+    "test:invariants": "hardhat test test/invariants.test.js",
+    "test:all": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "chai": "^4.5.0",
+    "ethers": "^6.13.0",
+    "hardhat": "^2.26.0",
+    "solc": "0.8.28"
+  }
+}

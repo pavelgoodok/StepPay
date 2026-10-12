@@ -4,6 +4,7 @@ RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/engine packages/engine
+COPY packages/contracts/package.json packages/contracts/package.json
 COPY apps/api apps/api
 RUN pnpm install --frozen-lockfile --filter @steppay/api...
 ENV NODE_ENV=production

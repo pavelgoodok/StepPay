@@ -10,3 +10,7 @@ dist
 .claude/skills/
 skills-lock.json
 brag-output*/
+
+# контракты: сборка Hardhat
+packages/contracts/artifacts/
+packages/contracts/cache/
