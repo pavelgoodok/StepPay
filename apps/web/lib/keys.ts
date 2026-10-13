@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { passkeysAvailable, signWithPasskey, verifyPasskeyProofLocally, type PasskeyInfo } from "./passkeys";
 
 /**
  * Ключ подписи на устройстве: ECDSA P-256 через WebCrypto. Закрытый ключ создается без права экспорта
@@ -18,6 +19,7 @@ export interface Proof {
   keyId: string;
   message: string;
   signature: string;
+  webauthn?: { authenticatorData: string; clientDataJSON: string };
 }
 
 export const deviceKeysAvailable = () => typeof window !== "undefined" && !!window.crypto?.subtle && typeof indexedDB !== "undefined";
@@ -70,8 +72,16 @@ export async function createDeviceKey(userId: string, label = `Ключ от ${n
   return stored;
 }
 
-/** Ключ этого устройства, действующий на сервере; если его нет, создает новый. */
-export async function ensureDeviceKey(userId: string): Promise<StoredKey> {
+/** Действующий passkey пользователя, если им можно подписать с этого устройства. */
+async function activePasskeys(): Promise<{ id: string; credentialId: string }[]> {
+  if (!passkeysAvailable()) return [];
+  const list = await api<PasskeyInfo[]>("/me/keys");
+  return list.filter((x) => x.kind === "passkey" && x.active && x.credentialId).map((x) => ({ id: x.id, credentialId: x.credentialId! }));
+}
+
+/** Ключ этого устройства, действующий на сервере; если есть passkey, отдельный ключ не нужен. */
+export async function ensureDeviceKey(userId: string): Promise<StoredKey | null> {
+  if ((await activePasskeys()).length > 0) return null;
   const have = await getStoredKey(userId);
   if (have) {
     const list = await api<{ id: string; active: boolean }[]>("/me/keys");
@@ -83,8 +93,10 @@ export async function ensureDeviceKey(userId: string): Promise<StoredKey> {
 
 /** Подписывает условия контракта: сделка, хеш условий, подписант и время. */
 export async function signContractOnDevice(userId: string, dealId: string, contract: string): Promise<Proof> {
-  const key = await ensureDeviceKey(userId);
   const message = JSON.stringify({ v: 1, kind: "steppay.sign", dealId, contract, userId, at: Date.now() });
+  const pks = await activePasskeys();
+  if (pks.length > 0) return signWithPasskey(pks, message);
+  const key = (await ensureDeviceKey(userId))!;
   return { keyId: key.id, message, signature: await sign(key.privateKey, message) };
 }
 
@@ -98,6 +110,7 @@ export async function verifyProofLocally(p: ProofData, want: { dealId: string; c
   try {
     const m = JSON.parse(p.message) as Record<string, unknown>;
     if (m.kind !== "steppay.sign" || m.dealId !== want.dealId || m.contract !== want.contract || m.userId !== want.userId) return false;
+    if (p.webauthn) return await verifyPasskeyProofLocally({ ...p, webauthn: p.webauthn });
     if (p.keyId !== (await keyIdOf(p.publicKey))) return false;
     const key = await crypto.subtle.importKey("spki", unb64(p.publicKey), ALG, false, ["verify"]);
     return await crypto.subtle.verify(SIGN, key, unb64(p.signature), new TextEncoder().encode(p.message));

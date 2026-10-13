@@ -65,8 +65,10 @@ export interface SignatureProof {
   publicKey: string;
   /** подписанное сообщение целиком (JSON): сделка, хеш контракта, подписант, время */
   message: string;
-  /** подпись ECDSA P-256 SHA-256, формат r||s, base64 */
+  /** подпись ECDSA P-256 SHA-256, формат r||s, base64; у passkey формат DER */
   signature: string;
+  /** есть у подписи passkey (WebAuthn): тогда подписаны authenticatorData и хеш clientDataJSON, а в challenge лежит хеш message */
+  webauthn?: { authenticatorData: string; clientDataJSON: string };
 }
 
 export interface SignatureRecord {

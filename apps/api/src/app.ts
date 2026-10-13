@@ -29,7 +29,7 @@ import { createPlanner, type Planner } from "./ai";
 import { makeTicket, makeToken, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
-import { MAX_KEYS, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
+import { MAX_KEYS, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
 import { DEMO_USERS } from "./users";
@@ -109,7 +109,7 @@ export async function buildApp(opts: AppOptions) {
   const signatureValid = (d: Deal, userId: string) => {
     const sg = d.signatures?.[userId];
     if (!sg || !d.contract || sg.hash !== d.contract.hash) return false;
-    if (sg.proof) return checkSignProof(sg.proof, { dealId: d.id, contract: sg.hash, userId }) === null;
+    if (sg.proof) return checkSignProof(sg.proof, { dealId: d.id, contract: sg.hash, userId }, undefined, origins) === null;
     return sg.sig === signFor(d.id, sg.hash, userId);
   };
   /** Подписывает за пользователя, если он сторона контракта и еще не подписал. */
@@ -497,15 +497,25 @@ export async function buildApp(opts: AppOptions) {
   act("/deals/:id/propose", none, (s, p, me) => signIfNeeded(proposeDeal(s, p.id, me, now()), p.id, me, now()), "propose");
   act(
     "/deals/:id/sign",
-    z.object({ proof: z.object({ keyId: z.string().max(40), message: z.string().max(600), signature: z.string().max(200) }).optional() }),
+    z.object({
+      proof: z
+        .object({
+          keyId: z.string().max(40),
+          message: z.string().max(600),
+          signature: z.string().max(400),
+          webauthn: z.object({ authenticatorData: z.string().max(400), clientDataJSON: z.string().max(1200) }).optional(),
+        })
+        .optional(),
+    }),
     (s, p, me, b) => {
       const d = s.deals[p.id];
       if (!d?.contract) return signContract(s, p.id, me, now(), "", undefined); // движок вернет понятную ошибку
       if (b.proof) {
         const key = dir.activeKey(me, b.proof.keyId);
         if (!key) throw new EngineError("Ключ не найден или отозван: создайте новый в профиле");
-        const proof = { alg: "ES256" as const, keyId: key.id, publicKey: key.publicKey, message: b.proof.message, signature: b.proof.signature };
-        const bad = checkSignProof(proof, { dealId: d.id, contract: d.contract.hash, userId: me }, now());
+        if ((key.kind === "passkey") !== !!b.proof.webauthn) throw new EngineError(key.kind === "passkey" ? "Этот ключ подписывает только через passkey" : "Для этого ключа нужна обычная подпись");
+        const proof = { alg: "ES256" as const, keyId: key.id, publicKey: key.publicKey, message: b.proof.message, signature: b.proof.signature, webauthn: b.proof.webauthn };
+        const bad = checkSignProof(proof, { dealId: d.id, contract: d.contract.hash, userId: me }, now(), origins);
         if (bad) throw new EngineError(bad);
         return signContract(s, p.id, me, now(), `es256:${key.id}`, proof);
       }
@@ -520,7 +530,7 @@ export async function buildApp(opts: AppOptions) {
   app.get("/me/keys", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
-    return dir.keysOf(me).map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt, revokedAt: k.revokedAt, active: !k.revokedAt }));
+    return dir.keysOf(me).map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt, revokedAt: k.revokedAt, active: !k.revokedAt, kind: k.kind ?? "device", credentialId: k.credentialId }));
   });
 
   app.post("/me/keys", async (req, reply) => {
@@ -533,6 +543,30 @@ export async function buildApp(opts: AppOptions) {
     if (dir.keysOf(me).some((k) => k.id === id)) return reply.code(400).send({ error: "Этот ключ уже добавлен" });
     if (dir.keysOf(me).filter((k) => !k.revokedAt).length >= MAX_KEYS) return reply.code(400).send({ error: `Не больше ${MAX_KEYS} активных ключей: отзовите ненужные` });
     await dir.addKey(me, { id, publicKey: b.publicKey, label: b.label || "Это устройство", createdAt: now() });
+    return { id };
+  });
+
+  // passkeys (WebAuthn): ключ в защищенном чипе устройства, подтверждение отпечатком, лицом или PIN
+  app.post("/me/passkeys", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const b = z
+      .object({
+        credentialId: z.string().max(400),
+        publicKey: z.string().max(400),
+        authenticatorData: z.string().max(1200),
+        clientDataJSON: z.string().max(1200),
+        at: z.number(),
+        label: z.string().trim().max(60).optional(),
+      })
+      .parse(req.body);
+    const bad = checkPasskeyRegistration(me, b, now(), origins);
+    if (bad) return reply.code(400).send({ error: bad });
+    const id = keyIdOf(b.publicKey);
+    const have = dir.keysOf(me);
+    if (have.some((k) => k.id === id)) return reply.code(400).send({ error: "Этот passkey уже добавлен" });
+    if (have.filter((k) => !k.revokedAt).length >= MAX_KEYS) return reply.code(400).send({ error: `Не больше ${MAX_KEYS} активных ключей: отзовите ненужные` });
+    await dir.addKey(me, { id, publicKey: b.publicKey, label: b.label || "Passkey", createdAt: now(), kind: "passkey", credentialId: b.credentialId });
     return { id };
   });
 

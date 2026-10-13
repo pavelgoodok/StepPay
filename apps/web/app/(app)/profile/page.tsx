@@ -7,6 +7,7 @@ import { CropSheet } from "@/components/cropper";
 import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
 import { PROJECT_STATUS } from "@/lib/labels";
 import { createDeviceKey, deviceKeysAvailable, forgetStoredKey, getStoredKey } from "@/lib/keys";
+import { createPasskey, passkeysAvailable } from "@/lib/passkeys";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
@@ -18,7 +19,7 @@ export default function Profile() {
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
   const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
   const [cropFile, setCropFile] = useState<File | null>(null);
-  const keys = usePoll(() => api<{ id: string; label: string; createdAt: number; active: boolean }[]>("/me/keys"), [user?.id]);
+  const keys = usePoll(() => api<{ id: string; label: string; createdAt: number; active: boolean; kind: "device" | "passkey" }[]>("/me/keys"), [user?.id]);
   const [localKey, setLocalKey] = useState<string | null>(null);
   const [dark, setDark] = useState(false);
   const [notif, setNotif] = useState(false);
@@ -75,6 +76,18 @@ export default function Profile() {
       await createDeviceKey(user!.id);
       await keys.reload();
       toast("Ключ подписи создан на этом устройстве");
+    } catch (e) {
+      toast((e as Error).message, "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function newPasskey() {
+    setBusy(true);
+    try {
+      await createPasskey(user!.id, user!.name, `Passkey от ${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}`);
+      await keys.reload();
+      toast("Passkey добавлен: контракты будут подписываться отпечатком, лицом или PIN");
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -170,7 +183,7 @@ export default function Profile() {
 
       <div className="card stack">
         <div className="title">Подпись контрактов</div>
-        <div className="sub">Контракт подписывается ключом, который создается на этом устройстве. Закрытый ключ из браузера не выгружается, на сервер уходит только открытая часть.</div>
+        <div className="sub">Контракт подписывается ключом, который создается на этом устройстве. Закрытый ключ из браузера не выгружается, на сервер уходит только открытая часть. Passkey надежнее: ключ лежит в защищенном чипе, подпись ставится после отпечатка, лица или PIN, а при смене телефона он переезжает вместе с вашей учетной записью Apple или Google.</div>
         {!deviceKeysAvailable() ? (
           <div className="note warn" style={{ marginTop: 0 }}>Браузер не поддерживает ключи подписи. Откройте приложение в современном браузере по защищенному адресу.</div>
         ) : (
@@ -178,13 +191,14 @@ export default function Profile() {
             {(keys.data ?? []).map((k) => (
               <div key={k.id} className="row between">
                 <div style={{ minWidth: 0 }}>
-                  <div className="ellipsis"><b>{k.label}</b>{localKey === k.id ? " · это устройство" : ""}</div>
+                  <div className="ellipsis"><b>{k.label}</b>{k.kind === "passkey" ? " · passkey" : localKey === k.id ? " · это устройство" : ""}</div>
                   <div className="small muted mono">{k.id}{k.active ? "" : " · отозван"}</div>
                 </div>
                 {k.active && <button className="btn ghost sm" onClick={() => void revokeKey(k.id)}>Отозвать</button>}
               </div>
             ))}
-            {!localKey && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
+            {passkeysAvailable() && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newPasskey()}>Добавить passkey</button>}
+            {!localKey && !(keys.data ?? []).some((k) => k.kind === "passkey" && k.active) && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
           </>
         )}
       </div>
