@@ -56,7 +56,7 @@ describe("StepEscrow: инварианты денег при случайных 
 
       async function checkInvariants(where) {
         const locked = await escrow.totalLocked();
-        assert.equal(await token.balanceOf(escrowAddress), locked, `${where}: баланс контракта не равен сумме резервов`);
+        assert.equal(await token.balanceOf(escrowAddress), locked + (await escrow.totalOwed()), `${where}: баланс контракта не равен резервам плюс долгам`);
         let sum = 0n;
         for (const d of deals) {
           const reserved = await escrow.reservedSum(d.id);

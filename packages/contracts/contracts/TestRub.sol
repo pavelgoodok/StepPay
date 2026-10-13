@@ -13,6 +13,19 @@ contract TestRub {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
+    /// @dev только для испытаний: имитация токена с черным списком (перевод в такой адрес откатывается)
+    mapping(address => bool) public blocked;
+    /// @dev только для испытаний: имитация токена с комиссией при переводе (сжигается у получателя)
+    uint256 public transferFeeBps;
+
+    function setBlocked(address who, bool value) external {
+        blocked[who] = value;
+    }
+
+    function setTransferFeeBps(uint256 bps) external {
+        transferFeeBps = bps;
+    }
+
     function mint(address to, uint256 amount) external {
         totalSupply += amount;
         balanceOf[to] += amount;
@@ -40,8 +53,11 @@ contract TestRub {
 
     function _move(address from, address to, uint256 amount) private {
         require(balanceOf[from] >= amount, "balance");
+        require(!blocked[to], "blocked");
         balanceOf[from] -= amount;
-        balanceOf[to] += amount;
-        emit Transfer(from, to, amount);
+        uint256 fee = (amount * transferFeeBps) / 10_000;
+        balanceOf[to] += amount - fee;
+        totalSupply -= fee;
+        emit Transfer(from, to, amount - fee);
     }
 }

@@ -84,6 +84,9 @@ contract StepEscrow {
     uint256 public dealCount;
     /// @notice сколько токенов сейчас заперто в резервах всех сделок
     uint256 public totalLocked;
+    /// @notice сколько токенов контракт задолжал получателям, которым перевод не удался (см. claim)
+    uint256 public totalOwed;
+    mapping(address => uint256) public owed;
 
     mapping(uint256 => Deal) private deals;
     mapping(uint256 => mapping(address => uint256)) public reserves;
@@ -109,6 +112,9 @@ contract StepEscrow {
     event Completed(uint256 indexed dealId);
     event Cancelled(uint256 indexed dealId, address indexed by);
     event FundingExpired(uint256 indexed dealId);
+    /// @dev перевод получателю не удался (токен отказал), сумма записана ему в долг и ждет claim
+    event Owed(address indexed to, uint256 amount);
+    event Claimed(address indexed from, address indexed to, uint256 amount);
 
     error Unauthorized();
     error BadState();
@@ -123,6 +129,7 @@ contract StepEscrow {
 
     constructor(IERC20 token_, address feeRecipient_) {
         if (address(token_) == address(0) || feeRecipient_ == address(0)) revert BadInput();
+        if (address(token_).code.length == 0) revert BadInput(); // токен должен быть контрактом
         token = token_;
         feeRecipient = feeRecipient_;
     }
@@ -509,15 +516,37 @@ contract StepEscrow {
 
     // ───────────────────────── токен ─────────────────────────
 
+    /// @dev Списывает токены с отправителя. Если на баланс контракта пришло не ровно amount (токен с комиссией при переводе,
+    /// ребейз), операция откатывается: такие токены не поддерживаются, чтобы не нарушить учет резервов.
     function _pull(address from, uint256 amount) private {
+        uint256 before = token.balanceOf(address(this));
         (bool ok, bytes memory ret) = address(token).call(abi.encodeCall(IERC20.transferFrom, (from, address(this), amount)));
-        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert BadState();
+        if (!ok || (ret.length != 0 && (ret.length < 32 || !abi.decode(ret, (bool))))) revert BadState();
+        if (token.balanceOf(address(this)) - before != amount) revert BadState();
     }
 
+    /// @dev Переводит токены получателю. Если токен отказал (черный список, запрет получения), один получатель не должен
+    /// блокировать остальных: сумма записывается ему в долг, а забрать ее он может сам через claim.
     function _push(address to, uint256 amount) private {
         if (amount == 0) return;
         (bool ok, bytes memory ret) = address(token).call(abi.encodeCall(IERC20.transfer, (to, amount)));
-        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert BadState();
+        if (!ok || (ret.length != 0 && (ret.length < 32 || !abi.decode(ret, (bool))))) {
+            owed[to] += amount;
+            totalOwed += amount;
+            emit Owed(to, amount);
+        }
+    }
+
+    /// @notice Забрать то, что не удалось перевести автоматически. Можно указать другой адрес, если на основной токен не идет.
+    function claim(address to) external nonReentrant {
+        if (to == address(0)) revert BadInput();
+        uint256 amount = owed[msg.sender];
+        if (amount == 0) revert BadState();
+        owed[msg.sender] = 0;
+        totalOwed -= amount;
+        (bool ok, bytes memory ret) = address(token).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        if (!ok || (ret.length != 0 && (ret.length < 32 || !abi.decode(ret, (bool))))) revert BadState();
+        emit Claimed(msg.sender, to, amount);
     }
 
     // ───────────────────────── чтение ─────────────────────────

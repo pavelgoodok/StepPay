@@ -371,3 +371,113 @@ describe("StepEscrow: запасной приемщик", () => {
     await mk(Mode.Own, owner.address, arbiter.address, DAY, backup.address);
   });
 });
+
+describe("StepEscrow: отказ токена, токены с комиссией, газ", () => {
+  async function crowd(n = 3, amounts = [1_000n, 1_000n, 1_000n]) {
+    const { token, escrow, signers, escrowAddress } = await deploy();
+    const author = signers[1];
+    const sponsors = signers.slice(2, 2 + n);
+    await escrow.createDeal(Mode.Crowdfunding, author.address, ZERO, ZERO, [BigInt(amounts.reduce((a, b) => a + b, 0n))], 3 * DAY, 0, hash("t"));
+    await escrow.connect(author).sign(1);
+    for (let i = 0; i < n; i++) {
+      await giveTokens(token, escrowAddress, sponsors[i], amounts[i] * R);
+    }
+    return { token, escrow, author, sponsors, escrowAddress, signers };
+  }
+
+  it("получатель, которому токен отказал, не блокирует остальных: возврат остальным проходит, ему записывается долг", async () => {
+    const { token, escrow, author, sponsors, escrowAddress } = await crowd();
+    for (const s of sponsors) await escrow.connect(s).fund(1, 1_000n);
+    await escrow.connect(author).submitStage(1, 0, hash("e"));
+    await token.setBlocked(sponsors[1].address, true); // спонсору запретили получать токен
+    await escrow.connect(sponsors[0]).vote(1, 0, false);
+    await escrow.connect(sponsors[1]).vote(1, 0, false); // половина «против»: этап провален, возврат всем
+    assert.equal((await escrow.getDeal(1)).status, BigInt(DealStatus.Cancelled));
+    assert.equal(await token.balanceOf(sponsors[0].address), 1_000n * R);
+    assert.equal(await token.balanceOf(sponsors[2].address), 1_000n * R);
+    assert.equal(await escrow.owed(sponsors[1].address), 1_000n);
+    assert.equal(await escrow.totalOwed(), 1_000n);
+    assert.equal(await token.balanceOf(escrowAddress), 1_000n); // долг лежит на контракте
+    assert.equal(await escrow.totalLocked(), 0n);
+    // пока запрет действует, забрать на свой адрес нельзя, на другой можно
+    await reverts(escrow.connect(sponsors[1]).claim(sponsors[1].address), "BadState");
+    assert.equal(await escrow.owed(sponsors[1].address), 1_000n); // откат вернул долг
+    await escrow.connect(sponsors[1]).claim(sponsors[0].address);
+    assert.equal(await token.balanceOf(sponsors[0].address), 1_000n * R + 1_000n);
+    assert.equal(await escrow.totalOwed(), 0n);
+    assert.equal(await token.balanceOf(escrowAddress), 0n);
+    await reverts(escrow.connect(sponsors[1]).claim(sponsors[0].address), "BadState"); // повторно нечего
+    await reverts(escrow.connect(sponsors[0]).claim(ZERO), "BadInput");
+  });
+
+  it("исполнитель, которому токен отказал, не блокирует приемку этапа: выплата записана в долг", async () => {
+    const { token, escrow, author, sponsors } = await crowd(2, [500n, 500n]);
+    for (const s of sponsors) await escrow.connect(s).fund(1, 500n);
+    await escrow.connect(author).submitStage(1, 0, hash("e"));
+    await token.setBlocked(author.address, true);
+    await escrow.connect(sponsors[0]).vote(1, 0, true);
+    await escrow.connect(sponsors[1]).vote(1, 0, true);
+    assert.equal((await escrow.getDeal(1)).status, BigInt(DealStatus.Completed));
+    assert.equal(await escrow.owed(author.address), 1_000n);
+    await token.setBlocked(author.address, false);
+    await escrow.connect(author).claim(author.address);
+    assert.equal(await token.balanceOf(author.address), 1_000n);
+  });
+
+  it("токен с комиссией при переводе не принимается: резерв не расходится с балансом", async () => {
+    const { token, escrow, sponsors } = await crowd();
+    await token.setTransferFeeBps(100);
+    await reverts(escrow.connect(sponsors[0]).fund(1, 1_000n), "BadState");
+    await token.setTransferFeeBps(0);
+    await escrow.connect(sponsors[0]).fund(1, 1_000n);
+    assert.equal(await escrow.totalLocked(), 1_000n);
+  });
+
+  it("токеном может быть только контракт", async () => {
+    const { signers } = await deploy();
+    const factory = await ethers.getContractFactory("StepEscrow");
+    await reverts(factory.deploy(signers[3].address, signers[9].address), "BadInput");
+  });
+
+  it("предельное число спонсоров: газ приемки и возврата в пределах блока", async () => {
+    const { token, escrow, signers, escrowAddress } = await deploy();
+    const author = signers[1];
+    const n = 64;
+    const wallets = [];
+    for (let i = 0; i < n; i++) {
+      const w = ethers.Wallet.createRandom().connect(ethers.provider);
+      await ethers.provider.send("hardhat_setBalance", [w.address, "0x56bc75e2d63100000"]);
+      await giveTokens(token, escrowAddress, w, 2_000n);
+      wallets.push(w);
+    }
+    // 63 взноса по 1000 и один на 1063: неровные доли, деление выплаты дает остатки
+    await escrow.createDeal(Mode.Crowdfunding, author.address, ZERO, ZERO, [32_031n, 32_032n], 3 * DAY, 250, hash("g"));
+    await escrow.connect(author).sign(1);
+    for (let i = 0; i < n; i++) await escrow.connect(wallets[i]).fund(1, i === n - 1 ? 1_063n : 1_000n);
+    assert.equal((await escrow.getDeal(1))[1], BigInt(DealStatus.Active));
+    await escrow.connect(author).submitStage(1, 0, hash("e"));
+    let gasAccept = 0n;
+    for (let i = 0; i < n; i++) {
+      const r = await (await escrow.connect(wallets[i]).vote(1, 0, true)).wait();
+      if (Number((await escrow.getStage(1, 0))[1]) === StageStatus.Accepted) {
+        gasAccept = r.gasUsed;
+        break;
+      }
+    }
+    assert.ok(gasAccept > 0n, "этап не принят");
+    await escrow.connect(author).submitStage(1, 1, hash("e2"));
+    let gasFail = 0n;
+    for (let i = 0; i < n; i++) {
+      const r = await (await escrow.connect(wallets[i]).vote(1, 1, false)).wait();
+      if (Number((await escrow.getStage(1, 1))[1]) === StageStatus.Failed) {
+        gasFail = r.gasUsed;
+        break;
+      }
+    }
+    assert.ok(gasFail > 0n, "этап не провален");
+    console.log(`      газ при ${n} спонсорах: приемка этапа с выплатой ${gasAccept}, провал и возврат всем ${gasFail}`);
+    assert.ok(gasAccept < 15_000_000n && gasFail < 15_000_000n, "операция не помещается в блок");
+    assert.equal(await escrow.totalLocked(), 0n);
+    assert.equal(await escrow.totalOwed(), 0n);
+  });
+});
