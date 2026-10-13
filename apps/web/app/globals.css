@@ -272,7 +272,7 @@ select.input { appearance: none; }
 }
 
 .empty { text-align: center; padding: 28px 10px; color: var(--muted); }
-.empty img { width: 104px; }
+.empty img { width: 140px; height: 104px; object-fit: contain; }
 .skeleton { height: 110px; border-radius: 24px; background: var(--surface); animation: sk 1.2s ease-in-out infinite alternate; }
 @keyframes sk { from { opacity: .55; } to { opacity: 1; } }
 
@@ -496,3 +496,11 @@ h1, h2, h3, .h1, .title { text-wrap: balance; }
   .segbar i.cur, .segbar i.now { animation: none !important; }
   .btn, .card.tap, .opt, .mode, .qa .ic, .tab .ti { transition-property: background, color, opacity !important; }
 }
+
+/* объемные картинки разных пропорций вписываются без искажений */
+.hero .art, .sheet .art, .brand-grid .art, .feat img { object-fit: contain; }
+.lcard .cover.none.art { background: var(--blue-soft); }
+.lcard .cover.none.art img { height: 100%; max-height: 108px; width: auto; object-fit: contain; }
+.lcard .cover.none.art.tone1 { background: var(--green-soft); }
+.lcard .cover.none.art.tone2 { background: var(--amber-soft); }
+.lcard .cover.none.art.tone3 { background: var(--surface2); }

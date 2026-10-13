@@ -4,16 +4,25 @@ import type { ProjectItem, ServiceItem } from "@/lib/api";
 import { photoSrc } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { KIND_LABEL, PROJECT_STATUS } from "@/lib/labels";
-import { Ava, Icon, SegBar } from "./ui";
+import { Ava, IMG, Icon, SegBar } from "./ui";
 
 const CAT_ICON: Record<string, string> = { "Игры": "bolt", "Музыка и творчество": "ring", "Технологии": "laptop", "Образование": "award", "Городская среда": "sprout", "Социальные проекты": "crowd" };
 const catTone = (c: string) => [...c].reduce((a, ch) => a + ch.charCodeAt(0), 0) % 4;
 
 /** Обложка проекта; без фото показывается плоская плашка с иконкой категории. */
-export function Cover({ url, category }: { url?: string; category: string }) {
+export function Cover({ url, category, kind }: { url?: string; category: string; kind?: "crowdfunding" | "grant" }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img className="cover" src={photoSrc(url)} alt="" />;
+  }
+  if (kind) {
+    // без фото: объемная картинка по виду проекта, ракета для краудфандинга и росток для гранта
+    return (
+      <div className={`cover none art tone${catTone(category)}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={kind === "grant" ? IMG.sprout : IMG.rocket} alt="" />
+      </div>
+    );
   }
   return <div className={`cover none tone${catTone(category)}`}><Icon name={CAT_ICON[category] ?? "flag"} size={44} /></div>;
 }
@@ -22,7 +31,7 @@ export function ProjectCard({ p, href, showStatus }: { p: ProjectItem; href?: st
   const st = p.status ? PROJECT_STATUS[p.status] : null;
   return (
     <Link href={href ?? `/projects/${p.id}`} className="card tap lcard">
-      <Cover url={p.cover} category={p.category} />
+      <Cover url={p.cover} category={p.category} kind={p.kind} />
       <div className="pc-body">
         <div className="row between">
           <span className="small muted">{KIND_LABEL[p.kind]} · {p.category}</span>

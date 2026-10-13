@@ -137,7 +137,7 @@ export default function DealPage() {
       {!draft && <div className="hero compact">
         {paidBurst && <><i className="burst" /><i className="burst two" /></>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={d.status === "completed" ? IMG.terminal : IMG.safe} alt="" />
+        <img className="art" src={d.status === "completed" ? IMG.accept : IMG.reserve} alt="" />
         <div className="label">Выплачено исполнителю</div>
         <div className="big"><Money value={paid} /></div>
         <div style={{ maxWidth: 190 }}>

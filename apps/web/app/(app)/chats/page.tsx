@@ -20,7 +20,7 @@ export default function Chats() {
       {data && data.length === 0 && (
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG.receipt} alt="" />
+          <img src={IMG.chat} alt="" />
           <p style={{ marginTop: 8 }}>Чатов пока нет. Откройте услугу в каталоге и напишите исполнителю</p>
           <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>
         </div>

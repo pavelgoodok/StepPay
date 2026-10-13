@@ -49,7 +49,7 @@ export default function Catalog() {
       {list && list.length === 0 && (
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG.receipt} alt="" />
+          <img src={IMG.folder} alt="" />
           <p style={{ marginTop: 8 }}>Ничего не найдено</p>
         </div>
       )}

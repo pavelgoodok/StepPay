@@ -4,11 +4,14 @@ import { photoSrc } from "@/lib/api";
 import { group, rub } from "@/lib/format";
 
 export const IMG = {
-  card: "/3d/card.webp",
-  terminal: "/3d/terminal.webp",
-  receipt: "/3d/receipt.webp",
-  safe: "/3d/safe.webp",
   wallet: "/3d/wallet.webp",
+  steps: "/3d/steps.webp",
+  reserve: "/3d/reserve.webp",
+  accept: "/3d/accept.webp",
+  rocket: "/3d/rocket.webp",
+  sprout: "/3d/sprout.webp",
+  folder: "/3d/folder.webp",
+  chat: "/3d/chat.webp",
   deadline: "/3d/deadline.webp",
   passkey: "/3d/passkey.webp",
 };

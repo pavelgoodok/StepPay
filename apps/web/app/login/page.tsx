@@ -124,7 +124,7 @@ export default function Login() {
             </ul>
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="art" src={IMG.safe} alt="" />
+          <img className="art" src={IMG.reserve} alt="" />
         </div>
       </div>
 

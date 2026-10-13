@@ -34,7 +34,7 @@ export default function Deals() {
 
       <div className="hero">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={IMG.card} alt="" />
+        <img className="art" src={IMG.wallet} alt="" />
         <div className="label">Свободно</div>
         <div className="big"><Money value={wallet?.free ?? 0} /></div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(wallet?.reserved ?? 0)} в резерве</span>
@@ -69,7 +69,7 @@ export default function Deals() {
       {data && mine.length === 0 && (
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG.receipt} alt="" />
+          <img src={IMG.folder} alt="" />
           <p style={{ marginTop: 8 }}>{view === "exec" ? "Сделок, где вы исполнитель, пока нет" : "Выберите исполнителя в каталоге услуг"}</p>
           {view !== "exec" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
         </div>

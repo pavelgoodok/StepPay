@@ -34,7 +34,7 @@ export default function Receipts() {
       {data && data.length === 0 && (
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG.receipt} alt="" />
+          <img src={IMG.accept} alt="" />
           <p style={{ marginTop: 8 }}>Чеки появятся после первой выплаты за этап</p>
         </div>
       )}
