@@ -178,3 +178,57 @@ describe("шифрование закрытых файлов", () => {
     await expect(buildApp({ store: new MemoryStore(), secret: "s", fileKey: "abc" })).rejects.toThrow(/FILE_KEY/);
   });
 });
+
+describe("шифрование анкет авторов и миграция", () => {
+  const INN = "500100732259";
+  const register = async (app: Awaited<ReturnType<typeof buildApp>>, phone: string) => {
+    const req = (await app.inject({ method: "POST", url: "/auth/otp/request", payload: { phone } })).json();
+    const r = (await app.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone, code: req.demoCode, name: "Автор Проекта" } })).json();
+    return r.token as string;
+  };
+  const saveAuthor = (app: Awaited<ReturnType<typeof buildApp>>, token: string) =>
+    app.inject({ method: "POST", url: "/me/author", payload: { legalStatus: "selfemployed", inn: INN, email: "author@example.com" }, headers: { authorization: `Bearer ${token}` } });
+
+  it("в базе нет открытых ИНН и почты, после перезапуска анкета читается", async () => {
+    const store = new MemoryStore();
+    const app = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    const tok = await register(app, "+79301234505");
+    expect((await saveAuthor(app, tok)).statusCode).toBe(200);
+    const raw = JSON.stringify(await store.loadUsers());
+    expect(raw).not.toContain(INN);
+    expect(raw).not.toContain("author@example.com");
+    expect(raw).toContain("authorEnc");
+    const again = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    const got = await again.inject({ method: "GET", url: "/me/author", headers: { authorization: `Bearer ${tok}` } });
+    expect(got.json()).toMatchObject({ inn: INN, email: "author@example.com" });
+  });
+
+  it("чужой ключ не читает анкеты, но сервер запускается", async () => {
+    const store = new MemoryStore();
+    const app = await buildApp({ store, secret: "s", fileKey: "00".repeat(32), now: () => 1_000_000 });
+    const tok = await register(app, "+79301234506");
+    await saveAuthor(app, tok);
+    const other = await buildApp({ store, secret: "s", fileKey: "11".repeat(32), now: () => 1_000_000 });
+    const got = await other.inject({ method: "GET", url: "/me/author", headers: { authorization: `Bearer ${tok}` } });
+    expect(got.json()).toBeNull();
+  });
+
+  it("анкеты и закрытые файлы прежних версий шифруются при запуске", async () => {
+    const store = new MemoryStore();
+    const app = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    const tok = await register(app, "+79301234507");
+    const users = await store.loadUsers();
+    users[0]!.author = { legalStatus: "selfemployed", inn: INN, email: "old@example.com" }; // как в базе до шифрования
+    await store.saveUsers(users);
+    await store.putFile("legacy1", { mime: "application/pdf", data: Buffer.from("%PDF старый документ"), private: true, ownerId: users[0]!.id });
+    await store.putFile("pub1", { mime: "image/png", data: Buffer.from("png"), private: false });
+    const up = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    expect(JSON.stringify(await store.loadUsers())).not.toContain("old@example.com");
+    const f = await store.getFile("legacy1");
+    expect(f!.data.subarray(0, 4).toString()).toBe("SPE1");
+    expect((await store.getFile("pub1"))!.data.toString()).toBe("png");
+    expect(await store.plainPrivateFileIds()).toEqual([]);
+    const got = await up.inject({ method: "GET", url: "/me/author", headers: { authorization: `Bearer ${tok}` } });
+    expect(got.json()).toMatchObject({ email: "old@example.com" });
+  });
+});

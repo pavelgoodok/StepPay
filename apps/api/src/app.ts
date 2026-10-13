@@ -30,7 +30,7 @@ import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, tokenMet
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
 import { ANCHOR_GENESIS, buildAnchor, changedSince, checkAgainstAnchors, verifyAnchorChain, verifyMoney, type Anchor } from "@steppay/engine";
-import { fileKeyFrom, openFile, sealFile } from "./filecrypt";
+import { fileKeyFrom, openFile, sealFile, sealUsers, unsealUsers } from "./filecrypt";
 import { MAX_KEYS, checkLoginAssertion, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
@@ -131,7 +131,16 @@ export async function buildApp(opts: AppOptions) {
   const hub = new Hub();
   const demoOn = opts.demoMode ?? true;
   const adminPhones = (opts.adminPhones ?? []).map((p) => normalizePhone(p)).filter((p): p is string => !!p);
-  const dir = new Directory((users) => opts.store.saveUsers(users), await opts.store.loadUsers(), demoOn, adminPhones);
+  // анкеты авторов лежат в базе зашифрованными; открытые анкеты прежних версий шифруются при запуске
+  const loadedUsers = unsealUsers(fileKey, await opts.store.loadUsers());
+  if (loadedUsers.lost > 0) console.warn(`Не удалось расшифровать анкеты авторов: ${loadedUsers.lost}. Проверьте FILE_KEY и AUTH_SECRET`);
+  if (loadedUsers.legacy) await opts.store.saveUsers(sealUsers(fileKey, loadedUsers.users));
+  const dir = new Directory((users) => opts.store.saveUsers(sealUsers(fileKey, users)), loadedUsers.users, demoOn, adminPhones);
+  // закрытые файлы, загруженные до включения шифрования, шифруются при запуске
+  for (const fid of await opts.store.plainPrivateFileIds()) {
+    const raw = await opts.store.getFile(fid);
+    if (raw) await opts.store.replaceFile(fid, sealFile(fileKey, fid, raw));
+  }
   const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
   /** Серверная подпись (демо): HMAC от сделки, хеша контракта и подписанта. Настоящие подписи ключами на устройстве это шаг 7. */
   const signFor = (dealId: string, hash: string, userId: string) => createHmac("sha256", `${opts.secret}:sign`).update(`${dealId}:${hash}:${userId}`).digest("hex");

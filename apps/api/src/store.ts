@@ -21,6 +21,10 @@ export interface Store {
   savePlatform(data: PlatformData): Promise<void>;
   putFile(id: string, file: StoredFile): Promise<void>;
   getFile(id: string): Promise<StoredFile | null>;
+  /** перезаписывает файл (нужно, чтобы зашифровать файлы, загруженные до включения шифрования) */
+  replaceFile(id: string, file: StoredFile): Promise<void>;
+  /** закрытые файлы, которые лежат без шифрования */
+  plainPrivateFileIds(): Promise<string[]>;
 }
 
 export class MemoryStore implements Store {
@@ -51,6 +55,12 @@ export class MemoryStore implements Store {
   }
   async getFile(id: string) {
     return this.files.get(id) ?? null;
+  }
+  async replaceFile(id: string, file: StoredFile) {
+    this.files.set(id, file);
+  }
+  async plainPrivateFileIds() {
+    return [...this.files].filter(([, f]) => f.private && !f.data.subarray(0, 4).equals(Buffer.from("SPE1"))).map(([id]) => id);
   }
 }
 
@@ -106,6 +116,13 @@ export class PgStore implements Store {
   }
   async putFile(id: string, file: StoredFile) {
     await this.pool.query("insert into files (id, mime, data, owner_id, private) values ($1, $2, $3, $4, $5) on conflict do nothing", [id, file.mime, file.data, file.ownerId ?? null, !!file.private]);
+  }
+  async replaceFile(id: string, file: StoredFile) {
+    await this.pool.query("update files set mime = $2, data = $3, owner_id = $4, private = $5 where id = $1", [id, file.mime, file.data, file.ownerId ?? null, !!file.private]);
+  }
+  async plainPrivateFileIds(): Promise<string[]> {
+    const r = await this.pool.query("select id from files where private and substring(data from 1 for 4) <> $1", [Buffer.from("SPE1")]);
+    return r.rows.map((x) => x.id as string);
   }
   async getFile(id: string): Promise<StoredFile | null> {
     const r = await this.pool.query("select mime, data, owner_id, private from files where id = $1", [id]);

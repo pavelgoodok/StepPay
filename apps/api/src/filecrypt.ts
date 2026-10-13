@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import type { StoredFile } from "./store";
+import type { RegisteredUser } from "./users";
 
 /**
  * Шифрование закрытых файлов (документы проектов) в хранилище: AES-256-GCM, у каждого файла свой случайный IV,
@@ -43,4 +44,58 @@ export function openFile(key: Buffer, id: string, f: StoredFile): StoredFile | n
   } catch {
     return null;
   }
+}
+
+// ───────── личные данные: анкеты авторов ─────────
+// ИНН, почта и название из анкеты хранятся в базе зашифрованными (AES-256-GCM, привязка к пользователю).
+// Телефон остается открытым: по нему ищут пользователя при входе.
+
+const TEXT_MAGIC = "SPF1:";
+
+export function sealText(key: Buffer, aadText: string, text: string): string {
+  const iv = randomBytes(12);
+  const c = createCipheriv("aes-256-gcm", key, iv);
+  c.setAAD(Buffer.from(aadText));
+  const body = Buffer.concat([c.update(text, "utf8"), c.final()]);
+  return TEXT_MAGIC + Buffer.concat([iv, c.getAuthTag(), body]).toString("base64");
+}
+
+export function openText(key: Buffer, aadText: string, sealed: string): string | null {
+  if (!sealed.startsWith(TEXT_MAGIC)) return null;
+  try {
+    const raw = Buffer.from(sealed.slice(TEXT_MAGIC.length), "base64");
+    const d = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
+    d.setAAD(Buffer.from(aadText));
+    d.setAuthTag(raw.subarray(12, 28));
+    return Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Перед записью в базу: открытая анкета заменяется зашифрованной. */
+export function sealUsers(key: Buffer, users: RegisteredUser[]): RegisteredUser[] {
+  return users.map((u) => {
+    if (!u.author) return u;
+    const { author, ...rest } = u;
+    return { ...rest, authorEnc: sealText(key, `author:${u.id}`, JSON.stringify(author)) };
+  });
+}
+
+/** После чтения из базы: анкета расшифровывается. Если расшифровать нельзя (чужой ключ, порча), анкеты нет: автор заполнит ее заново. */
+export function unsealUsers(key: Buffer, users: RegisteredUser[]): { users: RegisteredUser[]; legacy: boolean; lost: number } {
+  let legacy = false;
+  let lost = 0;
+  const out = users.map((u) => {
+    if (u.author) legacy = true; // анкета лежит открытой, ее нужно зашифровать
+    if (!u.authorEnc) return u;
+    const { authorEnc, ...rest } = u;
+    const text = openText(key, `author:${u.id}`, authorEnc);
+    if (text === null) {
+      lost++;
+      return rest;
+    }
+    return { ...rest, author: JSON.parse(text) };
+  });
+  return { users: out, legacy, lost };
 }
