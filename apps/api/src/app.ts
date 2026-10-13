@@ -26,10 +26,11 @@ import {
   type Deal,
   type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal, linkChain } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
-import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, verifyTicket, verifyToken } from "./auth";
+import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, tokenMethod, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
 import { ANCHOR_GENESIS, buildAnchor, changedSince, checkAgainstAnchors, verifyAnchorChain, verifyMoney, type Anchor } from "@steppay/engine";
+import { fileKeyFrom, openFile, sealFile } from "./filecrypt";
 import { MAX_KEYS, checkLoginAssertion, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
@@ -75,6 +76,10 @@ export interface AppOptions {
   /** ограничение частоты запросов с одного адреса за минуту */
   rateLimit?: { general: number; auth: number; uploads: number };
   signaturePolicy?: "device" | "any" | "passkey";
+  /** ключ шифрования закрытых файлов (32 байта, hex или base64); без него выводится из секрета */
+  fileKey?: string;
+  /** администратор работает только в сессии, начатой входом по passkey; по умолчанию включено вне демо */
+  adminRequirePasskey?: boolean;
   /** как часто фиксировать якорь истории (мс), по умолчанию час */
   anchorEveryMs?: number;
   /** публикация якоря вне сервера: внешний журнал, сеть, свидетель. Без нее якоря только хранятся и отдаются по /anchors */
@@ -113,6 +118,12 @@ export async function buildApp(opts: AppOptions) {
   const origins = opts.corsOrigin?.split(",").map((o) => o.trim()).filter(Boolean) ?? [];
   await app.register(cors, { origin: origins.length ? origins : process.env.NODE_ENV === "production" ? false : true });
   const now = opts.now ?? Date.now;
+  const fileKey = fileKeyFrom(opts.secret, opts.fileKey);
+  const putFile = (id: string, f: Parameters<typeof opts.store.putFile>[1]) => opts.store.putFile(id, sealFile(fileKey, id, f));
+  const getFile = async (id: string) => {
+    const f = await opts.store.getFile(id);
+    return f ? openFile(fileKey, id, f) : null;
+  };
   const planner = opts.planner ?? createPlanner();
   const hub = new Hub();
   const demoOn = opts.demoMode ?? true;
@@ -164,9 +175,9 @@ export async function buildApp(opts: AppOptions) {
     await platform.purgeDemo(new Set(DEMO_USERS.map((u) => u.id)), (id) => !state.deals[id]);
   }
 
-  await opts.store.putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
-  for (let i = 0; i < DEMO_COVERS.length; i++) await opts.store.putFile(DEMO_COVER_IDS[i]!, { mime: "image/jpeg", data: DEMO_COVERS[i]! });
-  await opts.store.putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
+  await putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
+  for (let i = 0; i < DEMO_COVERS.length; i++) await putFile(DEMO_COVER_IDS[i]!, { mime: "image/jpeg", data: DEMO_COVERS[i]! });
+  await putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
 
   /** Все изменения последовательны: чтение-изменение-запись без гонок. */
   let queue: Promise<unknown> = Promise.resolve();
@@ -216,11 +227,21 @@ export async function buildApp(opts: AppOptions) {
     return payload;
   });
 
+  const adminRequirePasskey = opts.adminRequirePasskey ?? !demoOn;
+  /** Сессия администратора без passkey при включенном требовании. */
+  const adminLocked = (id: string, raw: string | undefined) => adminRequirePasskey && dir.isAdmin(id) && tokenMethod(opts.secret, raw) !== "passkey";
+
   const authed = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const h = req.headers.authorization;
-    const id = verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined, Date.now(), (u) => dir.sessionsFrom(u));
+    const raw = h?.startsWith("Bearer ") ? h.slice(7) : undefined;
+    const id = verifyToken(opts.secret, raw, Date.now(), (u) => dir.sessionsFrom(u));
     if (!id || !dir.get(id)) {
       reply.code(401).send({ error: "Требуется вход" });
+      return null;
+    }
+    // администратор, вошедший по СМС, может только управлять ключами: остальное требует passkey
+    if (adminLocked(id, raw) && !/^\/(me|me\/keys|me\/passkeys|auth\/logout-all)(\/|\?|$)/.test(req.url)) {
+      reply.code(403).send({ error: "Администратору нужен вход по passkey: добавьте его в профиле и войдите с ним" });
       return null;
     }
     return id;
@@ -295,7 +316,7 @@ export async function buildApp(opts: AppOptions) {
     if (!user || !key) return fail();
     if (checkLoginAssertion(key.publicKey, b, b.challenge, origins) !== null) return fail();
     if (user.role === "admin") await platform.logAudit(userId, "Вход администратора по passkey", key.id);
-    return { token: makeToken(opts.secret, userId, Date.now()), user: { id: user.id, name: user.name, role: user.role } };
+    return { token: makeToken(opts.secret, userId, Date.now(), "passkey"), user: { id: user.id, name: user.name, role: user.role } };
   });
 
   // поиск исполнителя при создании сделки: точный номер или имя от 3 букв
@@ -313,7 +334,7 @@ export async function buildApp(opts: AppOptions) {
       .object({ name: z.string().trim().min(2, "Имя от 2 символов").max(60).optional(), avatar: z.string().regex(/^\/uploads\/[\w-]{8,64}$/).nullable().optional() })
       .parse(req.body);
     if (patch.avatar) {
-      const f = await opts.store.getFile(patch.avatar.slice("/uploads/".length));
+      const f = await getFile(patch.avatar.slice("/uploads/".length));
       if (!f) return reply.code(400).send({ error: "Фото не найдено, загрузите его заново" });
     }
     if (!(await dir.updateProfile(me, patch))) return reply.code(400).send({ error: "Профиль демо-аккаунта изменить нельзя" });
@@ -335,7 +356,9 @@ export async function buildApp(opts: AppOptions) {
     if (!id) return;
     const u = dir.get(id)!;
     const phone = dir.phoneOf(id);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed } };
+    const h = req.headers.authorization;
+    const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed }, ...(locked ? { adminLocked: true } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -742,12 +765,12 @@ export async function buildApp(opts: AppOptions) {
     if (pdf && !isPrivate) return reply.code(400).send({ error: "PDF можно загружать только как документ" });
     if (data.length > (pdf ? 5 * 1024 * 1024 : 900 * 1024)) return reply.code(413).send({ error: pdf ? "Файл больше 5 МБ" : "Фото слишком большое" });
     const id = randomUUID();
-    await opts.store.putFile(id, { mime: m[1]!, data, private: !!isPrivate, ownerId: me });
+    await putFile(id, { mime: m[1]!, data, private: !!isPrivate, ownerId: me });
     return { url: `/uploads/${id}` };
   });
   app.get("/uploads/:id", async (req, reply) => {
     const { id } = z.object({ id: z.string().regex(/^[\w-]{8,64}$/) }).parse(req.params);
-    const f = await opts.store.getFile(id);
+    const f = await getFile(id);
     if (!f) return reply.code(404).send({ error: "Файл не найден" });
     if (f.private) {
       const { ticket } = z.object({ ticket: z.string().optional() }).parse(req.query);

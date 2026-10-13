@@ -12,12 +12,12 @@ const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64url");
 const unb64 = (s: string) => Buffer.from(s, "base64url").toString("utf8");
 const mac = (secret: string, kind: string, payload: string) => createHmac("sha256", `${secret}:${kind}`).update(payload).digest("base64url");
 
-function seal(secret: string, kind: "v2" | "t", userId: string, at: number): string {
+function seal(secret: string, kind: "v2" | "p2" | "t", userId: string, at: number): string {
   const body = `${kind}.${b64(userId)}.${at}`;
   return `${body}.${mac(secret, kind, body)}`;
 }
 
-function open(secret: string, kind: "v2" | "t", token: string | undefined): { userId: string; at: number } | null {
+function open(secret: string, kind: "v2" | "p2" | "t", token: string | undefined): { userId: string; at: number } | null {
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 4 || parts[0] !== kind) return null;
@@ -30,12 +30,14 @@ function open(secret: string, kind: "v2" | "t", token: string | undefined): { us
   return { userId: unb64(parts[1]!), at };
 }
 
-export const makeToken = (secret: string, userId: string, now: number) => seal(secret, "v2", userId, now);
+export type LoginMethod = "sms" | "passkey";
+/** Токен помнит способ входа: p2 выдается только после входа по passkey, v2 после СМС или демо-входа. */
+export const makeToken = (secret: string, userId: string, now: number, method: LoginMethod = "sms") => seal(secret, method === "passkey" ? "p2" : "v2", userId, now);
 export const makeTicket = (secret: string, userId: string, now: number) => seal(secret, "t", userId, now);
 
 /** validAfter: момент, раньше которого выданные токены пользователя отозваны. */
 export function verifyToken(secret: string, token: string | undefined, now: number, validAfter: (userId: string) => number = () => 0): string | null {
-  const t = open(secret, "v2", token);
+  const t = open(secret, "v2", token) ?? open(secret, "p2", token);
   if (!t || now - t.at > TOKEN_TTL_MS || t.at < 0 || t.at <= validAfter(t.userId)) return null;
   return t.userId;
 }
@@ -64,4 +66,11 @@ export function openLoginChallenge(secret: string, challenge: string, now: numbe
   const at = Number(parts[1]);
   if (!Number.isFinite(at) || now - at > TICKET_TTL_MS || at > now + 5000) return null;
   return { nonce: parts[2]! };
+}
+
+/** Способ входа, с которым выдан токен (сам токен проверяется отдельно через verifyToken). */
+export function tokenMethod(secret: string, token: string | undefined): LoginMethod | null {
+  if (open(secret, "p2", token)) return "passkey";
+  if (open(secret, "v2", token)) return "sms";
+  return null;
 }

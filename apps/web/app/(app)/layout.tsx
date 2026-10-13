@@ -16,7 +16,7 @@ const TABS = [
 const ADMIN_TABS = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, ready } = useSession();
+  const { user, ready, adminLocked } = useSession();
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
@@ -42,6 +42,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell">
+      {adminLocked && (
+        <div className="note warn" style={{ margin: "12px 16px 0" }}>
+          Администратору нужен вход по passkey. <Link href="/profile" style={{ fontWeight: 700 }}>Добавьте passkey в профиле</Link> и войдите с ним.
+        </div>
+      )}
       {children}
       {demo && (
         <Link href="/demo" className="demo-pill" aria-label="Вернуться к демо-сценарию">▶ Демо</Link>

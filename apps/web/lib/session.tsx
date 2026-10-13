@@ -17,6 +17,8 @@ interface Session {
   completeLogin(token: string): Promise<void>;
   logout(): void;
   toast(text: string, tone?: "ok" | "err"): void;
+  /** администратор в сессии без passkey: доступно только управление ключами */
+  adminLocked: boolean;
 }
 
 /** Шина обновлений: SSE-сигнал «сделка изменилась» будит экраны, которые показывают данные. */
@@ -40,6 +42,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "ok" | "err" }[]>([]);
+  const [adminLocked, setAdminLocked] = useState(false);
   const lastFree = useRef<number | null>(null);
 
   const toast = useCallback((text: string, tone: "ok" | "err" = "ok") => {
@@ -51,7 +54,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet; features?: { topup: boolean } }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; features?: { topup: boolean }; adminLocked?: boolean }>("/me");
+      setAdminLocked(!!me.adminLocked);
       setUser(me.user);
       if (me.features) setFeatures(me.features);
       setWallet(me.wallet);
@@ -149,7 +153,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, features, users, ready, refresh, login, completeLogin, logout, toast }}>
+    <Ctx.Provider value={{ user, wallet, features, users, ready, refresh, login, completeLogin, logout, toast, adminLocked }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

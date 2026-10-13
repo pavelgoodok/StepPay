@@ -119,3 +119,62 @@ describe("защита API", () => {
     expect((await explicit.inject({ method: "POST", url: "/wallet/topup", headers: { authorization: `Bearer ${u2.token}` }, payload: { amount: 100 } })).statusCode).toBe(200);
   });
 });
+
+describe("шифрование закрытых файлов", () => {
+  const pdf = Buffer.from("%PDF-1.4 секретный документ с ИНН 500100112294");
+
+  async function up(app: Awaited<ReturnType<typeof buildApp>>, token: string, priv: boolean) {
+    const r = await app.inject({ method: "POST", url: "/uploads", headers: { authorization: `Bearer ${token}` }, payload: { dataUrl: `data:application/pdf;base64,${pdf.toString("base64")}`, private: priv } });
+    return r.json() as { url: string };
+  }
+
+  it("закрытый файл лежит в хранилище зашифрованным, но владельцу отдается как есть", async () => {
+    const store = new MemoryStore();
+    const app = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    const tok = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "games" } })).json().token as string;
+    const { url } = await up(app, tok, true);
+    const raw = await store.getFile(url.slice("/uploads/".length));
+    expect(raw!.data.subarray(0, 4).toString()).toBe("SPE1");
+    expect(raw!.data.includes(Buffer.from("секретный"))).toBe(false);
+    const ticket = (await app.inject({ method: "POST", url: "/auth/ticket", headers: { authorization: `Bearer ${tok}` } })).json().ticket as string;
+    const got = await app.inject({ method: "GET", url: `${url}?ticket=${ticket}` });
+    expect(got.statusCode).toBe(200);
+    expect(Buffer.from(got.rawPayload).equals(pdf)).toBe(true);
+  });
+
+  it("открытые файлы не шифруются, подмена шифртекста или чужой идентификатор дают отказ", async () => {
+    const store = new MemoryStore();
+    const app = await buildApp({ store, secret: "s", now: () => 1_000_000 });
+    const tok = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: "games" } })).json().token as string;
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+    const pub = (await app.inject({ method: "POST", url: "/uploads", headers: { authorization: `Bearer ${tok}` }, payload: { dataUrl: `data:image/png;base64,${png.toString("base64")}` } })).json() as { url: string };
+    expect((await store.getFile(pub.url.slice("/uploads/".length)))!.data.equals(png)).toBe(true);
+    const a = await up(app, tok, true);
+    const b = await up(app, tok, true);
+    const ida = a.url.slice("/uploads/".length);
+    const idb = b.url.slice("/uploads/".length);
+    const fa = (await store.getFile(ida))!;
+    const fb = (await store.getFile(idb))!;
+    // шифртекст одного файла под идентификатором другого не расшифровывается
+    await store.putFile(idb, { ...fb, data: fa.data });
+    const ticket = (await app.inject({ method: "POST", url: "/auth/ticket", headers: { authorization: `Bearer ${tok}` } })).json().ticket as string;
+    expect((await app.inject({ method: "GET", url: `${b.url}?ticket=${ticket}` })).statusCode).toBe(404);
+    // порча одного байта
+    const bad = Buffer.from(fa.data);
+    bad[bad.length - 1] = bad[bad.length - 1]! ^ 1;
+    await store.putFile(ida, { ...fa, data: bad });
+    expect((await app.inject({ method: "GET", url: `${a.url}?ticket=${ticket}` })).statusCode).toBe(404);
+  });
+
+  it("другой ключ не открывает файлы, ключ проверяется на длину", async () => {
+    const store = new MemoryStore();
+    const app1 = await buildApp({ store, secret: "s", fileKey: "00".repeat(32), now: () => 1_000_000 });
+    const tok = (await app1.inject({ method: "POST", url: "/auth/demo", payload: { userId: "games" } })).json().token as string;
+    const { url } = await up(app1, tok, true);
+    const app2 = await buildApp({ store, secret: "s", fileKey: "11".repeat(32), now: () => 1_000_000 });
+    const tok2 = (await app2.inject({ method: "POST", url: "/auth/demo", payload: { userId: "games" } })).json().token as string;
+    const t2 = (await app2.inject({ method: "POST", url: "/auth/ticket", headers: { authorization: `Bearer ${tok2}` } })).json().ticket as string;
+    expect((await app2.inject({ method: "GET", url: `${url}?ticket=${t2}` })).statusCode).toBe(404);
+    await expect(buildApp({ store: new MemoryStore(), secret: "s", fileKey: "abc" })).rejects.toThrow(/FILE_KEY/);
+  });
+});
