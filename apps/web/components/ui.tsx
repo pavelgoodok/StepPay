@@ -142,6 +142,18 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
+/** Цифры суммы и знак рубля раздельно: знак легче и мельче, цифры выходят на первый план. */
+function amountText(text: string) {
+  const m = /^(.*?)([\s\u00a0]*₽)$/.exec(text);
+  if (!m) return text;
+  return (
+    <>
+      {m[1]}
+      <span className="cur">{"\u00a0₽"}</span>
+    </>
+  );
+}
+
 /** Сумма с плавным пересчетом; при росте цифры на секунду зеленеют: деньги дошли. */
 export function Money({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
@@ -173,7 +185,7 @@ export function Money({ value }: { value: number }) {
   }, [value]);
   return (
     <span className="money mono" data-dir={dir ?? undefined}>
-      {rub(shown)}
+      {amountText(rub(shown))}
     </span>
   );
 }

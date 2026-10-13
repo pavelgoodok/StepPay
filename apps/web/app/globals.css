@@ -518,3 +518,78 @@ h1, h2, h3, .h1, .title { text-wrap: balance; }
 .emptycover { overflow: hidden; }
 .emptycover img { height: auto; max-height: 96px; max-width: 55%; }
 @media (min-width: 1024px) { .pcover { max-height: 360px; } }
+
+
+/* ───────── премиальный слой: глубина через цвет и свет, а не через рамки и тени ───────── */
+:root {
+  --wash: linear-gradient(180deg, #e3eafd 0%, rgba(241, 243, 247, 0) 340px);
+  --glow-a: radial-gradient(60% 90% at 88% 10%, rgba(88, 140, 255, .55) 0%, rgba(88, 140, 255, 0) 70%);
+  --glow-b: radial-gradient(50% 70% at 8% 110%, rgba(10, 79, 232, .55) 0%, rgba(10, 79, 232, 0) 70%);
+  --avatar: linear-gradient(135deg, #eaf0ff 0%, #d5e1ff 100%);
+}
+:root[data-theme="dark"] {
+  --wash: linear-gradient(180deg, #14224a 0%, rgba(11, 16, 30, 0) 360px);
+  --glow-a: radial-gradient(60% 90% at 88% 10%, rgba(108, 149, 255, .45) 0%, rgba(108, 149, 255, 0) 70%);
+  --glow-b: radial-gradient(50% 70% at 8% 110%, rgba(27, 76, 196, .6) 0%, rgba(27, 76, 196, 0) 70%);
+  --avatar: linear-gradient(135deg, #243a78 0%, #1a2a5c 100%);
+}
+body { background: var(--bg) var(--wash) no-repeat; background-attachment: scroll; }
+.shell { background: transparent; }
+
+/* герои: свет за картинкой и мягкий блик, плотнее типографика */
+.hero { background: var(--glow-a), var(--glow-b), var(--g-navy); }
+.hero .label { letter-spacing: .02em; text-transform: none; }
+.hero .big { letter-spacing: -0.03em; font-weight: 800; font-size: clamp(32px, 9.8vw, 42px); }
+.hero.compact .big { font-size: clamp(30px, 8.6vw, 36px); }
+.pill { background: rgba(255, 255, 255, .12); font-weight: 600; letter-spacing: .005em; }
+
+/* суммы: знак рубля легче и мельче, цифры плотнее */
+.money { letter-spacing: -0.02em; }
+.money .cur { font-weight: 600; opacity: .62; font-size: .72em; margin-left: .12em; letter-spacing: 0; }
+
+/* заголовки и ритм */
+.h1 { letter-spacing: -0.025em; font-weight: 800; }
+.sec h2 { letter-spacing: -0.02em; }
+.page { gap: 18px; }
+.card { border-radius: 22px; padding: 20px; }
+.card.tap { border-radius: 22px; }
+.stat { border-radius: 22px; padding: 16px; }
+.stat b { letter-spacing: -0.02em; }
+.dc-title { letter-spacing: -0.01em; }
+.dc-money b { letter-spacing: -0.02em; }
+
+/* аватары и значки: мягкий градиент вместо плоской заливки */
+.ava, .setic { background: var(--avatar); }
+.qa .ic { background: var(--surface); }
+.qa a:hover .ic, .qa button:hover .ic { background: var(--blue-soft); }
+
+/* чипы статусов: чуть плотнее, текст не капсом */
+.chip { padding: 6px 12px; font-weight: 700; letter-spacing: .002em; }
+
+/* нижняя панель: плавающая плитка со скруглением, активная вкладка читается цветом */
+@media (max-width: 559px) {
+  .tabbar { border-radius: 26px 26px 0 0; padding-top: 10px; }
+}
+.tab { font-weight: 700; }
+.tab.on .ti { background: var(--g-blue); color: #fff; }
+.tab.on { color: var(--ink); }
+@media (min-width: 1024px) { .tab.on .ti { background: transparent; color: var(--blue); } .tab.on { color: var(--blue); } }
+
+
+/* поля: заметный фокус кольцом цвета акцента */
+.input:focus { box-shadow: 0 0 0 2px var(--blue); background: var(--surface); }
+.input::placeholder { color: color-mix(in srgb, var(--muted) 78%, transparent); }
+
+/* ожидание: блик пробегает по заглушкам */
+.skeleton { background: linear-gradient(100deg, var(--surface) 30%, color-mix(in srgb, var(--surface) 82%, var(--blue) 18%) 50%, var(--surface) 70%) 0 0 / 220% 100%; animation: sheen 1.4s linear infinite; }
+@keyframes sheen { from { background-position: 120% 0; } to { background-position: -100% 0; } }
+
+/* вход: свет на фоне бренда */
+.login-brand { background: var(--glow-a), var(--glow-b), var(--g-navy); }
+.login-brand h1 { letter-spacing: -0.03em; }
+
+/* заполнение полос чуть ярче на темной карточке, концы скругленные */
+.segbar i { border-radius: 5px; height: 9px; }
+.segbar b { border-radius: 5px; }
+
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none !important; background: var(--surface); } }
