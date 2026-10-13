@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AuthorForm } from "@/components/author-form";
+import { AuthorForm, FnsBadge } from "@/components/author-form";
 import { CropSheet } from "@/components/cropper";
 import { PhotoPicker } from "@/components/photos";
 import { StageEditor, emptyRow, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
@@ -154,11 +154,14 @@ export default function EditProject() {
         <div className="card stack">
           <div className="sub">Нужна один раз: администратор проверит, кто стоит за проектом. Данные видны только вам и администраторам.</div>
           {author && !editAuthor ? (
-            <div className="row between">
-              <div className="sub">
-                {LEGAL_LABEL[author.legalStatus]}{author.orgName ? `, ${author.orgName}` : ""}<br />ИНН {author.inn}{author.email ? ` · ${author.email}` : ""}
+            <div className="stack">
+              <div className="row between">
+                <div className="sub">
+                  {LEGAL_LABEL[author.legalStatus]}{author.orgName ? `, ${author.orgName}` : ""}<br />ИНН {author.inn}{author.email ? ` · ${author.email}` : ""}
+                </div>
+                <button className="btn ghost sm" onClick={() => setEditAuthor(true)}>Изменить</button>
               </div>
-              <button className="btn ghost sm" onClick={() => setEditAuthor(true)}>Изменить</button>
+              <FnsBadge fns={author.fns} />
             </div>
           ) : (
             <AuthorForm initial={author} onSaved={(a) => { setAuthor(a); setEditAuthor(false); }} />

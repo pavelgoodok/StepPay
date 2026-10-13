@@ -32,6 +32,8 @@ export interface AuthorProfile {
   inn: string;
   orgName?: string;
   email?: string;
+  /** результат сверки с ФНС */
+  fns?: import("./fns").FnsCheck;
 }
 
 import type { DeviceKey } from "./devicekeys";

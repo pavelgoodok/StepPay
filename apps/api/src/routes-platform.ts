@@ -5,7 +5,8 @@ import { validInn } from "./inn";
 import type { Hub } from "./hub";
 import { PROJECT_CATEGORIES, PlatformError, SERVICE_CATEGORIES, projectGoal, projectProblems, type Platform, type Project, type Service } from "./platform";
 import { summary } from "./summary";
-import type { Directory } from "./users";
+import type { AuthorProfile, Directory } from "./users";
+import type { FnsCheck } from "./fns";
 
 const RUB = 100;
 const photoUrl = z.string().regex(/^\/uploads\/[\w-]{8,64}$/);
@@ -22,6 +23,7 @@ export interface Ctx {
   transact<T>(fn: (s: State) => { state: State; result: T }): Promise<T>;
   brief(id: string): { id: string; name: string; avatar?: string };
   signIfNeeded(s: State, dealId: string, userId: string, at: number): State;
+  fns(a: AuthorProfile): Promise<FnsCheck>;
 }
 
 const docSchema = z.object({ id: z.string().min(1).max(60), name: z.string().trim().min(1).max(120), url: photoUrl, kind: z.enum(["photo", "doc"]) });
@@ -77,8 +79,10 @@ export function registerPlatformRoutes(c: Ctx) {
     if (b.inn.length !== wantLen) return reply.code(400).send({ error: wantLen === 10 ? "У организации ИНН из 10 цифр" : "У физлица, самозанятого и ИП ИНН из 12 цифр" });
     if (!validInn(b.inn)) return reply.code(400).send({ error: "ИНН не прошел проверку: проверьте цифры" });
     if ((b.legalStatus === "org" || b.legalStatus === "ip") && !b.orgName) return reply.code(400).send({ error: b.legalStatus === "org" ? "Укажите название организации" : "Укажите, как записаны в ЕГРИП" });
-    await dir.setAuthor(me, { legalStatus: b.legalStatus, inn: b.inn, orgName: b.orgName || undefined, email: b.email || undefined });
-    return { ok: true };
+    const author: AuthorProfile = { legalStatus: b.legalStatus, inn: b.inn, orgName: b.orgName || undefined, email: b.email || undefined };
+    author.fns = await c.fns(author);
+    await dir.setAuthor(me, author);
+    return { ok: true, fns: author.fns };
   });
 
   // ───────── проекты ─────────
@@ -183,7 +187,10 @@ export function registerPlatformRoutes(c: Ctx) {
     const me = c.authed(req, reply);
     if (!me) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    if (!dir.authorOf(me)) return reply.code(400).send({ error: "Сначала заполните анкету автора: статус и ИНН" });
+    const author = dir.authorOf(me);
+    if (!author) return reply.code(400).send({ error: "Сначала заполните анкету автора: статус и ИНН" });
+    // сверка с ФНС обновляется, если ее не было или она старше суток
+    if (!author.fns || c.now() - author.fns.checkedAt > 24 * 3600_000) await dir.setAuthor(me, { ...author, fns: await c.fns(author) });
     const p = await platform.submitProject(id, me);
     notify(admins(), `Новый проект на проверке: «${p.title}»`);
     changed(admins());
@@ -234,8 +241,12 @@ export function registerPlatformRoutes(c: Ctx) {
     const me = adminOnly(req, reply);
     if (!me) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const b = z.object({ action: z.enum(["approve", "reject", "changes"]), comment: z.string().trim().max(1000).optional() }).parse(req.body);
+    const b = z.object({ action: z.enum(["approve", "reject", "changes"]), comment: z.string().trim().max(1000).optional(), acknowledgeFns: z.boolean().optional() }).parse(req.body);
+    const found = platform.projects().find((x) => x.id === id);
+    const fnsNow = found ? dir.authorOf(found.ownerId)?.fns : undefined;
+    if (b.action === "approve" && fnsNow?.status === "mismatch" && !b.acknowledgeFns) return reply.code(400).send({ error: `ФНС не подтвердила данные автора: ${fnsNow.detail}. Одобрить можно, только подтвердив, что вы это учли`, fns: fnsNow });
     const p = await platform.decide(id, me, b.action, b.comment);
+    if (b.action === "approve" && fnsNow?.status === "mismatch") await platform.logAudit(me, "Проект одобрен вопреки расхождению с ФНС", id, fnsNow.detail);
     await platform.logAudit(me, b.action === "approve" ? "Проект одобрен" : b.action === "reject" ? "Проект отклонен" : "Проект возвращен на доработку", id, p.title);
     let dealId: string | undefined;
     if (b.action === "approve" && p.kind === "crowdfunding") {
@@ -249,6 +260,20 @@ export function registerPlatformRoutes(c: Ctx) {
     notify([p.ownerId], text, dealId);
     changed([p.ownerId, ...admins()]);
     return projectView(p, me);
+  });
+
+  /** Повторная сверка автора проекта с ФНС по кнопке администратора. */
+  app.post("/admin/projects/:id/fns", async (req, reply) => {
+    const me = adminOnly(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const p = platform.projects().find((x) => x.id === id);
+    const author = p ? dir.authorOf(p.ownerId) : undefined;
+    if (!p || !author) return reply.code(404).send({ error: "У проекта нет анкеты автора" });
+    const fns = await c.fns(author);
+    await dir.setAuthor(p.ownerId, { ...author, fns });
+    await platform.logAudit(me, "Повторная сверка автора с ФНС", id, `${fns.status}: ${fns.detail}`.slice(0, 190));
+    return fns;
   });
 
   app.get("/admin/audit", async (req, reply) => {

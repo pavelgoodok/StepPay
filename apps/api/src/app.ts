@@ -42,7 +42,8 @@ import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
 import { Platform, PlatformError } from "./platform";
 import { registerPlatformRoutes } from "./routes-platform";
-import { Directory, maskPhone, normalizePhone } from "./users";
+import { Directory, maskPhone, normalizePhone, type AuthorProfile } from "./users";
+import { checkWithFns, type FnsCheck } from "./fns";
 
 const RUB = 100;
 const rub = (k: number) => `${String(Math.round(k / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0")}\u00a0₽`;
@@ -76,6 +77,8 @@ export interface AppOptions {
   /** ограничение частоты запросов с одного адреса за минуту */
   rateLimit?: { general: number; auth: number; uploads: number };
   signaturePolicy?: "device" | "any" | "passkey";
+  /** сверка анкеты автора с ФНС; по умолчанию включена вне демо, в демо отключена */
+  fnsCheck?: ((a: AuthorProfile, now: number) => Promise<FnsCheck>) | false;
   /** ключ шифрования закрытых файлов (32 байта, hex или base64); без него выводится из секрета */
   fileKey?: string;
   /** администратор работает только в сессии, начатой входом по passkey; по умолчанию включено вне демо */
@@ -348,7 +351,12 @@ export async function buildApp(opts: AppOptions) {
   };
   const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
-  registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief, signIfNeeded });
+  const fns = async (a: AuthorProfile): Promise<FnsCheck> => {
+    const check = opts.fnsCheck === undefined ? (demoOn ? false : checkWithFns) : opts.fnsCheck;
+    if (check === false) return { status: "none", checkedAt: now(), source: "Сверка отключена", detail: "Сверка с ФНС отключена в демо-режиме" };
+    return check(a, now());
+  };
+  registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief, signIfNeeded, fns });
 
   // ── личное ──
   app.get("/me", async (req, reply) => {

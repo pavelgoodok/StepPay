@@ -166,7 +166,8 @@ export type ProjectStatus = "draft" | "review" | "changes" | "approved" | "rejec
 export interface ProjectDoc { id: string; name: string; url: string; kind: "photo" | "doc" }
 export interface ProjectStage { title: string; amount: number; criteria: string[] }
 export interface ReviewEvent { at: number; by: string; action: "submit" | "resubmit" | "approve" | "reject" | "changes"; comment?: string }
-export interface AuthorProfile { legalStatus: "person" | "selfemployed" | "ip" | "org"; inn: string; orgName?: string; email?: string }
+export interface FnsCheck { status: "match" | "mismatch" | "unavailable" | "none"; checkedAt: number; source: string; name?: string; detail: string }
+export interface AuthorProfile { legalStatus: "person" | "selfemployed" | "ip" | "org"; inn: string; orgName?: string; email?: string; fns?: FnsCheck }
 export interface ProjectItem {
   id: string;
   kind: ProjectKind;

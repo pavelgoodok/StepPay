@@ -15,9 +15,9 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
   async function save() {
     setBusy(true);
     try {
-      await api("/me/author", { method: "POST", body: { ...a, orgName: org ? a.orgName : undefined } });
-      toast("Анкета сохранена");
-      onSaved(a);
+      const r = await api<{ fns?: AuthorProfile["fns"] }>("/me/author", { method: "POST", body: { ...a, orgName: org ? a.orgName : undefined } });
+      toast(r.fns?.status === "mismatch" ? "Анкета сохранена, но ФНС не подтвердила данные" : r.fns?.status === "match" ? "Анкета сохранена, ФНС подтвердила данные" : "Анкета сохранена", r.fns?.status === "mismatch" ? "err" : "ok");
+      onSaved({ ...a, fns: r.fns });
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -47,6 +47,20 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
         <input className="input" type="email" value={a.email ?? ""} onChange={(e) => setA({ ...a, email: e.target.value })} placeholder="Электронная почта" />
       </div>
       <button className="btn soft" disabled={busy || a.inn.length !== innLen || (org && !a.orgName?.trim())} onClick={save}>Сохранить анкету</button>
+    </div>
+  );
+}
+
+const FNS_TONE = { match: "green", mismatch: "red", unavailable: "amber", none: "" } as const;
+const FNS_TEXT = { match: "Сверено с ФНС", mismatch: "Расхождение с ФНС", unavailable: "ФНС недоступна", none: "Без сверки" } as const;
+
+/** Результат сверки анкеты с ФНС: метка и пояснение. */
+export function FnsBadge({ fns }: { fns?: AuthorProfile["fns"] }) {
+  if (!fns) return null;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <span className={`chip ${FNS_TONE[fns.status]}`} style={{ alignSelf: "flex-start" }}>{FNS_TEXT[fns.status]}</span>
+      <div className="small muted">{fns.detail}</div>
     </div>
   );
 }

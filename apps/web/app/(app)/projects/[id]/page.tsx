@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { FnsBadge } from "@/components/author-form";
 import { PhotoGrid } from "@/components/photos";
 import { Ava, Icon, SegBar } from "@/components/ui";
 import { api, openDoc, photoSrc, type ProjectFull } from "@/lib/api";
@@ -16,7 +17,7 @@ export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user, toast, refresh } = useSession();
-  const { data: p, error } = usePoll(() => api<ProjectFull>(`/projects/${id}`), [id]);
+  const { data: p, error, reload } = usePoll(() => api<ProjectFull>(`/projects/${id}`), [id]);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -37,9 +38,22 @@ export default function ProjectPage() {
       setBusy(false);
     }
   }
+  const recheck = () =>
+    act(async () => {
+      await api(`/admin/projects/${id}/fns`, { method: "POST", body: {} });
+      await reload();
+      toast("Сверка с ФНС обновлена");
+    });
   const decide = (action: "approve" | "changes" | "reject") =>
     act(async () => {
-      await api(`/admin/projects/${id}/decision`, { method: "POST", body: { action, comment: comment.trim() || undefined } });
+      const send = (acknowledgeFns?: boolean) => api(`/admin/projects/${id}/decision`, { method: "POST", body: { action, comment: comment.trim() || undefined, acknowledgeFns } });
+      try {
+        await send();
+      } catch (e) {
+        // ФНС не подтвердила автора: одобрить можно, только осознанно
+        if (action !== "approve" || !(e as Error).message.includes("ФНС") || !confirm(`${(e as Error).message}\n\nВсе равно одобрить?`)) throw e;
+        await send(true);
+      }
       toast(action === "approve" ? "Проект опубликован" : "Решение отправлено автору");
       router.replace("/admin");
     });
@@ -113,6 +127,8 @@ export default function ProjectPage() {
         <div className="card stack">
           <div className="title">Автор</div>
           <div className="sub">{LEGAL_LABEL[p.author.legalStatus]}{p.author.orgName ? `, ${p.author.orgName}` : ""}<br />ИНН {p.author.inn}{p.author.email ? ` · ${p.author.email}` : ""}</div>
+          <FnsBadge fns={p.author.fns} />
+          {admin && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={recheck}>Проверить заново</button>}
         </div>
       )}
 
