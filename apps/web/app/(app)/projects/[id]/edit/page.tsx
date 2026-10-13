@@ -6,7 +6,7 @@ import { AuthorForm } from "@/components/author-form";
 import { CropSheet } from "@/components/cropper";
 import { PhotoPicker } from "@/components/photos";
 import { StageEditor, emptyRow, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
-import { Icon, SegBar } from "@/components/ui";
+import { IMG, Icon, SegBar } from "@/components/ui";
 import { api, openDoc, photoSrc, uploadDataUrl, uploadDoc, type AuthorProfile, type ProjectDoc, type ProjectFull } from "@/lib/api";
 import { rub, toKopecks } from "@/lib/format";
 import { KIND_LABEL, LEGAL_LABEL } from "@/lib/labels";
@@ -198,7 +198,11 @@ export default function EditProject() {
               // eslint-disable-next-line @next/next/no-img-element
               <img className="pcover" src={photoSrc(cover.url)} alt="Обложка проекта" />
             ) : (
-              <div className="pcover none tone3" style={{ aspectRatio: "16 / 9", color: "var(--muted)" }}>Обложка не выбрана</div>
+              <div className="pcover none tone3 emptycover" style={{ aspectRatio: "16 / 9", color: "var(--muted)" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="float" src={p.kind === "grant" ? IMG.sprout : IMG.rocket} alt="" />
+                <span>Обложка не выбрана</span>
+              </div>
             )}
             <div className="btns">
               <button className="btn soft" disabled={busy} onClick={() => coverInput.current?.click()}>{cover ? "Заменить" : "Выбрать фото"}</button>

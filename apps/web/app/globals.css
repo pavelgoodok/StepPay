@@ -512,3 +512,5 @@ h1, h2, h3, .h1, .title { text-wrap: balance; }
 .lcard .cover.none.art.tone1 { background: var(--green-soft); }
 .lcard .cover.none.art.tone2 { background: var(--amber-soft); }
 .lcard .cover.none.art.tone3 { background: var(--surface2); }
+.emptycover { display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.emptycover img { height: 62%; width: auto; object-fit: contain; }
