@@ -11,11 +11,11 @@ const START = 1_000_000 * R;
 const HOUR = 3600;
 
 const CAST = {
-  own: { executor: "ivan", owner: "anna", arbiter: "expert", sponsors: [] },
+  own: { executor: "ivan", owner: "anna", arbiter: "expert", backup: "reserve", sponsors: [] },
   crowdfunding: { executor: "author", sponsors: ["olga", "max", "pasha"] },
   grant: { executor: "studio", owner: "fond", sponsors: [] },
 };
-const ALL = ["anna", "ivan", "expert", "olga", "max", "pasha", "author", "stranger", "fond", "studio"];
+const ALL = ["anna", "ivan", "expert", "olga", "max", "pasha", "author", "stranger", "fond", "studio", "reserve"];
 
 const waitArb = fc.constantFrom(0, HOUR, 12 * HOUR, 23 * HOUR, 24 * HOUR, 47 * HOUR, 48 * HOUR, 71 * HOUR, 72 * HOUR, 96 * HOUR, 119 * HOUR, 120 * HOUR);
 
@@ -44,6 +44,8 @@ function stagePlan(mode, c, stage) {
       waitArb.map((w) => [submit, { do: "wait", seconds: w }, { do: "autoAccept", by: "stranger", stage }]),
       waitArb.map((w) => [submit, { do: "dispute", by: c.owner, stage }, { do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "dispute", stage }, { do: "resolve", by: c.arbiter, stage, pay: true }]),
       waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "stage", stage }, submit, { do: "approve", by: c.owner, stage }]),
+      // запасной приемщик пробует решить спор через w после его открытия
+      waitArb.map((w) => [submit, { do: "dispute", by: c.owner, stage }, { do: "wait", seconds: w }, { do: "resolve", by: c.backup, stage, pay: true }]),
     );
   if (mode === "grant")
     return fc.oneof(
@@ -73,6 +75,7 @@ const scenarioArb = fc.constantFrom("own", "crowdfunding", "grant").chain((mode)
       disputeDays: fc.constantFrom(undefined, undefined, 2, 5),
       // пауза перед резервом: сбор может истечь до того, как деньги внесены
       gap: waitArb,
+      withBackup: fc.boolean(),
       // взносы: заказчик вносит всю сумму, спонсоры произвольные доли (в копейках, неровные)
       shares: fc.array(fc.integer({ min: 1, max: 100_000_00 }), { minLength: 3, maxLength: 3 }),
       order: fc.shuffledSubarray(["sign-a", "sign-b", "reserve"], { minLength: 3, maxLength: 3 }),
@@ -116,7 +119,7 @@ function build({ mode, c, base, stageAmounts, total, plans }) {
   return {
     name: "случайный",
     balances,
-    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee, fundingDeadlineDays: base.fundingDays, stageDeadlineDays: base.stageDays, disputeDays: mode === "own" ? base.disputeDays : undefined },
+    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee, fundingDeadlineDays: base.fundingDays, stageDeadlineDays: base.stageDays, disputeDays: mode === "own" ? base.disputeDays : undefined, backupArbiter: mode === "own" && base.disputeDays && base.withBackup ? c.backup : undefined },
     steps,
     expect: { balances: { ...balances, platform: 0 }, status: "funding", stages: [] },
   };
@@ -125,7 +128,7 @@ function build({ mode, c, base, stageAmounts, total, plans }) {
 describe("дифференциальная проверка рельсов на случайных сценариях", () => {
   it("ядро сделок и контракт StepEscrow дают одинаковые результаты", async function () {
     this.timeout(280_000);
-    const runs = Number(process.env.FC_DIFF_RUNS ?? 40);
+    const runs = Number(process.env.FC_DIFF_RUNS ?? 150);
     let completed = 0;
     let cancelled = 0;
     let rejected = 0;

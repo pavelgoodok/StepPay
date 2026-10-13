@@ -99,6 +99,8 @@ export interface CreateDealInput {
   executorId: UserId;
   ownerId?: UserId;
   arbiterId?: UserId;
+  /** запасной приемщик; нужен срок на спор, решать он может со второй половины этого срока */
+  backupArbiterId?: UserId;
   stages: { id?: string; title: string; amount: Money; criteria?: string[] }[];
   autoAcceptDays?: number;
   /** сроки в днях; не заданы или 0: без срока */
@@ -123,6 +125,11 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     fail("Для этого режима нужен заказчик/грантодатель");
   if (input.ownerId === input.executorId) fail("Заказчик и исполнитель должны различаться");
   if (input.status === "draft" && input.mode !== "own") fail("Черновик бывает только у личной сделки");
+  if (input.backupArbiterId) {
+    if (input.mode !== "own" || !input.arbiterId) fail("Запасной приемщик бывает только рядом с основным в личной сделке");
+    if (!input.disputeDays) fail("Запасной приемщик работает вместе со сроком на спор");
+    if ([input.arbiterId, input.executorId, input.ownerId].includes(input.backupArbiterId)) fail("Запасной приемщик должен быть независимым от сторон и основного приемщика");
+  }
 
   const stages: Stage[] = input.stages.map((x, i) => ({
     id: x.id ?? `s${i + 1}`,
@@ -139,6 +146,7 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     executorId: input.executorId,
     ownerId: input.ownerId,
     arbiterId: input.arbiterId,
+    backupArbiterId: input.backupArbiterId,
     stages,
     target: stages.reduce((a, x) => a + x.amount, 0),
     status: input.status ?? "funding",
@@ -444,7 +452,7 @@ export const replyDispute = mutate(
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
     if (st.status !== "disputed") fail("Этап не в споре");
-    if (userId !== d.ownerId && userId !== d.executorId && userId !== d.arbiterId) fail("Нет доступа к спору");
+    if (userId !== d.ownerId && userId !== d.executorId && userId !== d.arbiterId && userId !== d.backupArbiterId) fail("Нет доступа к спору");
     if (!text.trim() && photos.length === 0) fail("Напишите сообщение или приложите фото");
     (st.messages ??= []).push({ by: userId, text: text.trim(), photos: photos.length ? photos : undefined, at });
     record(d, at, "dispute_reply", userId, { text: text.trim() || undefined, photos: photos.length ? photos : undefined }, st.id);
@@ -464,8 +472,11 @@ export const resolveDispute = mutate(
   ) => {
     const d = getDeal(s, dealId);
     const st = getStage(d, stageId);
-    if (!d.arbiterId || userId !== d.arbiterId) fail("Решить спор может только приемщик");
     if (st.status !== "disputed") fail("Этап не в споре");
+    const primary = !!d.arbiterId && userId === d.arbiterId;
+    const backup = !!d.backupArbiterId && userId === d.backupArbiterId;
+    if (!primary && !backup) fail("Решить спор может только приемщик");
+    if (backup && !(d.disputeMs && st.disputedAt !== undefined && at >= st.disputedAt + Math.floor(d.disputeMs / 2))) fail("Запасной приемщик решает спор, если основной молчит половину срока");
     const note = comment?.trim() || undefined;
     if (decision === "pay") acceptStage(s, d, st, at, "arbiter", note, userId);
     else failDeal(s, d, st, at, "Спор решен в пользу заказчика", "arbiter", note, userId);

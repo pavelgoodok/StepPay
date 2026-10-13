@@ -19,6 +19,7 @@ export const DEMO_USERS: User[] = [
   { id: "tsj", name: "ТСЖ «Липки»", role: "executor", startBalance: 0 },
   { id: "fond", name: "Фонд «Развитие»", role: "funder", startBalance: 2_000_000 },
   { id: "expert", name: "Независимый приемщик", role: "arbiter", startBalance: 0 },
+  { id: "expert2", name: "Запасной приемщик", role: "arbiter", startBalance: 0 },
   { id: "admin", name: "Администратор платформы", role: "admin", startBalance: 0 },
 ];
 
@@ -41,6 +42,8 @@ export interface RegisteredUser {
   name: string;
   /** проверенный грантодатель: может финансировать проекты целиком */
   grantor?: boolean;
+  /** независимый приемщик споров из реестра: назначается администратором */
+  arbiter?: boolean;
   author?: AuthorProfile;
   /** токены, выданные не позже этого момента, отозваны */
   sessionsFrom?: number;
@@ -57,6 +60,7 @@ export interface PublicAccount {
   role: Role;
   avatar?: string;
   grantor?: boolean;
+  arbiter?: boolean;
 }
 
 /** Приводит российский номер к виду +79991234567; null, если это не номер. */
@@ -85,10 +89,10 @@ export class Directory {
 
   get(id: string): PublicAccount | undefined {
     const d = DEMO_USERS.find((x) => x.id === id);
-    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined };
+    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined, arbiter: d.role === "arbiter" || undefined };
     const r = this.registered.get(id);
     if (!r) return undefined;
-    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor };
+    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor, arbiter: r.arbiter };
   }
 
   private demoSessionsFrom = new Map<string, number>();
@@ -144,6 +148,19 @@ export class Directory {
 
   isGrantor(id: string) {
     return !!this.get(id)?.grantor;
+  }
+
+  /** Приемщик из реестра: демо-приемщик или пользователь, которому администратор дал эту роль. */
+  isArbiter(id: string) {
+    return !!this.get(id)?.arbiter;
+  }
+
+  async setArbiter(id: string, value: boolean) {
+    const r = this.registered.get(id);
+    if (!r) return false;
+    r.arbiter = value || undefined;
+    await this.persist([...this.registered.values()]);
+    return true;
   }
 
   async setGrantor(id: string, value: boolean) {

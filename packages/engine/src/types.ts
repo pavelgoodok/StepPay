@@ -109,6 +109,8 @@ export interface Deal {
   contributed: Record<UserId, Money>;
   autoAcceptMs: number;
   /** срок сбора денег с момента фиксации условий; 0 или не задан: без срока */
+  /** запасной приемщик: может решить спор, если основной молчит половину срока на спор */
+  backupArbiterId?: UserId;
   fundingDeadlineMs?: number;
   /** срок сдачи каждого этапа с момента, когда он стал текущим */
   stageDeadlineMs?: number;

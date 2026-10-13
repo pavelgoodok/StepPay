@@ -197,4 +197,18 @@ export const RAIL_SCENARIOS: Scenario[] = [
     ],
     expect: { balances: { anna: START - 100_000 * R, platform: 0 }, status: "active", stages: ["active"] },
   },
+  {
+    name: "запасной приемщик: решает спор только со второй половины срока, основной решает в любое время",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", backupArbiter: "reserve", stages: [100_000 * R], autoAcceptDays: 3, feeBps: 0, disputeDays: 14 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      submit("ivan", 0), { do: "dispute", by: "ivan", stage: 0 },
+      bad({ do: "resolve", by: "reserve", stage: 0, pay: true }), // основной еще может решить
+      { do: "wait", seconds: 6 * 86_400 }, bad({ do: "resolve", by: "reserve", stage: 0, pay: true }),
+      bad({ do: "resolve", by: "stranger", stage: 0, pay: true }),
+      { do: "wait", seconds: 2 * 86_400 }, { do: "resolve", by: "reserve", stage: 0, pay: true },
+    ],
+    expect: { balances: { anna: START - 100_000 * R, ivan: 100_000 * R, platform: 0 }, status: "completed", stages: ["accepted"] },
+  },
 ];

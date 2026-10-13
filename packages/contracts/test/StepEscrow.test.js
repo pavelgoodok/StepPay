@@ -335,3 +335,39 @@ describe("StepEscrow: сроки и аварийный выход", () => {
     await reverts(escrow.createDealEx(Mode.Grant, executor.address, owner.address, ZERO, [100n * R], 0, 0, hash("t"), [0, 0, DAY]), "BadInput");
   });
 });
+
+describe("StepEscrow: запасной приемщик", () => {
+  async function setup(backupIndex = 5, disputeSecs = 14 * DAY) {
+    const { token, escrow, signers, escrowAddress } = await deploy();
+    const [, executor, owner, arbiter, stranger, backup] = signers;
+    await giveTokens(token, escrowAddress, owner, 1_000n * R);
+    const b = backupIndex === null ? ZERO : backup.address;
+    await escrow.createDealFull(Mode.Own, executor.address, owner.address, arbiter.address, [1_000n * R], 3 * DAY, 0, hash("t"), [0, 0, disputeSecs], b);
+    await escrow.connect(owner).sign(1);
+    await escrow.connect(executor).sign(1);
+    await escrow.connect(owner).fund(1, 1_000n * R);
+    await escrow.connect(executor).submitStage(1, 0, hash("e"));
+    await escrow.connect(executor).openDispute(1, 0, hash("r"));
+    return { token, escrow, executor, owner, arbiter, stranger, backup };
+  }
+
+  it("запасной решает спор со второй половины срока, до этого нет, основной всегда", async () => {
+    const { token, escrow, executor, backup, stranger } = await setup();
+    await reverts(escrow.connect(backup).resolveDispute(1, 0, true), "BadState");
+    await reverts(escrow.connect(stranger).resolveDispute(1, 0, true), "Unauthorized");
+    await increaseTime(7 * DAY);
+    await escrow.connect(backup).resolveDispute(1, 0, true);
+    assert.equal(await token.balanceOf(executor.address), 1_000n * R);
+  });
+
+  it("условия: нужен срок на спор, независимость и своя сделка", async () => {
+    const { escrow, signers } = await deploy();
+    const [, executor, owner, arbiter, , backup] = signers;
+    const mk = (mode, o, arb, secs, bk) => escrow.createDealFull(mode, executor.address, o, arb, [100n * R], 3 * DAY, 0, hash("t"), [0, 0, secs], bk);
+    await reverts(mk(Mode.Own, owner.address, arbiter.address, 0, backup.address), "BadInput");
+    await reverts(mk(Mode.Own, owner.address, arbiter.address, DAY, arbiter.address), "BadInput");
+    await reverts(mk(Mode.Own, owner.address, arbiter.address, DAY, executor.address), "BadInput");
+    await reverts(mk(Mode.Own, owner.address, arbiter.address, DAY, owner.address), "BadInput");
+    await mk(Mode.Own, owner.address, arbiter.address, DAY, backup.address);
+  });
+});

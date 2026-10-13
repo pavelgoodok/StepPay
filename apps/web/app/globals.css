@@ -360,10 +360,11 @@ select.input { appearance: none; }
 .bubble.me { align-self: flex-end; background: var(--blue); color: #fff; border-radius: 18px 18px 6px 18px; }
 .sysmsg { align-self: center; text-align: center; max-width: 90%; font-size: 13px; color: var(--muted); padding: 6px 10px; }
 .sysmsg a { color: var(--blue); font-weight: 600; }
-.composer { display: flex; gap: 8px; position: sticky; bottom: 78px; padding-top: 6px; }
+.composer-wrap { position: sticky; bottom: 78px; display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.composer { display: flex; gap: 8px; }
 .sendbtn { width: 52px; border-radius: 16px; background: var(--blue); color: #fff; display: grid; place-items: center; flex: none; }
 .sendbtn[disabled] { opacity: .45; }
-@media (min-width: 1024px) { .composer { bottom: 12px; } }
+@media (min-width: 1024px) { .composer-wrap { bottom: 12px; } }
 .jlist { display: flex; flex-direction: column; gap: 8px; max-height: 38dvh; overflow-y: auto; }
 .jitem { background: var(--surface2); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
 

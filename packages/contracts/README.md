@@ -38,6 +38,7 @@ pnpm --filter @steppay/contracts test:differential # случайные сцен
 | `openDispute`, `resolveDispute` | то же имя, решает только приемщик |
 | `tick` | `autoAccept`: после срока этап принимает любой желающий |
 | `expireFunding`, `expireStage`, `expireDispute` | то же имя, сроки задаются в `createDealEx`, вызвать выход по сроку может любой |
+| запасной приемщик | `createDealFull`, `resolveDispute` пускает запасного со второй половины срока на спор |
 | `splitProRata` | `_split`: метод наибольших остатков, ничего не теряется |
 | `cancelDeal` | `cancel`: заказчик, у краудфандинга автор, нельзя при этапе на приемке или в споре |
 

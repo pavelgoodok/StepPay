@@ -22,11 +22,23 @@ export default function Admin() {
   const sum = usePoll(() => api<Record<Tab | "services", number>>("/admin/summary"), []);
   const list = usePoll(() => api<ProjectItem[]>(`/admin/projects?status=${tab}`), [tab]);
   const grantors = usePoll(() => api<Person[]>("/admin/grantors"), []);
+  const arbiters = usePoll(() => api<(Person & { resolved: number; paid: number; refunded: number; silent: number })[]>("/arbiters"), []);
+  const [aphone, setAphone] = useState("");
   const audit = usePoll(() => api<{ at: number; byName: string; action: string; target?: string; detail?: string }[]>("/admin/audit"), []);
 
   if (!user) return null;
   if (user.role !== "admin") return <div className="page"><div className="note bad">Раздел только для администраторов</div></div>;
 
+  async function setArbiter(value: boolean, p = aphone) {
+    try {
+      await api("/admin/arbiters", { method: "POST", body: { phone: p, value } });
+      setAphone("");
+      toast(value ? "Приемщик добавлен в реестр" : "Приемщик убран из реестра");
+      await arbiters.reload();
+    } catch (e) {
+      toast((e as Error).message, "err");
+    }
+  }
   async function setGrantor(value: boolean, p = phone) {
     try {
       await api("/admin/grantors", { method: "POST", body: { phone: p, value } });
@@ -78,6 +90,24 @@ export default function Admin() {
         <div className="row">
           <input className="input" inputMode="tel" placeholder="Номер телефона" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={phone.replace(/\D/g, "").length < 10} onClick={() => setGrantor(true)}>Добавить</button>
+        </div>
+      </div>
+
+      <div className="sec"><h2>Приемщики споров</h2></div>
+      <div className="card stack">
+        <div className="sub">Заказчик и исполнитель выбирают приемщика и запасного из этого реестра. Репутация считается по решенным спорам.</div>
+        {arbiters.data?.map((a) => (
+          <div key={a.id} className="row">
+            <Ava name={a.name} src={a.avatar} size="sm" />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <b className="ellipsis">{a.name}</b>
+              <div className="small muted">Решил {a.resolved}: выплат {a.paid}, возвратов {a.refunded}{a.silent ? `, не успел ${a.silent}` : ""}</div>
+            </div>
+          </div>
+        ))}
+        <div className="row">
+          <input className="input" inputMode="tel" placeholder="Номер телефона" value={aphone} onChange={(e) => setAphone(e.target.value)} />
+          <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={aphone.replace(/\D/g, "").length < 10} onClick={() => setArbiter(true)}>Добавить</button>
         </div>
       </div>
 

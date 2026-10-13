@@ -109,7 +109,7 @@ const createBody = z.object({
 
 /** Деньги - в копейках. Заказчик/грантодатель видит сделку целиком; чужие сделки доступны только участникам и в каталоге проектов. */
 function involved(d: Deal, userId: string) {
-  return d.executorId === userId || d.ownerId === userId || d.arbiterId === userId || (d.contributed[userId] ?? 0) > 0;
+  return d.executorId === userId || d.ownerId === userId || d.arbiterId === userId || d.backupArbiterId === userId || (d.contributed[userId] ?? 0) > 0;
 }
 
 export async function buildApp(opts: AppOptions) {
@@ -411,7 +411,7 @@ export async function buildApp(opts: AppOptions) {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const d = state.deals[id];
     if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
-    const ids = new Set<string>([d.executorId, ...(d.ownerId ? [d.ownerId] : []), ...(d.arbiterId ? [d.arbiterId] : []), ...Object.keys(d.contributed)]);
+    const ids = new Set<string>([d.executorId, ...(d.ownerId ? [d.ownerId] : []), ...(d.arbiterId ? [d.arbiterId] : []), ...(d.backupArbiterId ? [d.backupArbiterId] : []), ...Object.keys(d.contributed)]);
     for (const st of d.stages) {
       for (const u of Object.keys(st.votes)) ids.add(u);
       for (const m of st.messages ?? []) ids.add(m.by);
@@ -496,7 +496,7 @@ export async function buildApp(opts: AppOptions) {
   // ── действия по сделке ──
   /** Кому и что сообщить после действия: остальным участникам сделки приходит уведомление, всем - сигнал обновиться. */
   const announce = (d: Deal, actor: string, kind: string, stageTitle: string, amount: number) => {
-    const people = new Set([d.executorId, d.ownerId, d.arbiterId, ...Object.keys(d.contributed)].filter((x): x is string => !!x));
+    const people = new Set([d.executorId, d.ownerId, d.arbiterId, d.backupArbiterId, ...Object.keys(d.contributed)].filter((x): x is string => !!x));
     const who = dir.get(actor)?.name ?? "Участник";
     const q = `«${stageTitle}»`;
     const text: Record<string, string> = {
@@ -521,7 +521,7 @@ export async function buildApp(opts: AppOptions) {
       hub.send(people, "changed", { dealId: d.id });
       return;
     }
-    const others = [...people].filter((p) => p !== actor && (kind !== "reply" && kind !== "dispute" ? p !== d.arbiterId : true));
+    const others = [...people].filter((p) => p !== actor && (kind !== "reply" && kind !== "dispute" ? p !== d.arbiterId && p !== d.backupArbiterId : true));
     hub.send(others, "notify", { dealId: d.id, text: text[kind] ?? "Сделка обновлена" });
     hub.send(people, "changed", { dealId: d.id });
   };

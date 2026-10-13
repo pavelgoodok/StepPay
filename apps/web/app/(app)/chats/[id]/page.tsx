@@ -17,6 +17,18 @@ export default function ChatPage() {
   const [task, setTask] = useState(false);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
+  const [arbiters, setArbiters] = useState<{ id: string; name: string; resolved: number }[] | null>(null);
+  const [arb, setArb] = useState("");
+  const [backup, setBackup] = useState<string | null>(null);
+  useEffect(() => {
+    if (!task) return;
+    void api<{ id: string; name: string; resolved: number }[]>("/arbiters").then((l) => {
+      setArbiters(l);
+      setArb((cur) => cur || l[0]?.id || "");
+      setBackup((cur) => (cur === null ? (l[1]?.id ?? "") : cur));
+    }).catch(() => setArbiters([]));
+  }, [task]);
+
   const end = useRef<HTMLDivElement>(null);
   const count = c?.messages.length ?? 0;
   useEffect(() => end.current?.scrollIntoView({ block: "end" }), [count]);
@@ -42,7 +54,7 @@ export default function ChatPage() {
   async function register() {
     setBusy(true);
     try {
-      const r = await api<{ dealId: string }>(`/chats/${id}/task`, { method: "POST", body: { title: title.trim(), description: desc.trim() || undefined } });
+      const r = await api<{ dealId: string }>(`/chats/${id}/task`, { method: "POST", body: { title: title.trim(), description: desc.trim() || undefined, arbiterId: arb || undefined, backupArbiterId: backup ?? undefined } });
       setTask(false);
       setTitle("");
       setDesc("");
@@ -95,12 +107,14 @@ export default function ChatPage() {
         <div ref={end} />
       </div>
 
+      <div className="composer-wrap">
       {isExec && (
         <button className="btn soft" onClick={() => setTask(true)}>Зарегистрировать задачу</button>
       )}
       <div className="composer">
         <input className="input" placeholder="Сообщение" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void send()} />
         <button className="sendbtn" disabled={busy || !text.trim()} onClick={send} aria-label="Отправить"><Icon name="arrow" size={20} /></button>
+      </div>
       </div>
 
       {task && (
@@ -110,6 +124,24 @@ export default function ChatPage() {
           <div className="stack">
             <input className="input" autoFocus placeholder="Название задачи" value={title} onChange={(e) => setTitle(e.target.value)} />
             <textarea className="input" placeholder="О чем договорились (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
+            {(arbiters ?? []).length > 0 && (
+              <>
+                <div className="field">
+                  <label>Приемщик спора</label>
+                  <div className="chips">
+                    {(arbiters ?? []).map((a) => <button key={a.id} className={`opt ${arb === a.id ? "on" : ""}`} onClick={() => { setArb(a.id); if (backup === a.id) setBackup(""); }}>{a.name}<span className="small" style={{ opacity: 0.7 }}> · решил {a.resolved}</span></button>)}
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Запасной приемщик</label>
+                  <div className="chips">
+                    <button className={`opt ${backup === "" ? "on" : ""}`} onClick={() => setBackup("")}>Без запасного</button>
+                    {(arbiters ?? []).filter((a) => a.id !== arb).map((a) => <button key={a.id} className={`opt ${backup === a.id ? "on" : ""}`} onClick={() => setBackup(a.id)}>{a.name}</button>)}
+                  </div>
+                  <span className="small muted">Запасной решает спор, если основной молчит половину срока.</span>
+                </div>
+              </>
+            )}
             <button className="btn" disabled={busy || title.trim().length < 3} onClick={register}>Зарегистрировать</button>
           </div>
         </Sheet>

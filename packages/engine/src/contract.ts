@@ -26,6 +26,8 @@ export interface ContractTerms {
   executorId: UserId;
   ownerId: UserId | null;
   arbiterId: UserId | null;
+  /** запасной приемщик: поле есть, только если задан */
+  backupArbiterId?: UserId;
   stages: { id: string; title: string; amount: Money; criteria: string[] }[];
   target: Money;
   autoAcceptMs: number;
@@ -66,6 +68,7 @@ export function contractTerms(d: Deal): ContractTerms {
     executorId: d.executorId,
     ownerId: d.ownerId ?? null,
     arbiterId: d.arbiterId ?? null,
+    backupArbiterId: d.backupArbiterId || undefined,
     stages: d.stages.map((x) => ({ id: x.id, title: x.title, amount: x.amount, criteria: [...x.criteria] })),
     target: d.target,
     autoAcceptMs: d.autoAcceptMs,

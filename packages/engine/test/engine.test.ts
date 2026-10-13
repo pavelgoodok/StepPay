@@ -697,3 +697,40 @@ describe("сроки и аварийный выход", () => {
     expect(contractHash(contractTerms(a.deals.e1!))).not.toBe(contractHash(contractTerms(b.deals.e1!)));
   });
 });
+
+describe("запасной приемщик", () => {
+  const disputed = (extra: Record<string, unknown> = {}) => {
+    let s = topUp(createState(), "anna", 100 * R, T0);
+    s = createDeal(s, { id: "b1", mode: "own", title: "x", executorId: "ivan", ownerId: "anna", arbiterId: "expert", backupArbiterId: "reserve", disputeDays: 14, stages: [{ title: "a", amount: 100 * R }], at: T0, ...extra });
+    s = fund(s, "b1", "anna", 100 * R, T0);
+    s = submitStage(s, "b1", "s1", "ivan", {}, T0 + 1);
+    return openDispute(s, "b1", "s1", "ivan", "нет", T0 + 2);
+  };
+
+  it("решает спор только со второй половины срока, основной решает всегда", () => {
+    const s = disputed();
+    expect(() => resolveDispute(s, "b1", "s1", "reserve", "pay", T0 + 2 + 6 * DAY_MS)).toThrow(EngineError);
+    expect(() => resolveDispute(s, "b1", "s1", "stranger", "pay", T0 + 2 + 8 * DAY_MS)).toThrow(EngineError);
+    const done = resolveDispute(s, "b1", "s1", "reserve", "pay", T0 + 2 + 7 * DAY_MS);
+    expect(done.deals.b1!.status).toBe("completed");
+    expect(freeBalance(done, "ivan")).toBe(100 * R);
+    expect(done.deals.b1!.journal!.at(-2)!.by).toBe("reserve");
+    expect(resolveDispute(s, "b1", "s1", "expert", "refund", T0 + 3).deals.b1!.status).toBe("cancelled");
+  });
+
+  it("запасной приемщик видит спор и пишет в нем", () => {
+    const s = replyDispute(disputed(), "b1", "s1", "reserve", "Уточните", [], T0 + 5);
+    expect(s.deals.b1!.stages[0]!.messages!.at(-1)!.by).toBe("reserve");
+  });
+
+  it("условия: нужен срок спора и независимость, в хеш попадает только когда задан", () => {
+    const base = { id: "b2", mode: "own" as const, title: "x", executorId: "ivan", ownerId: "anna", arbiterId: "expert", stages: [{ title: "a", amount: R }], at: T0 };
+    expect(() => createDeal(createState(), { ...base, backupArbiterId: "reserve" })).toThrow(EngineError); // без срока на спор
+    expect(() => createDeal(createState(), { ...base, backupArbiterId: "expert", disputeDays: 5 })).toThrow(EngineError);
+    expect(() => createDeal(createState(), { ...base, backupArbiterId: "ivan", disputeDays: 5 })).toThrow(EngineError);
+    expect(() => createDeal(createState(), { ...base, arbiterId: undefined, backupArbiterId: "reserve", disputeDays: 5 })).toThrow(EngineError);
+    const a = createDeal(createState(), { ...base, disputeDays: 5 }).deals.b2!;
+    const b = createDeal(createState(), { ...base, backupArbiterId: "reserve", disputeDays: 5 }).deals.b2!;
+    expect(contractHash(contractTerms(a))).not.toBe(contractHash(contractTerms(b)));
+  });
+});

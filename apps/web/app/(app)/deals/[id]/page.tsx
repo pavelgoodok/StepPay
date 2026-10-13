@@ -11,7 +11,7 @@ import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/
 import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { deviceKeysAvailable, ensureDeviceKey, signContractOnDevice } from "@/lib/keys";
-import { rub, timeLeft, toKopecks } from "@/lib/format";
+import { dayLabel, rub, timeLeft, toKopecks } from "@/lib/format";
 import { MODE_LABEL, STAGE_LABEL, dealChip } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
@@ -54,9 +54,12 @@ export default function DealPage() {
   const isOwner = d.ownerId === me;
   const isExec = d.executorId === me;
   const isArbiter = d.arbiterId === me;
+  const isBackup = !!d.backupArbiterId && d.backupArbiterId === me;
   const myContribution = d.contributed[me] ?? 0;
   const chip = dealChip(d.summary);
   const paid = d.stages.filter((s) => s.status === "accepted").reduce((a, s) => a + s.amount, 0);
+  /** запасной приемщик решает спор со второй половины срока на спор */
+  const backupReady = (st: Stage) => isBackup && !!d.disputeMs && st.disputedAt !== undefined && now >= st.disputedAt + Math.floor(d.disputeMs / 2);
   const reservedLeft = Object.values(d.reserves).reduce((a, b) => a + b, 0);
   const raised = d.summary.raised;
   const crowd = d.mode === "crowdfunding";
@@ -327,18 +330,21 @@ export default function DealPage() {
                   </div>
                 )}
 
-                {s.status === "disputed" && (isOwner || isExec || isArbiter) && (
+                {s.status === "disputed" && (isOwner || isExec || isArbiter || isBackup) && (
                   <button className="btn soft" style={{ marginTop: 12 }} onClick={() => { setAsk({ kind: "reply", stage: s }); setText(""); setPhotos([]); }}>
-                    <Icon name="camera" size={18} /> {isArbiter ? "Задать вопрос сторонам" : "Ответить / добавить фото"}
+                    <Icon name="camera" size={18} /> {isArbiter || isBackup ? "Задать вопрос сторонам" : "Ответить / добавить фото"}
                   </button>
                 )}
-                {s.status === "disputed" && isArbiter && (
+                {s.status === "disputed" && isBackup && !backupReady(s) && (
+                  <div className="note warn" style={{ marginTop: 10 }}>Вы запасной приемщик: решение откроется {dayLabel((s.disputedAt ?? 0) + Math.floor((d.disputeMs ?? 0) / 2))}, если основной приемщик не решит спор раньше</div>
+                )}
+                {s.status === "disputed" && (isArbiter || backupReady(s)) && (
                   <div className="btns" style={{ marginTop: 10 }}>
                     <button className="btn green" disabled={busy} onClick={() => { setAsk({ kind: "pay", stage: s }); setText(""); }}>Выплатить</button>
                     <button className="btn danger" disabled={busy} onClick={() => { setAsk({ kind: "refund", stage: s }); setText(""); }}>Вернуть</button>
                   </div>
                 )}
-                {s.status === "disputed" && !isArbiter && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приемщика</div>}
+                {s.status === "disputed" && !isArbiter && !isBackup && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приемщика</div>}
               </div>
             </div>
           );

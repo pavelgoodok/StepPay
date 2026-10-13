@@ -50,6 +50,7 @@ contract StepEscrow {
         uint16 feeBps;
         bytes32 contractHash;
         Deadlines deadlines;
+        address backupArbiter;
     }
 
     struct Deal {
@@ -58,6 +59,7 @@ contract StepEscrow {
         address executor;
         address owner; // заказчик или грантодатель; у краудфандинга нулевой адрес
         address arbiter; // независимый приемщик (только своя сделка)
+        address backupArbiter; // запасной приемщик: решает спор, если основной молчит половину срока на спор
         bool executorSigned;
         bool ownerSigned;
         uint16 feeBps;
@@ -140,7 +142,7 @@ contract StepEscrow {
         uint16 feeBps,
         bytes32 contractHash
     ) external returns (uint256) {
-        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, Deadlines(0, 0, 0)), stageAmounts);
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, Deadlines(0, 0, 0), address(0)), stageAmounts);
     }
 
     /// @notice То же, что createDeal, плюс сроки аварийного выхода (ноль: без срока).
@@ -155,7 +157,23 @@ contract StepEscrow {
         bytes32 contractHash,
         Deadlines calldata deadlines
     ) external returns (uint256) {
-        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines), stageAmounts);
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, address(0)), stageAmounts);
+    }
+
+    /// @notice То же, что createDealEx, плюс запасной приемщик (нужен срок на спор, решать он может со второй половины срока).
+    function createDealFull(
+        Mode mode,
+        address executor,
+        address owner,
+        address arbiter,
+        uint128[] calldata stageAmounts,
+        uint64 autoAcceptSecs,
+        uint16 feeBps,
+        bytes32 contractHash,
+        Deadlines calldata deadlines,
+        address backupArbiter
+    ) external returns (uint256) {
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, backupArbiter), stageAmounts);
     }
 
     function _create(Params memory p, uint128[] calldata stageAmounts) private returns (uint256 dealId) {
@@ -170,6 +188,11 @@ contract StepEscrow {
         if (p.arbiter == p.executor || (p.arbiter != address(0) && p.arbiter == p.owner)) revert BadInput();
         if (p.mode != Mode.Grant && p.autoAcceptSecs == 0) revert BadInput();
         if (p.mode != Mode.Own && p.deadlines.disputeSecs != 0) revert BadInput(); // споры по приемщику только в своей сделке
+        if (p.backupArbiter != address(0)) {
+            // запасной приемщик: только в своей сделке, при сроке на спор и независимый от сторон и основного
+            if (p.mode != Mode.Own || p.deadlines.disputeSecs == 0) revert BadInput();
+            if (p.backupArbiter == p.arbiter || p.backupArbiter == p.executor || p.backupArbiter == p.owner) revert BadInput();
+        }
 
         dealId = ++dealCount;
         Deal storage d = deals[dealId];
@@ -177,6 +200,7 @@ contract StepEscrow {
         d.executor = p.executor;
         d.owner = p.owner;
         d.arbiter = p.arbiter;
+        d.backupArbiter = p.backupArbiter;
         d.feeBps = p.feeBps;
         d.autoAcceptSecs = p.autoAcceptSecs;
         d.createdAt = uint64(block.timestamp);
@@ -331,9 +355,13 @@ contract StepEscrow {
     /// @notice Решение приемщика: pay выплачивает исполнителю, иначе остаток возвращается заказчику.
     function resolveDispute(uint256 dealId, uint256 stage, bool pay) external nonReentrant {
         Deal storage d = _deal(dealId);
-        if (d.arbiter == address(0) || msg.sender != d.arbiter) revert Unauthorized();
         Stage storage st = _stage(d, stage);
+        bool primary = d.arbiter != address(0) && msg.sender == d.arbiter;
+        bool backup = d.backupArbiter != address(0) && msg.sender == d.backupArbiter;
+        if (!primary && !backup) revert Unauthorized();
         if (st.status != StageStatus.Disputed) revert BadState();
+        // запасной приемщик решает со второй половины срока на спор
+        if (!primary && block.timestamp < uint256(st.disputedAt) + d.deadlines.disputeSecs / 2) revert BadState();
         if (pay) _accept(dealId, d, stage, "arbiter");
         else _fail(dealId, d, stage, "arbiter");
     }
@@ -516,6 +544,10 @@ contract StepEscrow {
     function getStage(uint256 dealId, uint256 stage) external view returns (uint128 amount, StageStatus status, uint64 submittedAt, bytes32 evidence) {
         Stage storage st = _stage(_deal(dealId), stage);
         return (st.amount, st.status, st.submittedAt, st.evidence);
+    }
+
+    function backupArbiterOf(uint256 dealId) external view returns (address) {
+        return _deal(dealId).backupArbiter;
     }
 
     function getDeadlines(uint256 dealId) external view returns (uint64 createdAt, uint64 fundingSecs, uint64 stageSecs, uint64 disputeSecs) {

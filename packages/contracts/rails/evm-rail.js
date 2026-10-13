@@ -5,7 +5,7 @@ const MODE = { own: 0, crowdfunding: 1, grant: 2 };
 const STATUS = ["funding", "active", "completed", "cancelled"];
 const STAGE = ["pending", "active", "submitted", "accepted", "disputed", "failed"];
 /** Участники сценариев: каждому достается свой адрес в тестовой сети. */
-const ACTORS = ["anna", "ivan", "expert", "olga", "max", "pasha", "author", "stranger", "fond", "studio"];
+const ACTORS = ["anna", "ivan", "expert", "olga", "max", "pasha", "author", "stranger", "fond", "studio", "reserve"];
 
 /**
  * Денежный рельс на эталонном контракте StepEscrow. Реализует тот же интерфейс MoneyRail, что и эмулятор
@@ -30,7 +30,7 @@ class EvmRail {
     const zero = ethers.ZeroAddress;
     const day = 86_400;
     await (
-      await this.escrow.createDealEx(
+      await this.escrow.createDealFull(
         MODE[spec.mode],
         this.who[spec.executor].address,
         spec.owner ? this.who[spec.owner].address : zero,
@@ -40,6 +40,7 @@ class EvmRail {
         spec.feeBps,
         ethers.id("rail-deal"),
         [(spec.fundingDeadlineDays ?? 0) * day, (spec.stageDeadlineDays ?? 0) * day, (spec.disputeDays ?? 0) * day],
+        spec.backupArbiter ? this.who[spec.backupArbiter].address : zero,
       )
     ).wait();
   }

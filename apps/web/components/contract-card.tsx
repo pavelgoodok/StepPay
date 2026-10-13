@@ -15,7 +15,7 @@ function deadlines(t: ContractTerms) {
   const out: string[] = [];
   if (t.fundingDeadlineMs) out.push(`Если сумма не собрана за ${daysOf(t.fundingDeadlineMs)} дн., сделка закрывается и взносы возвращаются.`);
   if (t.stageDeadlineMs) out.push(`Если исполнитель не сдал этап за ${daysOf(t.stageDeadlineMs)} дн., остаток возвращается.`);
-  if (t.disputeMs) out.push(`Если приемщик не решил спор за ${daysOf(t.disputeMs)} дн., остаток возвращается заказчику.`);
+  if (t.disputeMs) out.push(`${t.backupArbiterId ? `Если основной приемщик молчит ${daysOf(t.disputeMs / 2)} дн., спор может решить запасной. ` : ""}Если спор не решен за ${daysOf(t.disputeMs)} дн., остаток возвращается заказчику.`);
   return out.join(" ");
 }
 
@@ -81,6 +81,7 @@ export function ContractCard({ d }: { d: DealFull }) {
               <div>Исполнитель: {d.people[d.terms.executorId]?.name}</div>
               {d.terms.ownerId && <div>{d.mode === "grant" ? "Грантодатель" : "Заказчик"}: {d.people[d.terms.ownerId]?.name}</div>}
               {d.terms.arbiterId && <div>Приемщик споров: {d.people[d.terms.arbiterId]?.name ?? "независимый"}</div>}
+              {d.terms.backupArbiterId && <div>Запасной приемщик: {d.people[d.terms.backupArbiterId]?.name ?? "независимый"}</div>}
             </div>
             <div className="note" style={{ marginTop: 0 }}>
               <div className="small muted">Этапы, всего {rub(d.terms.target)}</div>

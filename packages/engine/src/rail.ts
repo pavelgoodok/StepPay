@@ -65,6 +65,8 @@ export interface DealSpec {
   /** заказчик или грантодатель; у краудфандинга не задан */
   owner?: string;
   arbiter?: string;
+  /** запасной приемщик (нужен срок на спор) */
+  backupArbiter?: string;
   stages: number[];
   autoAcceptDays: number;
   feeBps: number;
@@ -163,6 +165,7 @@ export class EmulatedRail implements MoneyRail {
       executorId: spec.executor,
       ownerId: spec.owner,
       arbiterId: spec.arbiter,
+      backupArbiterId: spec.backupArbiter,
       signed: true,
       stages: spec.stages.map((amount, i) => ({ id: `s${i + 1}`, title: `Этап ${i + 1}`, amount })),
       autoAcceptDays: spec.autoAcceptDays,

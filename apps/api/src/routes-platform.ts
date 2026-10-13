@@ -274,6 +274,47 @@ export function registerPlatformRoutes(c: Ctx) {
     return { ok: true, user: brief(u.id) };
   });
 
+  // ───────── реестр приемщиков ─────────
+
+  /** Репутация приемщика по закрытым сделкам: сколько споров решил, в чью пользу, сколько раз промолчал до срока. */
+  const arbiterStats = (id: string) => {
+    let resolved = 0, paid = 0, refunded = 0, silent = 0, active = 0;
+    for (const d of Object.values(c.getState().deals)) {
+      if (d.arbiterId === id) {
+        for (const st of d.stages) {
+          if (st.status === "disputed") active++;
+          if (st.resolution?.by === "expired" && st.disputedAt !== undefined) silent++;
+        }
+      }
+      for (const e of d.journal ?? []) {
+        if (e.by !== id || (e.type !== "stage_accepted" && e.type !== "stage_failed")) continue;
+        if ((e.data as { closedBy?: string } | undefined)?.closedBy !== "arbiter") continue;
+        resolved++;
+        if (e.type === "stage_accepted") paid++; else refunded++;
+      }
+    }
+    return { resolved, paid, refunded, silent, active };
+  };
+  const arbiterItem = (id: string) => ({ ...brief(id), ...arbiterStats(id) });
+
+  app.get("/arbiters", async (req, reply) => {
+    if (!c.authed(req, reply)) return;
+    return dir.allIds().filter((id) => dir.isArbiter(id)).map(arbiterItem);
+  });
+
+  app.post("/admin/arbiters", async (req, reply) => {
+    const me = adminOnly(req, reply);
+    if (!me) return;
+    const b = z.object({ phone: z.string().max(40), value: z.boolean() }).parse(req.body);
+    const { normalizePhone } = await import("./users");
+    const phone = normalizePhone(b.phone);
+    const u = phone ? dir.byPhone(phone) : undefined;
+    if (!u) return reply.code(404).send({ error: "Пользователь с таким номером не найден" });
+    await dir.setArbiter(u.id, b.value);
+    await platform.logAudit(me, b.value ? "Добавлен приемщик в реестр" : "Приемщик убран из реестра", u.id, brief(u.id).name);
+    return { ok: true, user: arbiterItem(u.id) };
+  });
+
   // ───────── услуги ─────────
 
   const serviceFields = {
@@ -397,13 +438,19 @@ export function registerPlatformRoutes(c: Ctx) {
     const me = c.authed(req, reply);
     if (!me) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const b = z.object({ title: z.string().trim().min(3, "Название от 3 символов").max(120), description: z.string().trim().max(2000).optional() }).parse(req.body);
+    const b = z.object({ title: z.string().trim().min(3, "Название от 3 символов").max(120), description: z.string().trim().max(2000).optional(), arbiterId: z.string().max(60).optional(), backupArbiterId: z.string().max(60).optional().or(z.literal("")) }).parse(req.body);
     const th = platform.thread(id);
     if (!th || th.executorId !== me) return reply.code(403).send({ error: "Задачу регистрирует исполнитель в чате с заказчиком" });
+    // приемщик выбирается из реестра: по умолчанию первый, запасной по умолчанию второй, если он есть
+    const registry = dir.allIds().filter((x) => dir.isArbiter(x) && x !== th.customerId && x !== me);
+    const arbiterId = b.arbiterId ?? registry[0];
+    if (!arbiterId || !registry.includes(arbiterId)) return reply.code(400).send({ error: "Выберите приемщика из реестра" });
+    const backupArbiterId = b.backupArbiterId === "" ? undefined : (b.backupArbiterId ?? registry.find((x) => x !== arbiterId));
+    if (backupArbiterId && (!registry.includes(backupArbiterId) || backupArbiterId === arbiterId)) return reply.code(400).send({ error: "Запасной приемщик должен быть другим человеком из реестра" });
     const dealId = `t_${Math.random().toString(36).slice(2, 10)}${c.now().toString(36)}`;
     const t = c.now();
     await c.transact((s) => ({
-      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId: "expert", status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
+      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId, backupArbiterId, status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
       result: true,
     }));
     await platform.post(id, me, `Зарегистрирована задача «${b.title}». Исполнитель согласует этапы и отправит условия.`, "system", dealId);
