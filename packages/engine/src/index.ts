@@ -5,3 +5,4 @@ export * from "./contract";
 export * from "./journal";
 export * from "./rail";
 export * from "./rail-scenarios";
+export * from "./anchor";

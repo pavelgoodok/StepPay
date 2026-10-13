@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js",
+    "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js test/anchor.test.js",
     "test:invariants": "hardhat test test/invariants.test.js",
     "test:all": "hardhat test",
     "chain:local": "hardhat run scripts/testnet-deal.js",
     "chain:sepolia": "hardhat run scripts/testnet-deal.js --network sepolia",
-    "test:differential": "hardhat test test/differential.test.js"
+    "test:differential": "hardhat test test/differential.test.js",
+    "anchor:publish": "hardhat run scripts/anchor.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.8",

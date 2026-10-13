@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { verifyJournal, type JournalEntry } from "@steppay/engine";
-import type { DealFull } from "@/lib/api";
+import { api, type DealFull } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { Icon, Sheet } from "./ui";
 
@@ -39,10 +39,23 @@ function describe(e: JournalEntry, d: DealFull): string {
 }
 
 /** Журнал событий сделки с цепочкой хешей: проверка на устройстве и выгрузка для разбора спора. */
+interface DealAnchor {
+  n: number;
+  at: number;
+  root: string;
+  len: number;
+  head: string;
+  published: { target: string; ref?: string }[];
+}
+
 export function JournalCard({ d }: { d: DealFull }) {
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<"ok" | "bad" | null>(null);
+  const [anchors, setAnchors] = useState<DealAnchor[] | null>(null);
   const entries = d.journal ?? [];
+  useEffect(() => {
+    if (open) void api<DealAnchor[]>(`/deals/${d.id}/anchors`).then(setAnchors).catch(() => setAnchors([]));
+  }, [open, d.id]);
   if (entries.length === 0) return null;
   const ok = d.journalCheck.ok;
 
@@ -88,6 +101,22 @@ export function JournalCard({ d }: { d: DealFull }) {
                 <div className="mono small" style={{ wordBreak: "break-all" }}>{d.journalCheck.head}</div>
               </div>
             )}
+            {anchors && anchors.length > 0 && (() => {
+              const last = anchors[anchors.length - 1]!;
+              // записи, на которые указывают якоря, должны остаться на своих местах
+              const intact = anchors.every((a) => entries[a.len - 1]?.hash === a.head);
+              const out = last.published[0];
+              return (
+                <div className={`note ${intact ? "" : "bad"}`} style={{ marginTop: 0 }}>
+                  <div className="small muted">Внешний якорь №{last.n} · {when(last.at)}</div>
+                  <div className="mono small" style={{ wordBreak: "break-all" }}>{last.root}</div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    {intact ? `Журнал совпадает со всеми якорями (${anchors.length}): записи до №${last.len} не менялись.` : "Журнал не совпадает с якорем: записи были изменены после фиксации."}
+                    {out ? ` Корень опубликован: ${out.target}${out.ref ? `, ${out.ref}` : ""}.` : " Корень пока не опубликован вне сервера."}
+                  </div>
+                </div>
+              );
+            })()}
             {local && <div className={`note ${local === "ok" ? "" : "bad"}`} style={{ marginTop: 0 }}>{local === "ok" ? `Цепочка из ${entries.length} записей пересчитана на этом устройстве и цела.` : "Цепочка не сходится: журнал был изменен."}</div>}
             <div className="btns">
               <button className="btn soft" onClick={verify}>Проверить целостность</button>

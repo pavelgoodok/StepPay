@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Anchor } from "@steppay/engine";
 
 /** Проекты (краудфандинг и гранты, с проверкой), карточки услуг и личные чаты. Деньгами не занимается: это делает движок сделок. */
 
@@ -96,6 +97,18 @@ export interface PlatformData {
   threads: Thread[];
   /** действия администраторов и доступ к закрытым данным */
   audit?: AuditEvent[];
+  /** якоря истории и куда их опубликовали */
+  anchors?: Anchor[];
+  anchorPubs?: Record<number, AnchorPub[]>;
+}
+
+export interface AnchorPub {
+  at: number;
+  target: string;
+  ok: boolean;
+  /** ссылка или номер записи во внешнем месте */
+  ref?: string;
+  error?: string;
 }
 
 export class PlatformError extends Error {}
@@ -156,6 +169,32 @@ export class Platform {
     const list = (this.data.audit ??= []);
     list.push({ at: this.now(), by, action, ...(target ? { target } : {}), ...(detail ? { detail: detail.slice(0, 200) } : {}) });
     if (list.length > 1000) list.splice(0, list.length - 1000);
+    await this.save();
+  }
+
+  anchors(): Anchor[] {
+    return this.data.anchors ?? [];
+  }
+
+  anchorPubs(n: number): AnchorPub[] {
+    return this.data.anchorPubs?.[n] ?? [];
+  }
+
+  async addAnchor(a: Anchor) {
+    (this.data.anchors ??= []).push(a);
+    await this.save();
+  }
+
+  async addAnchorPub(n: number, pub: AnchorPub) {
+    const all = (this.data.anchorPubs ??= {});
+    all[n] = [...(all[n] ?? []), pub].slice(-10);
+    await this.save();
+  }
+
+  /** Демо-данные удалены или сброшены: якоря к ним больше не относятся. */
+  async clearAnchors() {
+    this.data.anchors = [];
+    this.data.anchorPubs = {};
     await this.save();
   }
 

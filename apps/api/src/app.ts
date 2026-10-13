@@ -29,6 +29,7 @@ import { createPlanner, type Planner } from "./ai";
 import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
+import { ANCHOR_GENESIS, buildAnchor, changedSince, checkAgainstAnchors, verifyAnchorChain, verifyMoney, type Anchor } from "@steppay/engine";
 import { MAX_KEYS, checkLoginAssertion, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
@@ -44,6 +45,16 @@ import { Directory, maskPhone, normalizePhone } from "./users";
 
 const RUB = 100;
 const rub = (k: number) => `${String(Math.round(k / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0")}\u00a0₽`;
+
+export interface PublicAnchor {
+  n: number;
+  at: number;
+  root: string;
+  prev: string;
+  deals: number;
+  ledgerLen: number;
+  ledgerHash: string;
+}
 
 export interface AppOptions {
   store: Store;
@@ -64,6 +75,10 @@ export interface AppOptions {
   /** ограничение частоты запросов с одного адреса за минуту */
   rateLimit?: { general: number; auth: number; uploads: number };
   signaturePolicy?: "device" | "any" | "passkey";
+  /** как часто фиксировать якорь истории (мс), по умолчанию час */
+  anchorEveryMs?: number;
+  /** публикация якоря вне сервера: внешний журнал, сеть, свидетель. Без нее якоря только хранятся и отдаются по /anchors */
+  anchorPublish?: (a: PublicAnchor) => Promise<{ target: string; ref?: string }>;
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -144,6 +159,7 @@ export async function buildApp(opts: AppOptions) {
     if (cleaned.changed) {
       state = cleaned.state;
       await opts.store.save(state);
+      await platform.clearAnchors();
     }
     await platform.purgeDemo(new Set(DEMO_USERS.map((u) => u.id)), (id) => !state.deals[id]);
   }
@@ -749,6 +765,39 @@ export async function buildApp(opts: AppOptions) {
       .send(f.data);
   });
 
+  // ── якоря истории ──
+  const publicAnchor = (a: Anchor): PublicAnchor => ({ n: a.n, at: a.at, root: a.root, prev: a.prev, deals: a.leaves.length, ledgerLen: a.ledgerLen, ledgerHash: a.ledgerHash });
+  const anchorEvery = opts.anchorEveryMs ?? 60 * 60_000;
+  /** Публикует якоря, которые еще не ушли наружу. Ошибка записывается и повторится на следующем проходе. */
+  const publishAnchors = async () => {
+    if (!opts.anchorPublish) return;
+    for (const a of platform.anchors()) {
+      if (platform.anchorPubs(a.n).some((p) => p.ok)) continue;
+      const last = platform.anchorPubs(a.n).at(-1);
+      if (last && now() - last.at < 60_000) continue;
+      try {
+        const r = await opts.anchorPublish(publicAnchor(a));
+        await platform.addAnchorPub(a.n, { at: now(), target: r.target, ok: true, ref: r.ref });
+      } catch (e) {
+        await platform.addAnchorPub(a.n, { at: now(), target: "внешний журнал", ok: false, error: (e as Error).message.slice(0, 160) });
+      }
+    }
+  };
+  /** Фиксирует якорь, если с прошлого что-то изменилось и прошло достаточно времени. */
+  const runAnchor = async (force = false) => {
+    const list = platform.anchors();
+    const last = list.at(-1) ?? null;
+    if (!force && last && now() - last.at < anchorEvery) return null;
+    if (!changedSince(state, last)) return null;
+    const a = buildAnchor(state, last, now());
+    await platform.addAnchor(a);
+    return a;
+  };
+  const anchorTick = async () => {
+    await runAnchor();
+    await publishAnchors();
+  };
+
   // часы автоприемки: вызывается по таймеру сервера, а также вручную для демо
   const runTick = async () => {
     const before = state;
@@ -765,10 +814,52 @@ export async function buildApp(opts: AppOptions) {
   app.post("/system/tick", async (req, reply) => {
     if (!authed(req, reply)) return;
     await runTick();
+    await anchorTick();
     return { ok: true };
   });
 
-  const timer = setInterval(() => void runTick().catch(() => undefined), 60_000);
+  /** Список якорей: корни и ссылки на публикации. Подробности по сделкам не раскрываются. */
+  app.get("/anchors", async () => ({ anchors: platform.anchors().map((a) => ({ ...publicAnchor(a), published: platform.anchorPubs(a.n).filter((p) => p.ok).map((p) => ({ at: p.at, target: p.target, ref: p.ref })) })), genesis: ANCHOR_GENESIS }));
+  app.get("/anchors/latest", async (_req, reply) => {
+    const a = platform.anchors().at(-1);
+    return a ? publicAnchor(a) : reply.code(404).send({ error: "Якорей пока нет" });
+  });
+  /** Сверка: цепочка якорей цела, история и деньги ничего из зафиксированного не потеряли. Подробности только администратору. */
+  app.get("/anchors/verify", async (req) => {
+    const list = platform.anchors();
+    const chain = verifyAnchorChain(list);
+    const problems = checkAgainstAnchors(state, list);
+    const money = verifyMoney(state);
+    const ok = chain.ok && problems.length === 0 && money.length === 0;
+    const h = req.headers.authorization;
+    const viewer = verifyToken(opts.secret, h?.startsWith("Bearer ") ? h.slice(7) : undefined, Date.now(), (u) => dir.sessionsFrom(u));
+    const admin = !!viewer && dir.isAdmin(viewer);
+    return { ok, anchors: list.length, lastAt: list.at(-1)?.at ?? null, chain, problems: admin ? problems : problems.length, money: admin ? money : money.length };
+  });
+  /** Якоря, в которых зафиксирован журнал этой сделки: участник может сверить их с тем, что опубликовано снаружи. */
+  app.get("/deals/:id/anchors", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const d = state.deals[id];
+    if (!d || !(involved(d, me) || dir.isAdmin(me))) return reply.code(404).send({ error: "Сделка не найдена" });
+    return platform
+      .anchors()
+      .flatMap((a) => {
+        const leaf = a.leaves.find((l) => l.id === id);
+        return leaf ? [{ n: a.n, at: a.at, root: a.root, len: leaf.len, head: leaf.head, published: platform.anchorPubs(a.n).filter((p) => p.ok).map((p) => ({ target: p.target, ref: p.ref })) }] : [];
+      });
+  });
+  app.post("/system/anchor", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    if (!dir.isAdmin(me)) return reply.code(403).send({ error: "Только администратор" });
+    const a = await runAnchor(true);
+    await publishAnchors();
+    return { anchored: !!a, anchor: a ? publicAnchor(a) : null };
+  });
+
+  const timer = setInterval(() => void runTick().then(anchorTick).catch(() => undefined), 60_000);
   const beat = setInterval(() => hub.heartbeat(), 25_000);
   timer.unref();
   beat.unref();
