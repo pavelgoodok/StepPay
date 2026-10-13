@@ -517,3 +517,4 @@ h1, h2, h3, .h1, .title { text-wrap: balance; }
 .emptycover img { height: 62%; width: auto; object-fit: contain; }
 .emptycover { overflow: hidden; }
 .emptycover img { height: auto; max-height: 96px; max-width: 55%; }
+@media (min-width: 1024px) { .pcover { max-height: 360px; } }
