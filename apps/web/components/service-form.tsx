@@ -51,7 +51,7 @@ export function ServiceForm({ id }: { id?: string }) {
       <div className="card stack">
         <div className="field">
           <label>Название</label>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ремонт ванных комнат" />
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название услуги" />
         </div>
         <div className="field">
           <label>Категория</label>
@@ -61,11 +61,11 @@ export function ServiceForm({ id }: { id?: string }) {
         </div>
         <div className="field">
           <label>Что вы делаете</label>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Опыт, виды работ, сроки, чем вы отличаетесь" style={{ minHeight: 120 }} />
+          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Опишите, чем вы занимаетесь" style={{ minHeight: 120 }} />
         </div>
         <div className="field">
           <label>Цена от, ₽ (необязательно)</label>
-          <MoneyInput value={price} onChange={setPrice} placeholder="50 000" />
+          <MoneyInput value={price} onChange={setPrice} placeholder="Сумма, ₽" />
         </div>
         <div className="field">
           <label>Фото работ</label>

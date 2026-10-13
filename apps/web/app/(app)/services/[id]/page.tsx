@@ -66,7 +66,7 @@ export default function ServicePage() {
         <div className="card stack">
           <div className="title">Обсудить задачу</div>
           <div className="sub">Опишите, что нужно сделать. Детали уточните в чате: когда договоритесь, исполнитель зарегистрирует задачу и разобьет ее на этапы.</div>
-          <textarea className="input" placeholder="Здравствуйте! Нужно…" value={text} onChange={(e) => setText(e.target.value)} />
+          <textarea className="input" placeholder="Сообщение исполнителю" value={text} onChange={(e) => setText(e.target.value)} />
           <button className="btn" disabled={busy} onClick={write}>Написать исполнителю</button>
         </div>
       )}

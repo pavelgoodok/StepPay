@@ -42,7 +42,7 @@ export default function WalletPage() {
         <div className="label">Цифровой рубль</div>
         <div className="big"><Money value={data?.free ?? 0} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
-        <span className="pill"><Icon name="lock" size={15} /> {rub(data?.reserved ?? 0)} зарезервировано в сделках</span>
+        <span className="pill"><Icon name="lock" size={15} /> {rub(data?.reserved ?? 0)} в резерве</span>
       </div>
 
       <div className="btns">

@@ -76,7 +76,7 @@ export default function Admin() {
           </div>
         ))}
         <div className="row">
-          <input className="input" inputMode="tel" placeholder="+7 900 000 00 00" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className="input" inputMode="tel" placeholder="Номер телефона" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button className="btn sm" style={{ whiteSpace: "nowrap" }} disabled={phone.replace(/\D/g, "").length < 10} onClick={() => setGrantor(true)}>Добавить</button>
         </div>
       </div>

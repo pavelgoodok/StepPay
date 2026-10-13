@@ -136,7 +136,7 @@ export default function Login() {
               <p className="sub">Введите номер телефона, мы пришлем код подтверждения</p>
               <div className="field" style={{ marginTop: 18 }}>
                 <label>Номер телефона</label>
-                <input className="input big-input" inputMode="tel" autoComplete="tel" autoFocus placeholder="+7 999 123-45-67" value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} onKeyDown={(e) => e.key === "Enter" && phoneOk && requestCode()} />
+                <input className="input big-input" inputMode="tel" autoComplete="tel" autoFocus placeholder="Номер телефона" value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} onKeyDown={(e) => e.key === "Enter" && phoneOk && requestCode()} />
               </div>
               <button className="btn" style={{ marginTop: 16 }} disabled={!phoneOk || busy} onClick={requestCode}>
                 {busy ? <span className="spin" /> : "Получить код"}

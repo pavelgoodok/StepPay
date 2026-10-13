@@ -34,7 +34,7 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
       </div>
       <div className="field">
         <label>ИНН ({innLen} цифр)</label>
-        <input className="input mono" inputMode="numeric" maxLength={innLen} value={a.inn} onChange={(e) => setA({ ...a, inn: e.target.value.replace(/\D/g, "") })} placeholder={"0".repeat(innLen)} />
+        <input className="input mono" inputMode="numeric" maxLength={innLen} value={a.inn} onChange={(e) => setA({ ...a, inn: e.target.value.replace(/\D/g, "") })} placeholder="ИНН" />
       </div>
       {org && (
         <div className="field">
@@ -44,7 +44,7 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
       )}
       <div className="field">
         <label>Почта для связи</label>
-        <input className="input" type="email" value={a.email ?? ""} onChange={(e) => setA({ ...a, email: e.target.value })} placeholder="name@example.com" />
+        <input className="input" type="email" value={a.email ?? ""} onChange={(e) => setA({ ...a, email: e.target.value })} placeholder="Электронная почта" />
       </div>
       <button className="btn soft" disabled={busy || a.inn.length !== innLen || (org && !a.orgName?.trim())} onClick={save}>Сохранить анкету</button>
     </div>

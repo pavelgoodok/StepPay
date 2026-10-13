@@ -71,7 +71,7 @@ export function StageEditor({ rows, onChange, mode, seedText = "" }: { rows: Row
               <button className="iconbtn" aria-label="Убрать этап" onClick={() => onChange(rows.filter((_, j) => j !== i))}><Icon name="x" size={16} /></button>
             )}
           </div>
-          <input className="input sm" placeholder="Как заказчик поймет, что этап готов" value={r.criteria.join("; ")} onChange={(e) => set(i, { criteria: e.target.value.split(";") })} />
+          <input className="input sm" placeholder="Критерии готовности этапа" value={r.criteria.join("; ")} onChange={(e) => set(i, { criteria: e.target.value.split(";") })} />
         </div>
       ))}
       <div className="row between">

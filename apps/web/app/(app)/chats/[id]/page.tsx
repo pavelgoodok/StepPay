@@ -108,7 +108,7 @@ export default function ChatPage() {
           <h2 style={{ fontSize: 22, textAlign: "left" }}>Новая задача</h2>
           <p className="sub" style={{ margin: "4px 0 14px" }}>Заказчик увидит ее со статусом «Согласование». Дальше вы разобьете работу на этапы и отправите условия.</p>
           <div className="stack">
-            <input className="input" autoFocus placeholder="Название, например «Ремонт ванной»" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input className="input" autoFocus placeholder="Название задачи" value={title} onChange={(e) => setTitle(e.target.value)} />
             <textarea className="input" placeholder="О чем договорились (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
             <button className="btn" disabled={busy || title.trim().length < 3} onClick={register}>Зарегистрировать</button>
           </div>
