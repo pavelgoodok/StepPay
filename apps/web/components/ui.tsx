@@ -9,6 +9,8 @@ export const IMG = {
   receipt: "/3d/receipt.webp",
   safe: "/3d/safe.webp",
   wallet: "/3d/wallet.webp",
+  deadline: "/3d/deadline.webp",
+  passkey: "/3d/passkey.webp",
 };
 
 export function Logo({ className = "" }: { className?: string }) {
@@ -137,31 +139,37 @@ export function Icon({ name, size = 24 }: { name: string; size?: number }) {
   );
 }
 
-/** Сумма с плавным пересчетом; при росте вылетают «монеты» - деньги дошли. */
+/** Сумма с плавным пересчетом; при росте цифры на секунду зеленеют: деньги дошли. */
 export function Money({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
+  const [dir, setDir] = useState<"up" | "down" | null>(null);
   const from = useRef(value);
   useEffect(() => {
     const start = from.current;
     if (start === value) return;
+    setDir(value > start ? "up" : "down");
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const t0 = performance.now();
+    const len = reduce ? 1 : 1100;
     let raf = 0;
     const step = (t: number) => {
-      const k = Math.min(1, (t - t0) / 1100);
-      const e = 1 - Math.pow(1 - k, 3);
+      const k = Math.min(1, (t - t0) / len);
+      const e = 1 - Math.pow(1 - k, 4);
       // пока считаем, показываем целые рубли; точное значение только в конце
       setShown(k < 1 ? Math.round((start + (value - start) * e) / 100) * 100 : value);
       if (k < 1) raf = requestAnimationFrame(step);
       else from.current = value;
     };
     raf = requestAnimationFrame(step);
+    const off = setTimeout(() => setDir(null), len + 900);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(off);
       from.current = value;
     };
   }, [value]);
   return (
-    <span className="money mono">
+    <span className="money mono" data-dir={dir ?? undefined}>
       {rub(shown)}
     </span>
   );

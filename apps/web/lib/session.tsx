@@ -1,4 +1,5 @@
 "use client";
+import { Tick } from "@/components/motion";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { API_URL, api, getToken, setToken, type PublicUser, type Wallet } from "./api";
 import { rub } from "./format";
@@ -153,7 +154,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.tone}`}>
-            {t.text}
+            {t.tone === "ok" && <span className="tick"><Tick /></span>}
+            <span>{t.text}</span>
+            <i className="life" />
           </div>
         ))}
       </div>

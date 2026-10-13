@@ -6,6 +6,7 @@ import { ChainCard } from "@/components/chain-card";
 import { ContractCard } from "@/components/contract-card";
 import { JournalCard } from "@/components/journal-card";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
+import { useChangedIds } from "@/components/motion";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
@@ -41,6 +42,10 @@ export default function DealPage() {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // обновления в реальном времени: у какого этапа сменился статус, и не принят ли он только что (тогда по карточке расходится круг)
+  const changed = useChangedIds(Object.fromEntries((d?.stages ?? []).map((x) => [x.id, x.status])), 1800);
+  const paidBurst = (d?.stages ?? []).some((x) => changed.has(x.id) && x.status === "accepted");
 
   if (error && !d) return <div className="page"><Link href="/deals" className="btn ghost sm"><Icon name="back" size={18} /> Назад</Link><div className="note bad">{error}</div></div>;
   if (!d || !user) return <div className="page"><div className="skeleton" /><div className="skeleton" /></div>;
@@ -111,6 +116,8 @@ export default function DealPage() {
   const unsigned = sg.required.filter((u) => !sg.signed.includes(u)).map((u) => d.people[u]?.name ?? "участник");
   const missing = d.target - Object.values(d.reserves).reduce((a, b) => a + b, 0);
 
+  const expired = d.stages.some((x) => x.resolution?.by === "expired") || !!d.journal?.some((e) => e.type === "funding_expired");
+
   return (
     <div className="page">
       <div className="row between">
@@ -128,6 +135,7 @@ export default function DealPage() {
       </div>
 
       {!draft && <div className="hero compact">
+        {paidBurst && <><i className="burst" /><i className="burst two" /></>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={d.status === "completed" ? IMG.terminal : IMG.safe} alt="" />
         <div className="label">Выплачено исполнителю</div>
@@ -138,6 +146,17 @@ export default function DealPage() {
         </div>
         {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
       </div>}
+
+      {expired && (
+        <div className="card feat">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="float" src={IMG.deadline} alt="" />
+          <div>
+            <div className="title">Срок вышел, деньги вернулись</div>
+            <div className="small muted" style={{ marginTop: 4 }}>Сторона не уложилась в срок из контракта, остаток возвращен без чьего-либо согласия.</div>
+          </div>
+        </div>
+      )}
 
       {(d.meta?.chatId || !draft || d.chain) && <div className="group">
         {d.meta?.chatId && (
@@ -244,7 +263,7 @@ export default function DealPage() {
           const votesAccept = Object.entries(s.votes).filter(([, v]) => v === "accept").reduce((a, [u]) => a + (d.contributed[u] ?? 0), 0);
           const voted = s.votes[me];
           return (
-            <div key={s.id} className={`node ${s.status}`}>
+            <div key={s.id} className={`node ${s.status} ${changed.has(s.id) ? "just" : ""}`}>
               <div className="dot">{s.status === "accepted" ? <Icon name="check" size={18} /> : i + 1}</div>
               <div className={`body card ${s.status === "pending" || s.status === "accepted" ? "flat" : ""}`}>
                 <div className="row between">

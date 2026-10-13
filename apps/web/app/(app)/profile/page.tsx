@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Ava, Icon, Initials, Sheet, Switch } from "@/components/ui";
+import { Ava, IMG, Icon, Initials, Sheet, Switch } from "@/components/ui";
 import { CropSheet } from "@/components/cropper";
 import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
 import { PROJECT_STATUS } from "@/lib/labels";
@@ -182,8 +182,15 @@ export default function Profile() {
       )}
 
       <div className="card stack">
-        <div className="title">Подпись контрактов</div>
-        <div className="sub">Контракт подписывается ключом, который создается на этом устройстве. Закрытый ключ из браузера не выгружается, на сервер уходит только открытая часть. Passkey надежнее: ключ лежит в защищенном чипе, подпись ставится после отпечатка, лица или PIN, а при смене телефона он переезжает вместе с вашей учетной записью Apple или Google.</div>
+        <div className="feat">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="float" src={IMG.passkey} alt="" />
+          <div>
+            <div className="title">Подпись контрактов</div>
+            <div className="sub" style={{ marginTop: 4 }}>Подтверждение отпечатком, лицом или PIN устройства.</div>
+          </div>
+        </div>
+        <div className="sub">Passkey хранится в защищенном чипе и переезжает вместе с вашей учетной записью Apple или Google. Ключ браузера проще, но им может воспользоваться любой, кто открыл ваш браузер.</div>
         {!deviceKeysAvailable() ? (
           <div className="note warn" style={{ marginTop: 0 }}>Браузер не поддерживает ключи подписи. Откройте приложение в современном браузере по защищенному адресу.</div>
         ) : (

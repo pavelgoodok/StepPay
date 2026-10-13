@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { DealSummary, Person } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { dealChip } from "@/lib/labels";
+import { useChangeFlash } from "./motion";
 import { Ava, Icon, SegBar } from "./ui";
 
 /** Карточка сделки или проекта: кто, сколько, на каком этапе. Без декоративных полос, статус в тексте. */
@@ -10,9 +11,10 @@ export function DealCard({ d, who, crowd }: { d: DealSummary; who: Person; crowd
   const chip = dealChip(d);
   const total = d.stages.total;
   const funding = d.status === "funding" && crowd;
+  const flash = useChangeFlash(`${d.status}|${d.stages.done}|${d.raised}|${d.target}`);
   const filled = funding ? (d.target ? (d.raised / d.target) * total : 0) : d.stages.done;
   return (
-    <Link href={`/deals/${d.id}`} className="card tap dcard">
+    <Link href={`/deals/${d.id}`} className={`card tap dcard ${flash ? "flash" : ""}`}>
       <div className="dc-top">
         <Ava name={who.name} src={who.avatar} size="sm" />
         <div className="grow">
