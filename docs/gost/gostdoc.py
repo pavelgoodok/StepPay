@@ -168,7 +168,7 @@ class Doc:
         left, right = t.rows[0].cells
         left.width, right.width = Cm(8.2), Cm(8.2)
         left.paragraphs[0].add_run("")
-        for txt in ["УТВЕРЖДАЮ", approver_title, "______________ [Ф. И. О.]", f"«____» ____________ {year} г."]:
+        for txt in ["УТВЕРЖДАЮ", approver_title, "______________ / подпись автора /", f"«____» ____________ {year} г."]:
             para = right.add_paragraph() if right.paragraphs[0].text or txt != "УТВЕРЖДАЮ" else right.paragraphs[0]
             para.paragraph_format.line_spacing = 1.15
             _font(para.add_run(txt), 14, txt == "УТВЕРЖДАЮ")
@@ -193,7 +193,7 @@ class Doc:
         self.center(f"Листов {self.total}", line=1.3, before=6)
         for _ in range(10):
             self.center("", line=1.15)
-        self.center(f"{place} {year}", line=1.15)
+        self.center(f"{place} {year}".strip(), line=1.15)
         # новая секция: нумерация страниц вверху по центру, с третьей страницы
         sec = d.add_section(WD_SECTION.NEW_PAGE)
         sec.header.is_linked_to_previous = False
