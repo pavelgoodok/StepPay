@@ -50,7 +50,7 @@ export async function createPasskey(userId: string, name: string, label = "Passk
         rp: { name: "StepPay", id: location.hostname },
         user: { id: new TextEncoder().encode(userId), name, displayName: name },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-        authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+        authenticatorSelection: { residentKey: "required", userVerification: "required" },
         attestation: "none",
         timeout: 60_000,
       },
@@ -87,6 +87,26 @@ export async function signWithPasskey(keys: { id: string; credentialId: string }
     const key = keys.find((k) => k.credentialId === b64url(a.rawId));
     if (!key) throw new Error("Устройство выбрало неизвестный passkey");
     return { keyId: key.id, message, signature: b64(r.signature), webauthn: { authenticatorData: b64(r.authenticatorData), clientDataJSON: b64(r.clientDataJSON) } };
+  } catch (e) {
+    throw new Error(asMessage(e));
+  }
+}
+
+/** Вход по passkey без кода из СМС: пользователя определяет само устройство. Возвращает токен. */
+export async function loginWithPasskey(): Promise<string> {
+  try {
+    const { challenge } = await api<{ challenge: string }>("/auth/passkey/challenge", { method: "POST", body: {} });
+    const a = (await navigator.credentials.get({
+      publicKey: { challenge: new TextEncoder().encode(challenge), rpId: location.hostname, userVerification: "required", timeout: 60_000 },
+    })) as PublicKeyCredential | null;
+    if (!a) throw new Error("Подтверждение не получено");
+    const r = a.response as AuthenticatorAssertionResponse;
+    if (!r.userHandle) throw new Error("Этот passkey не подходит для входа");
+    const res = await api<{ token: string }>("/auth/passkey/login", {
+      method: "POST",
+      body: { challenge, credentialId: b64url(a.rawId), userHandle: b64(r.userHandle), authenticatorData: b64(r.authenticatorData), clientDataJSON: b64(r.clientDataJSON), signature: b64(r.signature) },
+    });
+    return res.token;
   } catch (e) {
     throw new Error(asMessage(e));
   }

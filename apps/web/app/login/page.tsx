@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { IMG, Icon, Initials } from "@/components/ui";
 import { api, type PublicUser } from "@/lib/api";
+import { loginWithPasskey, passkeysAvailable } from "@/lib/passkeys";
 import { useSession } from "@/lib/session";
 
 const ROLE: Record<string, string> = {
@@ -83,6 +84,17 @@ export default function Login() {
     }
   }
 
+  async function passkeyLogin() {
+    setBusy(true);
+    try {
+      await completeLogin(await loginWithPasskey());
+      router.replace("/deals");
+    } catch (e) {
+      toast((e as Error).message, "err");
+      setBusy(false);
+    }
+  }
+
   async function demoLogin(id: string) {
     setBusy(true);
     try {
@@ -129,6 +141,11 @@ export default function Login() {
               <button className="btn" style={{ marginTop: 16 }} disabled={!phoneOk || busy} onClick={requestCode}>
                 {busy ? <span className="spin" /> : "Получить код"}
               </button>
+              {passkeysAvailable() && (
+                <button className="btn soft" style={{ marginTop: 10 }} disabled={busy} onClick={passkeyLogin}>
+                  <Icon name="shield" size={18} /> Войти с passkey
+                </button>
+              )}
               <p className="small muted" style={{ marginTop: 12 }}>Продолжая, вы соглашаетесь с условиями демонстрационного сервиса. Деньги в приложении условные.</p>
             </>
           ) : (

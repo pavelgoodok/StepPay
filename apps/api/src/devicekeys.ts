@@ -122,22 +122,31 @@ function checkAuthData(authData: Buffer, origin: string, needAttested: boolean):
   return null;
 }
 
-/** Подпись passkey: подписаны authenticatorData и хеш clientDataJSON, а challenge равен хешу нашего сообщения. */
-function checkAssertion(p: SignatureProof, origins?: string[]): string | null {
-  const w = p.webauthn!;
-  const cd = checkClientData(w.clientDataJSON, "webauthn.get", b64url(sha256(p.message)), origins);
+/** Ответ passkey на запрос: тип, challenge, сайт, домен, подтверждение пользователя и подпись DER. */
+function checkAssertionData(publicKey: string, a: { authenticatorData: string; clientDataJSON: string; signature: string }, challenge: string, origins?: string[]): string | null {
+  const cd = checkClientData(a.clientDataJSON, "webauthn.get", challenge, origins);
   if (typeof cd === "string") return cd;
-  const authData = Buffer.from(w.authenticatorData, "base64");
+  const authData = Buffer.from(a.authenticatorData, "base64");
   const bad = checkAuthData(authData, cd.origin, false);
   if (bad) return bad;
-  const key = importKey(p.publicKey);
+  const key = importKey(publicKey);
   if (!key) return "Неверный ключ";
   try {
-    const signed = Buffer.concat([authData, sha256(Buffer.from(w.clientDataJSON, "base64"))]);
-    return verify("sha256", signed, key, Buffer.from(p.signature, "base64")) ? null : "Подпись passkey не прошла проверку";
+    const signed = Buffer.concat([authData, sha256(Buffer.from(a.clientDataJSON, "base64"))]);
+    return verify("sha256", signed, key, Buffer.from(a.signature, "base64")) ? null : "Подпись passkey не прошла проверку";
   } catch {
     return "Подпись passkey не прошла проверку";
   }
+}
+
+/** Подпись под контрактом: challenge равен хешу нашего сообщения. */
+function checkAssertion(p: SignatureProof, origins?: string[]): string | null {
+  return checkAssertionData(p.publicKey, { ...p.webauthn!, signature: p.signature }, b64url(sha256(p.message)), origins);
+}
+
+/** Вход по passkey: challenge выдал сервер, в clientDataJSON он лежит как base64url от его текста. */
+export function checkLoginAssertion(publicKey: string, a: { authenticatorData: string; clientDataJSON: string; signature: string }, challenge: string, origins?: string[]): string | null {
+  return checkAssertionData(publicKey, a, b64url(Buffer.from(challenge, "utf8")), origins);
 }
 
 export interface PasskeyRegistration {

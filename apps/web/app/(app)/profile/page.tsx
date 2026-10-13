@@ -87,7 +87,7 @@ export default function Profile() {
     try {
       await createPasskey(user!.id, user!.name, `Passkey от ${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}`);
       await keys.reload();
-      toast("Passkey добавлен: контракты будут подписываться отпечатком, лицом или PIN");
+      toast("Passkey добавлен: им можно входить и подписывать контракты");
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {

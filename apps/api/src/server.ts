@@ -16,7 +16,7 @@ if (process.env.DATABASE_URL) {
   store = new MemoryStore();
 }
 
-const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
+const app = await buildApp({ store, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : process.env.SIGNATURE_POLICY === "passkey" ? "passkey" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
 console.log(`StepPay API on :${port}`);

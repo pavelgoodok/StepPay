@@ -44,3 +44,24 @@ export function verifyTicket(secret: string, ticket: string | undefined, now: nu
   const t = open(secret, "t", ticket);
   return t && now - t.at <= TICKET_TTL_MS && t.at <= now + 5000 ? t.userId : null;
 }
+
+/**
+ * Запрос для входа по passkey: c.<время>.<случайное>.<подпись>. Сервер ничего не хранит до ответа,
+ * срок жизни 2 минуты, одноразовость обеспечивает список использованных запросов в памяти.
+ */
+export function makeLoginChallenge(secret: string, now: number, nonce: string): string {
+  const body = `c.${now}.${nonce}`;
+  return `${body}.${mac(secret, "c", body)}`;
+}
+
+export function openLoginChallenge(secret: string, challenge: string, now: number): { nonce: string } | null {
+  const parts = challenge.split(".");
+  if (parts.length !== 4 || parts[0] !== "c") return null;
+  const body = parts.slice(0, 3).join(".");
+  const a = Buffer.from(parts[3]!);
+  const b = Buffer.from(mac(secret, "c", body));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const at = Number(parts[1]);
+  if (!Number.isFinite(at) || now - at > TICKET_TTL_MS || at > now + 5000) return null;
+  return { nonce: parts[2]! };
+}

@@ -23,6 +23,18 @@ function authenticator(opts: { host?: string; flags?: { create?: number; get?: n
       const cd = clientData("webauthn.create", over.challenge ?? sha(passkeyMessage(userId, at)), over.origin);
       return { credentialId: credId.toString("base64url"), publicKey: spki, authenticatorData: authData.toString("base64"), clientDataJSON: cd.toString("base64"), at };
     },
+    login(challenge: string, userId: string, over: { challenge?: Buffer } = {}) {
+      const authData = Buffer.concat([rp, Buffer.from([opts.flags?.get ?? 0x05]), Buffer.alloc(4)]);
+      const cd = clientData("webauthn.get", over.challenge ?? Buffer.from(challenge, "utf8"));
+      return {
+        challenge,
+        credentialId: credId.toString("base64url"),
+        userHandle: Buffer.from(userId).toString("base64"),
+        authenticatorData: authData.toString("base64"),
+        clientDataJSON: cd.toString("base64"),
+        signature: nodeSign("sha256", Buffer.concat([authData, sha(cd)]), privateKey).toString("base64"),
+      };
+    },
     get(message: string, over: { challenge?: Buffer } = {}) {
       const authData = Buffer.concat([rp, Buffer.from([opts.flags?.get ?? 0x05]), Buffer.alloc(4)]);
       const cd = clientData("webauthn.get", over.challenge ?? sha(message));
@@ -32,9 +44,9 @@ function authenticator(opts: { host?: string; flags?: { create?: number; get?: n
   };
 }
 
-async function setup(corsOrigin?: string) {
+async function setup(corsOrigin?: string, signaturePolicy?: "any" | "device" | "passkey") {
   const now = Date.now();
-  const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => now, corsOrigin });
+  const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => now, corsOrigin, signaturePolicy });
   const tokens: Record<string, string> = {};
   for (const id of ["anna", "ivan"]) tokens[id] = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: id } })).json().token;
   const call = async (who: string, method: "GET" | "POST", url: string, payload?: unknown) => {
@@ -50,7 +62,11 @@ async function setup(corsOrigin?: string) {
     const hash = (await call("anna", "GET", `/deals/${id}`)).body.contract.hash as string;
     return { id, hash };
   }
-  return { call, now, proposed };
+  const post = async (url: string, payload: unknown) => {
+    const r = await app.inject({ method: "POST", url, payload: payload as object });
+    return { status: r.statusCode, body: r.json() };
+  };
+  return { call, now, proposed, post };
 }
 
 describe("passkeys (WebAuthn)", () => {
@@ -129,5 +145,41 @@ describe("passkeys (WebAuthn)", () => {
     await call("ivan", "POST", `/me/keys/${body.id}/revoke`, {});
     const { id, hash } = await proposed();
     expect((await call("ivan", "POST", `/deals/${id}/sign`, { proof: a.get(signMessage(id, hash, "ivan", now)) })).status).toBe(400);
+  });
+
+  it("вход по passkey: выдает токен, запрос одноразовый", async () => {
+    const { call, now, post } = await setup();
+    const a = authenticator();
+    await call("ivan", "POST", "/me/passkeys", a.create("ivan", now));
+    const { challenge } = (await post("/auth/passkey/challenge", {})).body;
+    const r = await post("/auth/passkey/login", a.login(challenge, "ivan"));
+    expect(r.status).toBe(200);
+    expect(r.body.user.id).toBe("ivan");
+    const check = await call("ivan", "GET", "/me");
+    expect(check.status).toBe(200);
+    expect((await post("/auth/passkey/login", a.login(challenge, "ivan"))).status).toBe(401); // повтор запроса
+  });
+
+  it("вход по passkey отклоняет чужой запрос, чужого пользователя, отозванный ключ и поддельный challenge", async () => {
+    const { call, now, post } = await setup();
+    const a = authenticator();
+    const reg = await call("ivan", "POST", "/me/passkeys", a.create("ivan", now));
+    const fresh = async () => (await post("/auth/passkey/challenge", {})).body.challenge as string;
+    expect((await post("/auth/passkey/login", a.login(await fresh(), "anna"))).status).toBe(401); // passkey не принадлежит anna
+    expect((await post("/auth/passkey/login", a.login("c.1.x.forged", "ivan"))).status).toBe(401);
+    const ch = await fresh();
+    expect((await post("/auth/passkey/login", a.login(ch, "ivan", { challenge: sha("другой") }))).status).toBe(401); // подписан другой запрос
+    expect((await post("/auth/passkey/login", authenticator().login(await fresh(), "ivan"))).status).toBe(401); // неизвестный passkey
+    await call("ivan", "POST", `/me/keys/${reg.body.id}/revoke`, {});
+    expect((await post("/auth/passkey/login", a.login(await fresh(), "ivan"))).status).toBe(401);
+  });
+
+  it("строгая политика passkey: серверная подпись и обычный ключ не принимаются", async () => {
+    const { call, now, proposed } = await setup(undefined, "passkey");
+    const { id, hash } = await proposed();
+    expect((await call("ivan", "POST", `/deals/${id}/sign`, {})).status).toBe(400);
+    const a = authenticator();
+    await call("ivan", "POST", "/me/passkeys", a.create("ivan", now));
+    expect((await call("ivan", "POST", `/deals/${id}/sign`, { proof: a.get(signMessage(id, hash, "ivan", now)) })).status).toBe(200);
   });
 });

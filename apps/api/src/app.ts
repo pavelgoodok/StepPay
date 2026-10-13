@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -26,10 +26,10 @@ import {
   type Deal,
   type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal, linkChain } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
-import { makeTicket, makeToken, verifyTicket, verifyToken } from "./auth";
+import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
-import { MAX_KEYS, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
+import { MAX_KEYS, checkLoginAssertion, checkPasskeyRegistration, checkRegisterProof, checkSignProof, keyIdOf, signMessage } from "./devicekeys";
 import { DEMO_COVERS, DEMO_COVER_IDS } from "./demo-covers";
 import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeDemo, seedUsers } from "./demo";
 import { DEMO_USERS } from "./users";
@@ -63,7 +63,7 @@ export interface AppOptions {
   allowTopup?: boolean;
   /** ограничение частоты запросов с одного адреса за минуту */
   rateLimit?: { general: number; auth: number; uploads: number };
-  signaturePolicy?: "device" | "any";
+  signaturePolicy?: "device" | "any" | "passkey";
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -117,7 +117,7 @@ export async function buildApp(opts: AppOptions) {
     const d = s.deals[dealId];
     if (!d?.signing || !d.contract || d.status !== "funding") return s;
     // у пользователя есть ключ или включена строгая политика: подписывает он сам, ключом устройства
-    if (opts.signaturePolicy === "device" || dir.hasActiveKey(userId)) return s;
+    if (opts.signaturePolicy === "device" || opts.signaturePolicy === "passkey" || dir.hasActiveKey(userId)) return s;
     const st = signatureStatus(d);
     if (!st.required.includes(userId) || st.signed.includes(userId)) return s;
     return signContract(s, dealId, userId, at, signFor(dealId, d.contract.hash, userId));
@@ -251,6 +251,35 @@ export async function buildApp(opts: AppOptions) {
     if (!ok) return reply.code(400).send({ error: "Неверный код" });
     const user = existing ?? (await dir.register(phone, b.name!, now()));
     return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const } };
+  });
+
+  // вход по passkey: без кода из СМС, подтверждение отпечатком, лицом или PIN
+  const usedChallenges = new Map<string, number>();
+  app.post("/auth/passkey/challenge", async () => ({ challenge: makeLoginChallenge(opts.secret, now(), randomBytes(16).toString("base64url")) }));
+  app.post("/auth/passkey/login", async (req, reply) => {
+    const b = z
+      .object({
+        challenge: z.string().max(200),
+        credentialId: z.string().max(400),
+        userHandle: z.string().max(400),
+        authenticatorData: z.string().max(1200),
+        clientDataJSON: z.string().max(1200),
+        signature: z.string().max(400),
+      })
+      .parse(req.body);
+    const fail = () => reply.code(401).send({ error: "Не удалось войти по passkey" });
+    const t = now();
+    for (const [k, at] of usedChallenges) if (t - at > 5 * 60_000) usedChallenges.delete(k);
+    const ch = openLoginChallenge(opts.secret, b.challenge, t);
+    if (!ch || usedChallenges.has(ch.nonce)) return fail();
+    usedChallenges.set(ch.nonce, t);
+    const userId = Buffer.from(b.userHandle, "base64").toString("utf8");
+    const user = dir.get(userId);
+    const key = dir.keysOf(userId).find((k) => k.kind === "passkey" && !k.revokedAt && k.credentialId === b.credentialId);
+    if (!user || !key) return fail();
+    if (checkLoginAssertion(key.publicKey, b, b.challenge, origins) !== null) return fail();
+    if (user.role === "admin") await platform.logAudit(userId, "Вход администратора по passkey", key.id);
+    return { token: makeToken(opts.secret, userId, Date.now()), user: { id: user.id, name: user.name, role: user.role } };
   });
 
   // поиск исполнителя при создании сделки: точный номер или имя от 3 букв
@@ -513,6 +542,7 @@ export async function buildApp(opts: AppOptions) {
       if (b.proof) {
         const key = dir.activeKey(me, b.proof.keyId);
         if (!key) throw new EngineError("Ключ не найден или отозван: создайте новый в профиле");
+        if (opts.signaturePolicy === "passkey" && key.kind !== "passkey") throw new EngineError("Подписывать можно только passkey: добавьте его в профиле");
         if ((key.kind === "passkey") !== !!b.proof.webauthn) throw new EngineError(key.kind === "passkey" ? "Этот ключ подписывает только через passkey" : "Для этого ключа нужна обычная подпись");
         const proof = { alg: "ES256" as const, keyId: key.id, publicKey: key.publicKey, message: b.proof.message, signature: b.proof.signature, webauthn: b.proof.webauthn };
         const bad = checkSignProof(proof, { dealId: d.id, contract: d.contract.hash, userId: me }, now(), origins);
@@ -520,6 +550,7 @@ export async function buildApp(opts: AppOptions) {
         return signContract(s, p.id, me, now(), `es256:${key.id}`, proof);
       }
       if (dir.hasActiveKey(me)) throw new EngineError("Подпишите контракт ключом устройства");
+      if (opts.signaturePolicy === "passkey") throw new EngineError("Добавьте passkey в профиле: подписывать можно только им");
       if (opts.signaturePolicy === "device") throw new EngineError("Создайте ключ подписи в профиле: серверная подпись отключена");
       return signContract(s, p.id, me, now(), signFor(p.id, d.contract.hash, me));
     },
