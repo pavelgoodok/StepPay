@@ -98,7 +98,7 @@ export default function WalletPage() {
       {open && (
         <Sheet onClose={() => setOpen(false)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="art" src={IMG.reserve} alt="" />
+          <img className="art" src={IMG.accept} alt="" />
           <h2>Пополнить кошелек</h2>
           <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>Демо: деньги появятся мгновенно</p>
           <div className="stack">
