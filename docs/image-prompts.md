@@ -24,7 +24,7 @@
 
 1. **cover-services.** `A craftsman's toolbox, a paint roller and a ruler arranged diagonally on a blue background, three small checkmark badges floating above. Wide 16:9 composition.`
 2. **cover-projects.** `A small rocket made of simple geometric shapes launching from a stack of three stairs, each stair a different shade of blue. Wide 16:9 composition.`
-3. **cover-grants.** `An open hand holding a glowing-free flat coin above a sapling growing from three stacked blocks. Wide 16:9 composition.`
+3. **cover-grants.** `An open hand holding a flat coin above a sapling growing from three stacked blocks. Wide 16:9 composition.`
 4. **empty-deals.** `An empty open folder with a single dotted outline of a document inside, soft circle behind it. Square composition.`
 5. **empty-chats.** `Two empty speech bubbles, one white, one blue, slightly overlapping. Square composition.`
 6. **empty-wallet.** `A flat wallet with a small coin hovering above it, subtle dotted circle behind. Square composition.`
