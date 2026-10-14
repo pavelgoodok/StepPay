@@ -1,6 +1,6 @@
 # Библиотека оформления документов по требованиям ЕСПД (ГОСТ 19.101, 19.104, 19.105, 19.106):
 # А4, поля 30/15/20/20 мм, Times New Roman 14, интервал 1,5, абзацный отступ 1,25 см,
-# номер страницы вверху по центру, лист утверждения и титульный лист без номера, нумерация разделов арабскими цифрами.
+# номер страницы вверху по центру, титульный лист без номера, нумерация разделов арабскими цифрами.
 import os, re, subprocess, tempfile
 from docx import Document
 from docx.enum.section import WD_SECTION
@@ -160,31 +160,8 @@ class Doc:
 
     def approval_and_title(self, org, system_name, doc_kind, designation, approver_title, year, place):
         d = self.d
-        # лист утверждения (ГОСТ 19.104)
-        self.center(org, line=1.15)
-        self.center("", line=1.0)
-        t = d.add_table(rows=1, cols=2)
-        t.autofit = False
-        left, right = t.rows[0].cells
-        left.width, right.width = Cm(8.2), Cm(8.2)
-        left.paragraphs[0].add_run("")
-        for txt in ["УТВЕРЖДАЮ", approver_title, "______________ / подпись автора /", f"«____» ____________ {year} г."]:
-            para = right.add_paragraph() if right.paragraphs[0].text or txt != "УТВЕРЖДАЮ" else right.paragraphs[0]
-            para.paragraph_format.line_spacing = 1.15
-            _font(para.add_run(txt), 14, txt == "УТВЕРЖДАЮ")
-        for _ in range(6):
-            self.center("", line=1.15)
-        self.center(system_name.upper(), bold=True, line=1.3)
-        self.center(doc_kind, bold=True, line=1.3, before=6)
-        self.center("ЛИСТ УТВЕРЖДЕНИЯ", bold=True, line=1.3, before=12)
-        self.center(designation + "-ЛУ", line=1.3, before=6)
-        for _ in range(8):
-            self.center("", line=1.15)
-        self.center("Подпись и дата / Инв. № подл. / Взам. инв. № / Инв. № дубл. (по ГОСТ 19.104-78 заполняются при выпуске)", size=10, line=1.0)
-        self.pagebreak()
         # титульный лист
-        self.center("УТВЕРЖДЕН", line=1.15)
-        self.center(designation + "-ЛУ", line=1.15)
+        self.center(org, line=1.15)
         for _ in range(6):
             self.center("", line=1.15)
         self.center(system_name.upper(), bold=True, line=1.3)
@@ -194,7 +171,7 @@ class Doc:
         for _ in range(10):
             self.center("", line=1.15)
         self.center(f"{place} {year}".strip(), line=1.15)
-        # новая секция: нумерация страниц вверху по центру, с третьей страницы
+        # новая секция: нумерация страниц вверху по центру, со второй страницы
         sec = d.add_section(WD_SECTION.NEW_PAGE)
         sec.header.is_linked_to_previous = False
         hp = sec.header.paragraphs[0]
@@ -202,7 +179,7 @@ class Doc:
         self._field(hp, "PAGE")
         sectPr = sec._sectPr
         pg = OxmlElement("w:pgNumType")
-        pg.set(qn("w:start"), "3")
+        pg.set(qn("w:start"), "2")
         sectPr.append(pg)
         # у первой секции колонтитул пустой
         d.sections[0].header.is_linked_to_previous = False
@@ -275,7 +252,7 @@ def build(make, out_base, passes=2):
             for i in range(body_start, len(sheets)):
                 flat = re.sub(r"\s+", " ", sheets[i])
                 if key in flat:
-                    found[text] = i + 1  # физическая страница: нумерация идет с 1, титул и лист утверждения занимают 1 и 2
+                    found[text] = i + 1  # физическая страница: нумерация идет с 1, титульный лист занимает 1
                     break
         found["__total__"] = len(sheets) - 1
         pages = found
