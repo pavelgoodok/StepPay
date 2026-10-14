@@ -10,7 +10,7 @@
 
 1. New Project, Deploy from GitHub repo, ветка с кодом. Корневой `railway.json` включит сборку `apps/api/Dockerfile`.
 2. Add, Database, PostgreSQL: `DATABASE_URL` появится сам.
-3. Переменные сервиса API:
+3. Переменные сервиса API (готовый блок со свежими секретами: `node scripts/gen-env.mjs --api https://API --web https://САЙТ --admin +79001234567`):
 
 | Переменная | Обязательна | Значение |
 |---|---|---|
