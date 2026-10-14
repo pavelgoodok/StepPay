@@ -341,6 +341,28 @@ export class ChainMirror {
     return this.o.chain.wallet(userId);
   }
 
+  private reconciled = new Map<string, number>();
+
+  /**
+   * Баланс в приложении подкреплен токенами на адресе участника. Если токенов меньше, чем свободно в приложении
+   * (демо-остаток, выданный до подключения сети), недостающее выпускается. Лишние токены не сжигаются.
+   * Пока по сделкам участника есть непереданные в сеть действия, баланс не трогаем: он еще не сошелся.
+   */
+  reconcile(userId: string, free: number) {
+    const t = this.o.now();
+    if (t - (this.reconciled.get(userId) ?? 0) < 60_000 || free <= 0) return;
+    this.reconciled.set(userId, t);
+    void this.exclusive(async () => {
+      for (const d of Object.values(this.latest?.deals ?? {})) {
+        const mine = d.executorId === userId || d.ownerId === userId || userId in d.contributed || userId in d.reserves;
+        const m = this.o.data.deals[d.id];
+        if (mine && m && !m.failed && (d.journal?.length ?? 0) > m.cursor) return;
+      }
+      const w = await this.o.chain.wallet(userId);
+      if (w.tokens < free) await this.o.chain.faucet(userId, free - w.tokens);
+    }).catch(() => undefined);
+  }
+
   faucet(userId: string, amount: number) {
     return this.exclusive(() => this.o.chain.faucet(userId, amount));
   }

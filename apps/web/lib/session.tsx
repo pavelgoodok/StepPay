@@ -8,7 +8,7 @@ interface Session {
   user: PublicUser | null;
   wallet: Wallet | null;
   /** возможности сервера: пополнение без оплаты есть только в демо */
-  features: { topup: boolean };
+  features: { topup: boolean; chain?: boolean };
   users: PublicUser[];
   ready: boolean;
   refresh(): Promise<void>;
@@ -54,7 +54,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet; features?: { topup: boolean }; adminLocked?: boolean }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; features?: { topup: boolean; chain?: boolean }; adminLocked?: boolean }>("/me");
       setAdminLocked(!!me.adminLocked);
       setUser(me.user);
       if (me.features) setFeatures(me.features);

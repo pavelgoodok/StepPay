@@ -101,7 +101,7 @@ describe("защита API", () => {
   it("пополнение без оплаты отключается вне демо-режима", async () => {
     const demo = await mk();
     const tokenD = await login(demo, "anna");
-    expect((await demo.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${tokenD}` } })).json().features).toEqual({ topup: true });
+    expect((await demo.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${tokenD}` } })).json().features).toMatchObject({ topup: true });
     expect((await demo.inject({ method: "POST", url: "/wallet/topup", headers: { authorization: `Bearer ${tokenD}` }, payload: { amount: 100 } })).statusCode).toBe(200);
 
     const prod = await mk({ demoMode: false });
@@ -112,7 +112,7 @@ describe("защита API", () => {
     const u = await reg("+79995550101");
     const h = { authorization: `Bearer ${u.token}` };
     expect((await prod.inject({ method: "POST", url: "/wallet/topup", headers: h, payload: { amount: 100 } })).statusCode).toBe(403);
-    expect((await prod.inject({ method: "GET", url: "/me", headers: h })).json().features).toEqual({ topup: false });
+    expect((await prod.inject({ method: "GET", url: "/me", headers: h })).json().features).toMatchObject({ topup: false });
     const explicit = await mk({ demoMode: false, allowTopup: true });
     const r2 = (await explicit.inject({ method: "POST", url: "/auth/otp/request", payload: { phone: "+79995550102" } })).json();
     const u2 = (await explicit.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone: "+79995550102", code: r2.demoCode, name: "Пользователь" } })).json();

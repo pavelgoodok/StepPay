@@ -39,7 +39,7 @@ export default function WalletPage() {
       <div className="hero">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
-        <div className="label">Цифровой рубль</div>
+        <div className="label">{data?.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
         <div className="big"><Money value={data?.free ?? 0} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(data?.reserved ?? 0)} в резерве</span>
@@ -53,6 +53,16 @@ export default function WalletPage() {
         )}
         <button className="btn soft" onClick={() => toast("В демо переводы отключены")}><Icon name="arrow" size={18} /> Перевести</button>
       </div>
+
+      {data?.chain && (
+        <Link href="/profile/chain" className="card row between" style={{ gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="title">tRUB в сети {data.chain.network}</div>
+            <div className="small muted">На вашем адресе <b className="mono">{rub(data.chain.onchain)}</b></div>
+          </div>
+          <span className={`chip ${data.chain.matches ? "green" : "amber"}`}>{data.chain.matches ? "Совпадает" : "Синхронизируется"}</span>
+        </Link>
+      )}
 
       {data && data.reserves.length > 0 && (
         <>
@@ -71,7 +81,11 @@ export default function WalletPage() {
 
       <div className="card row" style={{ background: "var(--blue-soft)", boxShadow: "none" }}>
         <Icon name="shield" size={30} />
-        <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
+        {data?.chain ? (
+          <div><b>Баланс хранится токенами tRUB</b><div className="sub">Резервы и выплаты по сделкам проходят через смарт-контракт в тестовой сети. Токены ничего не стоят.</div></div>
+        ) : (
+          <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
+        )}
       </div>
 
       <h2 className="title">История</h2>
@@ -100,13 +114,13 @@ export default function WalletPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="art" src={IMG.accept} alt="" />
           <h2>Пополнить кошелек</h2>
-          <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>Демо: деньги появятся мгновенно</p>
+          <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>{features.chain ? "Токены tRUB выпускаются в тестовой сети, это занимает до минуты" : "Демо: деньги появятся мгновенно"}</p>
           <div className="stack">
             <div className="chips" style={{ justifyContent: "center" }}>
               {[10000, 50000, 100000, 300000].map((v) => <button key={v} className={`opt ${amount === String(v) ? "on" : ""}`} onClick={() => setAmount(String(v))}>{rub(toKopecks(v))}</button>)}
             </div>
             <MoneyInput placeholder="Сумма, ₽" value={amount} onChange={setAmount} />
-            <button className="btn" disabled={busy || !Number(amount)} onClick={topup}>Пополнить</button>
+            <button className="btn" disabled={busy || !Number(amount)} onClick={topup}>{busy ? <><span className="spin" /> {features.chain ? "Выпускаем в сети…" : "Пополняем…"}</> : "Пополнить"}</button>
           </div>
         </Sheet>
       )}

@@ -397,7 +397,7 @@ export async function buildApp(opts: AppOptions) {
     const phone = dir.phoneOf(id);
     const h = req.headers.authorization;
     const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed }, ...(locked ? { adminLocked: true } : {}) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -406,8 +406,21 @@ export async function buildApp(opts: AppOptions) {
     const reserves = Object.values(state.deals)
       .filter((d) => (d.reserves[id] ?? 0) > 0)
       .map((d) => ({ dealId: d.id, title: d.title, amount: d.reserves[id]!, stages: stageCounts(d) }));
+    const wallet = walletOf(state, id);
+    let chain: { network: string; chainId: number; address: string; explorer?: string; onchain: number; matches: boolean } | undefined;
+    if (mirror) {
+      mirror.reconcile(id, wallet.free);
+      const i = mirror.info();
+      try {
+        const w = await mirror.wallet(id);
+        chain = { network: i.network, chainId: i.chainId, address: w.address, explorer: i.explorer, onchain: w.tokens, matches: w.tokens === wallet.free };
+      } catch {
+        chain = undefined;
+      }
+    }
     return {
-      ...walletOf(state, id),
+      ...wallet,
+      ...(chain ? { chain } : {}),
       reserves,
       history: state.ledger.filter((l) => l.userId === id).reverse().slice(0, 100),
     };
@@ -428,12 +441,20 @@ export async function buildApp(opts: AppOptions) {
     return { ok: true };
   });
 
-  const topupAllowed = opts.allowTopup ?? demoOn;
+  const topupAllowed = opts.allowTopup ?? (demoOn || !!mirror);
   app.post("/wallet/topup", async (req, reply) => {
     if (!topupAllowed) return reply.code(403).send({ error: "Пополнение подключается к платежной платформе и пока недоступно" });
     const id = authed(req, reply);
     if (!id) return;
     const { amount } = z.object({ amount: money }).parse(req.body);
+    // в сети сначала выпускаются токены tRUB на адрес участника, и только потом растет баланс в приложении
+    if (mirror) {
+      try {
+        await mirror.faucet(id, amount);
+      } catch (e) {
+        return reply.code(502).send({ error: e instanceof Error && e.message ? e.message.slice(0, 200) : "Сеть не отвечает, повторите позже" });
+      }
+    }
     return transact((s) => {
       const next = topUp(s, id, amount, now());
       return { state: next, result: walletOf(next, id) };
@@ -496,30 +517,6 @@ export async function buildApp(opts: AppOptions) {
       return { enabled: true, network: i.network, chainId: i.chainId, contract: i.contract, token: i.token, explorer: i.explorer, address: w.address, eth: w.eth, tokens: w.tokens };
     } catch {
       return reply.code(502).send({ error: "Сеть не отвечает, повторите позже" });
-    }
-  });
-
-  /** Тестовые токены: платформа выпускает tRUB на адрес участника. Не чаще раза в полминуты и пока на адресе меньше 50 000 рублей. */
-  const lastFaucet = new Map<string, number>();
-  app.post("/me/chain/faucet", async (req, reply) => {
-    const me = authed(req, reply);
-    if (!me) return;
-    if (!mirror) return reply.code(404).send({ error: "Тестовая сеть не подключена" });
-    const { amount } = z.object({ amount: z.number().int().min(100).max(1_000_000) }).parse(req.body);
-    const prev = lastFaucet.get(me) ?? 0;
-    if (now() - prev < 30_000) return reply.code(429).send({ error: "Подождите полминуты перед следующей выдачей" });
-    lastFaucet.set(me, now());
-    try {
-      const w = await mirror.wallet(me);
-      if (w.tokens >= 5_000_000) {
-        lastFaucet.delete(me);
-        return reply.code(400).send({ error: "На адресе уже достаточно токенов" });
-      }
-      const hash = await mirror.faucet(me, amount);
-      return { ok: true, hash, explorer: mirror.info().explorer };
-    } catch (e) {
-      lastFaucet.delete(me);
-      return reply.code(502).send({ error: e instanceof Error && e.message ? e.message.slice(0, 200) : "Сеть не отвечает, повторите позже" });
     }
   });
 

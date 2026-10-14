@@ -44,6 +44,8 @@ export interface DealSummary {
   currentStage: { id: string; title: string; status: string } | null;
 }
 export interface WalletView extends Wallet {
+  /** есть, если подключена тестовая сеть: баланс подкреплен токенами tRUB на адресе участника */
+  chain?: { network: string; chainId: number; address: string; explorer?: string; onchain: number; matches: boolean };
   reserves: { dealId: string; title: string; amount: number; stages: { done: number; total: number } }[];
   history: LedgerEntry[];
 }

@@ -10,8 +10,9 @@ let t = 1_000_000;
 function fakeChain() {
   const calls: string[] = [];
   let n = 0;
-  const port: ChainPort & { calls: string[]; snap?: ChainSnapshot; failOn?: ChainMethod; tokens?: number } = {
+  const port: ChainPort & { calls: string[]; snap?: ChainSnapshot; failOn?: ChainMethod; balances: Record<string, number> } = {
     calls,
+    balances: {},
     info: () => ({ network: "Тестовая", chainId: 11155111, contract: "0x" + "ab".repeat(20), token: "0x" + "cd".repeat(20), explorer: "https://sepolia.etherscan.io" }),
     addressOf: (a) => "0x" + Buffer.from(a).toString("hex").padEnd(40, "0").slice(0, 40),
     create: async (a: CreateArgs) => {
@@ -24,9 +25,10 @@ function fakeChain() {
       calls.push(`${m} ${a}`);
       return "0x" + calls.length.toString(16).padStart(64, "2");
     },
-    wallet: async (a) => ({ address: "0x" + Buffer.from(a).toString("hex").padEnd(40, "0").slice(0, 40), eth: "3000000000000000", tokens: port.tokens ?? 0 }),
+    wallet: async (a) => ({ address: "0x" + Buffer.from(a).toString("hex").padEnd(40, "0").slice(0, 40), eth: "3000000000000000", tokens: port.balances[a] ?? 0 }),
     faucet: async (a, amount) => {
-      port.tokens = (port.tokens ?? 0) + amount;
+      if (port.failOn === ("faucet" as ChainMethod)) throw new Error("сеть недоступна");
+      port.balances[a] = (port.balances[a] ?? 0) + amount;
       calls.push(`faucet ${a} ${amount}`);
       return "0x" + "f".repeat(64);
     },
@@ -140,25 +142,48 @@ describe("настройки сети из переменных", () => {
   });
 });
 
-describe("кошелек в сети и выдача токенов", () => {
-  it("без сети кошелька нет, с сетью виден адрес и баланс, токены выдаются с ограничениями", async () => {
-    const off = await setup();
-    expect((await off.call("anna", "GET", "/me/chain")).body).toEqual({ enabled: false });
-    expect((await off.call("anna", "POST", "/me/chain/faucet", { amount: 100000 })).status).toBe(404);
-
+describe("кошелек приложения подкреплен токенами tRUB", () => {
+  it("пополнение сначала выпускает токены в сети, потом растет баланс; сеть и баланс совпадают", async () => {
     const chain = fakeChain();
     const { call } = await setup(chain);
-    const w = (await call("anna", "GET", "/me/chain")).body;
-    expect(w).toMatchObject({ enabled: true, network: "Тестовая", tokens: 0, eth: "3000000000000000" });
-    expect(w.address).toMatch(/^0x[0-9a-f]{40}$/);
+    expect((await call("anna", "GET", "/me")).body.features).toMatchObject({ chain: true, topup: true });
+    const before = (await call("anna", "GET", "/wallet")).body;
+    expect(before.chain).toMatchObject({ network: "Тестовая", matches: false }); // демо-остаток еще не выпущен в сети
 
-    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 1_000_000 })).body).toMatchObject({ ok: true });
-    expect((await call("anna", "GET", "/me/chain")).body.tokens).toBe(1_000_000);
-    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 100 })).status).toBe(429); // слишком часто
-    expect((await call("ivan", "POST", "/me/chain/faucet", { amount: 5_000_000 })).status).toBe(400); // больше 10 000 рублей за раз
-    expect((await call("ivan", "POST", "/me/chain/faucet", { amount: 0 })).status).toBe(400);
-    t += 31_000;
-    chain.tokens = 5_000_000;
-    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 100 })).status).toBe(400); // уже достаточно
+    const olgaBefore = (await call("olga", "GET", "/wallet")).body.free;
+    const top = await call("olga", "POST", "/wallet/topup", { amount: 250_000 });
+    expect(top.status).toBe(200);
+    expect(chain.calls).toContain("faucet olga 250000");
+    const w = (await call("olga", "GET", "/wallet")).body;
+    expect(w.free).toBe(olgaBefore + 250_000);
+    expect(w.chain.address).toMatch(/^0x[0-9a-f]{40}$/);
+  });
+
+  it("если сеть не отвечает, баланс в приложении не растет", async () => {
+    const chain = fakeChain();
+    const { call } = await setup(chain);
+    const free = (await call("ivan", "GET", "/wallet")).body.free;
+    chain.failOn = "faucet" as ChainMethod;
+    const r = await call("ivan", "POST", "/wallet/topup", { amount: 100_000 });
+    expect(r.status).toBe(502);
+    expect((await call("ivan", "GET", "/wallet")).body.free).toBe(free);
+  });
+
+  it("демо-остаток добирается токенами в сети, лишнее не сжигается", async () => {
+    const chain = fakeChain();
+    const { app, call } = await setup(chain);
+    const mirror = (app as unknown as { mirror: { idle(): Promise<void> } }).mirror;
+    const free = (await call("anna", "GET", "/wallet")).body.free;
+    await mirror.idle();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(chain.calls).toContain(`faucet anna ${free}`);
+    const w = (await call("anna", "GET", "/wallet")).body;
+    expect(w.chain.onchain).toBe(free);
+    expect(w.chain.matches).toBe(true);
+    chain.balances.anna = free + 777; // в сети больше: ничего не сжигаем, повторных выдач нет
+    t += 61_000;
+    await call("anna", "GET", "/wallet");
+    await mirror.idle();
+    expect(chain.calls.filter((c) => c.startsWith("faucet anna")).length).toBe(1);
   });
 });
