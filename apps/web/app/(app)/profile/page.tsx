@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Ava, IMG, Icon, Initials, Sheet, Switch } from "@/components/ui";
 import { CropSheet } from "@/components/cropper";
 import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
+import { rub } from "@/lib/format";
 import { PROJECT_STATUS } from "@/lib/labels";
 import { createDeviceKey, deviceKeysAvailable, forgetStoredKey, getStoredKey } from "@/lib/keys";
 import { createPasskey, passkeysAvailable } from "@/lib/passkeys";
@@ -13,7 +14,7 @@ import { useSession, usePoll } from "@/lib/session";
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
 
 export default function Profile() {
-  const { user, users, login, logout, toast, refresh } = useSession();
+  const { user, users, login, logout, toast, refresh, wallet, features } = useSession();
   const router = useRouter();
   const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
@@ -147,6 +148,18 @@ export default function Profile() {
           </button>
         )}
       </div>
+
+      <Link href="/wallet" className="card tap row" style={{ gap: 14 }}>
+        <span className="setic"><Icon name="wallet" size={22} /></span>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="title">Кошелек</div>
+          <div className="small muted">
+            {wallet ? <>Свободно <b className="mono">{rub(wallet.free)}</b>{wallet.reserved > 0 ? ` · в резерве ${rub(wallet.reserved)}` : ""}</> : "Баланс, пополнение, история"}
+          </div>
+        </div>
+        {features.chain && <span className="chip">tRUB</span>}
+        <Icon name="arrow" size={18} />
+      </Link>
 
       <div className="tiles">
         <div className="tile"><b>{data?.rating != null ? data.rating.toFixed(1).replace(".", ",") : "-"}</b><span>рейтинг</span></div>
