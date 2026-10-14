@@ -1,36 +1,85 @@
-/**
- * Сеть линий в стиле микросхемы для карточки кошелька: дорожки с узлами и контактными площадками, часть дорожек «течет».
- * Рисунок широкий и прижат вправо: слева, где цифры, он гаснет маской из стилей.
- */
-const NODES: [number, number][] = [[760, 60], [1010, 76], [1040, 46], [700, 36], [960, 140], [1130, 190], [1100, 100], [820, 330], [1010, 320], [700, 290], [980, 290], [1190, 220], [640, 20]];
+import { useId } from "react";
 
-export function CircuitNet() {
+/**
+ * Рисунок для карточки кошелька: несколько тонких дорожек с объемными узлами. Статичный, без анимации.
+ * Два варианта под форму карточки (широкая на планшете и компьютере, высокая на телефоне): стили выбирают нужный.
+ * Дорожки идут вдоль всей карточки по краям, середина остается свободной под цифры.
+ */
+type Trace = { d: string; dy?: number };
+type Art = { box: string; traces: Trace[]; nodes: [number, number][] };
+
+const WIDE: Art = {
+  box: "0 0 1200 340",
+  traces: [
+    { d: "M0 26H340L366 50H640L668 24H1200" },
+    { d: "M0 318H260L288 298H470H700L730 268H1010" },
+    { d: "M400 206H560L600 166H820L850 196H1010" },
+    { d: "M400 206H560L600 166H820L850 196H1010", dy: 16 },
+  ],
+  nodes: [[400, 206], [400, 222], [600, 166], [730, 268], [668, 24], [288, 298]],
+};
+
+const COMPACT: Art = {
+  box: "0 0 1200 560",
+  traces: [
+    { d: "M0 50H300L340 90H620L660 50H1200" },
+    { d: "M0 526H380L410 496H760L790 526H1200" },
+    { d: "M820 130H980L1010 160H1200" },
+    { d: "M820 130H980L1010 160H1200", dy: 16 },
+  ],
+  nodes: [[820, 130], [820, 146], [340, 90], [790, 526], [660, 50], [410, 496]],
+};
+
+function Drawing({ art, kind }: { art: Art; kind: "wide" | "compact" }) {
+  const id = useId().replace(/:/g, "");
+  const g = `g${id}`;
+  const glow = `b${id}`;
+  const shade = `s${id}`;
+  const ball = `o${id}`;
+  const w = Number(art.box.split(" ")[2]);
   return (
-    <svg className="net" viewBox="0 0 1200 360" preserveAspectRatio="xMaxYMid slice" aria-hidden="true" focusable="false">
-      <g className="traces" fill="none" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M700 36H820L860 76H1010L1040 46H1200" className="flow" />
-        <path d="M560 20H640L680 60H760" />
-        <path d="M900 0V40L930 70V110L960 140H1040" className="flow slow" />
-        <path d="M600 150H760L800 180H940L980 220H1200" />
-        <path d="M1100 100V160L1130 190H1200" />
-        <path d="M640 330H780L820 290H980L1010 320H1200" className="flow" />
-        <path d="M620 260H700L730 290H760" />
-        <path d="M1040 360V300L1070 270H1200" />
-        <path d="M820 360V330" />
-        <path d="M1160 0V30L1190 60H1200" />
+    <svg className={`net net-${kind}`} viewBox={art.box} preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={g} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={w} y2="0">
+          <stop offset="0" stopColor="#c6dcff" stopOpacity="0.3" />
+          <stop offset="0.5" stopColor="#c6dcff" stopOpacity="0.38" />
+          <stop offset="1" stopColor="#ffffff" stopOpacity="0.85" />
+        </linearGradient>
+        <filter id={glow} x="-10%" y="-40%" width="120%" height="180%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+        <filter id={shade} x="-60%" y="-60%" width="220%" height="220%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#00123f" floodOpacity="0.5" />
+        </filter>
+        <radialGradient id={ball} cx="0.34" cy="0.3" r="0.8">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="0.5" stopColor="#b3d0ff" />
+          <stop offset="1" stopColor="#4a7fe8" />
+        </radialGradient>
+      </defs>
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {art.traces.map((t, i) => (
+          <g key={i} transform={`translate(0 ${t.dy ?? 0})`}>
+            <path d={t.d} stroke={`url(#${g})`} strokeWidth="6" opacity="0.28" filter={`url(#${glow})`} vectorEffect="non-scaling-stroke" />
+            <path d={t.d} stroke="#001a5c" strokeOpacity="0.45" strokeWidth="2" transform="translate(0 1.5)" vectorEffect="non-scaling-stroke" />
+            <path d={t.d} stroke={`url(#${g})`} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+          </g>
+        ))}
       </g>
-      <g className="pads">
-        <rect x="856" y="70" width="12" height="12" rx="2.5" />
-        <rect x="796" y="174" width="12" height="12" rx="2.5" />
-        <rect x="976" y="214" width="12" height="12" rx="2.5" />
-        <rect x="816" y="284" width="12" height="12" rx="2.5" />
-        <rect x="1066" y="264" width="12" height="12" rx="2.5" />
-      </g>
-      <g className="dots">
-        {NODES.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="5" className={i % 3 === 0 ? "pulse" : undefined} />
+      <g filter={`url(#${shade})`}>
+        {art.nodes.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r="7.5" fill={`url(#${ball})`} />
         ))}
       </g>
     </svg>
+  );
+}
+
+export function CircuitNet() {
+  return (
+    <>
+      <Drawing art={WIDE} kind="wide" />
+      <Drawing art={COMPACT} kind="compact" />
+    </>
   );
 }
