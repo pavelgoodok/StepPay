@@ -22,7 +22,7 @@ export default function ChainPage() {
     <div className="page">
       <Link href="/wallet" className="btn ghost sm" style={{ paddingLeft: 0, alignSelf: "flex-start" }}><Icon name="back" size={18} /> Кошелек</Link>
       <h1 className="h1">Токены tRUB в сети</h1>
-      <p className="sub">Баланс вашего кошелька хранится тестовыми токенами tRUB. Здесь адрес, контракты и объяснение, откуда берутся токены. Они ничего не стоят.</p>
+      <p className="sub">Баланс вашего кошелька хранится тестовыми токенами tRUB. Здесь адрес, контракты и объяснение, откуда берутся токены.</p>
 
       {!data && !error && <div className="skeleton" />}
       {error && !data && <div className="note warn">Сеть не отвечает: {error}</div>}

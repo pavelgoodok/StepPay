@@ -82,7 +82,7 @@ export default function WalletPage() {
       <div className="card row" style={{ background: "var(--blue-soft)", boxShadow: "none" }}>
         <Icon name="shield" size={30} />
         {data?.chain ? (
-          <div><b>Баланс хранится токенами tRUB</b><div className="sub">Резервы и выплаты по сделкам проходят через смарт-контракт в тестовой сети. Токены ничего не стоят.</div></div>
+          <div><b>Баланс хранится токенами tRUB</b><div className="sub">Резервы и выплаты по сделкам проходят через смарт-контракт в тестовой сети.</div></div>
         ) : (
           <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
         )}
