@@ -32,9 +32,7 @@ export default function Deals() {
         <Link href="/profile"><Ava name={user.name} src={user.avatar} /></Link>
       </div>
 
-      <div className="hero">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={IMG.wallet} alt="" />
+      <div className="hero bg-reserve plain">
         <div className="label">Свободно</div>
         <div className="big"><Money value={wallet?.free ?? 0} /></div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(wallet?.reserved ?? 0)} в резерве</span>

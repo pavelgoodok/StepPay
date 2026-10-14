@@ -609,3 +609,5 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 .hero.bg-reserve .bars i { background: rgba(255,255,255,.22); }
 .hero.bg-reserve .bars i.done { background: #fff; }
 .hero.bg-reserve .bars i.cur { background: rgba(255,255,255,.5); }
+.hero.bg-reserve.plain { --art: 0px; min-height: 150px; }
+.hero.bg-reserve.plain > :not(.art) { max-width: 100%; }

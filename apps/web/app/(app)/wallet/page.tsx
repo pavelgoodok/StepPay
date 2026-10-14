@@ -46,6 +46,8 @@ export default function WalletPage() {
     <div className="page">
       <h1 className="h1">Кошелек</h1>
       <div className="hero bg-wallet">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="art" src={IMG.wallet} alt="" />
         <div className="label">{data.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
         <div className="big"><Money value={data.free} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
