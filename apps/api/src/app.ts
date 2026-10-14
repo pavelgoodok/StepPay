@@ -40,6 +40,7 @@ import { stageCounts, summary } from "./summary";
 import type { Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
+import { ChainMirror, type ChainPort } from "./chain";
 import { Platform, PlatformError } from "./platform";
 import { registerPlatformRoutes } from "./routes-platform";
 import { Directory, maskPhone, normalizePhone, type AuthorProfile } from "./users";
@@ -87,6 +88,8 @@ export interface AppOptions {
   anchorEveryMs?: number;
   /** публикация якоря вне сервера: внешний журнал, сеть, свидетель. Без нее якоря только хранятся и отдаются по /anchors */
   anchorPublish?: (a: PublicAnchor) => Promise<{ target: string; ref?: string }>;
+  /** тестовая сеть: действия по сделкам повторяются на контракте StepEscrow, токены tRUB тестовые */
+  chain?: ChainPort;
   /** подмена AI-планировщика (в тестах) */
   planner?: Planner;
 }
@@ -142,6 +145,20 @@ export async function buildApp(opts: AppOptions) {
     if (raw) await opts.store.replaceFile(fid, sealFile(fileKey, fid, raw));
   }
   const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
+  const mirror = opts.chain
+    ? new ChainMirror({
+        chain: opts.chain,
+        data: platform.mirrorData(),
+        persist: () => platform.saveMirror(),
+        now,
+        // демонстрационные сделки идут по сценарию в обход действий пользователя, их не переносим
+        eligible: (d) => !d.id.startsWith("seed-") && !d.id.startsWith("demo-"),
+        onChange: (id) => {
+          const d = state.deals[id];
+          if (d) hub.send([d.executorId, ...(d.ownerId ? [d.ownerId] : []), ...Object.keys(d.contributed)], "changed", { dealId: id });
+        },
+      })
+    : undefined;
   /** Серверная подпись (демо): HMAC от сделки, хеша контракта и подписанта. Настоящие подписи ключами на устройстве это шаг 7. */
   const signFor = (dealId: string, hash: string, userId: string) => createHmac("sha256", `${opts.secret}:sign`).update(`${dealId}:${hash}:${userId}`).digest("hex");
   const signatureValid = (d: Deal, userId: string) => {
@@ -187,6 +204,10 @@ export async function buildApp(opts: AppOptions) {
     await platform.purgeDemo(new Set(DEMO_USERS.map((u) => u.id)), (id) => !state.deals[id]);
   }
 
+  // после перезапуска дозавершаем перенос действий, которые не успели уйти в сеть
+  mirror?.notify(state);
+  if (mirror) Object.assign(app, { mirror });
+
   await putFile(DEMO_PHOTO_ID, { mime: "image/jpeg", data: DEMO_PHOTO });
   for (let i = 0; i < DEMO_COVERS.length; i++) await putFile(DEMO_COVER_IDS[i]!, { mime: "image/jpeg", data: DEMO_COVERS[i]! });
   await putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
@@ -198,6 +219,7 @@ export async function buildApp(opts: AppOptions) {
       const out = fn(state);
       await opts.store.save(out.state);
       state = out.state;
+      mirror?.notify(out.state);
       return out.result;
     });
     queue = run.catch(() => undefined);
@@ -433,7 +455,7 @@ export async function buildApp(opts: AppOptions) {
       for (const u of Object.keys(st.votes)) ids.add(u);
       for (const m of st.messages ?? []) ids.add(m.by);
     }
-    return { ...d, summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), signatureStatus: { ...signatureStatus(d), valid: Object.fromEntries(Object.keys(d.signatures ?? {}).map((u) => [u, signatureValid(d, u)])) }, terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
+    return { ...d, chain: mirror?.link(id) ?? d.chain, chainSync: mirror?.state(id), summary: sum(d), contractCheck: verifyContract(d), journalCheck: verifyJournal(d), signatureStatus: { ...signatureStatus(d), valid: Object.fromEntries(Object.keys(d.signatures ?? {}).map((u) => [u, signatureValid(d, u)])) }, terms: contractTerms(d), people: Object.fromEntries([...ids].map((x) => [x, brief(x)])) };
   });
 
   /** Прогон сделки на контракте в сети: администратор прикрепляет отчет (адреса и хеши транзакций), он виден участникам сделки. */
@@ -461,6 +483,29 @@ export async function buildApp(opts: AppOptions) {
     hub.send(people, "notify", { dealId: id, text: `Сделка «${out.title}» проведена на контракте в сети ${chain.network}: транзакции доступны в сделке` });
     hub.send(people, "changed", { dealId: id });
     return { ok: true };
+  });
+
+  /** Подключена ли тестовая сеть и куда: для главной страницы и админки. Адреса не секретны. */
+  app.get("/chain/status", async () => {
+    if (!mirror) return { enabled: false };
+    const i = mirror.info();
+    return { enabled: true, network: i.network, chainId: i.chainId, contract: i.contract, token: i.token, explorer: i.explorer };
+  });
+
+  /** Сверка сделки с контрактом: статусы этапов и резервы должны совпасть. Видна участникам сделки. */
+  app.get("/deals/:id/chain/verify", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const d = state.deals[id];
+    if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
+    if (!mirror) return reply.code(404).send({ error: "Тестовая сеть не подключена" });
+    if (!involved(d, me) && !dir.isAdmin(me)) return reply.code(403).send({ error: "Нет доступа к сделке" });
+    try {
+      return await mirror.verify(state, id);
+    } catch {
+      return reply.code(502).send({ error: "Сеть не отвечает, повторите позже" });
+    }
   });
 
   /** Журнал для разбора спора: события, хеши цепочки и результат проверки. Файл самодостаточен: условия и хеш контракта внутри. */

@@ -60,7 +60,10 @@ export type DealFull = Deal & {
   terms: ContractTerms;
   journalCheck: JournalCheck;
   signatureStatus: SignatureStatus & { valid: Record<string, boolean> };
+  /** перенос действий сделки на контракт в тестовой сети: есть, только если сеть подключена */
+  chainSync?: { state: "syncing" | "synced" | "failed"; error?: string; pending: number; txs: number };
 };
+export type ChainVerdict = { ok: boolean; applied: boolean; diffs: string[] };
 
 const TOKEN_KEY = "steppay.token";
 export const getToken = () => {

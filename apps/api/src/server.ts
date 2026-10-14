@@ -1,4 +1,5 @@
 import { buildApp } from "./app";
+import { chainFromEnv } from "./chain";
 import { MemoryStore, PgStore, type Store } from "./store";
 
 const secret = process.env.AUTH_SECRET ?? (process.env.NODE_ENV === "production" ? "" : "dev-secret");
@@ -32,7 +33,9 @@ const anchorPublish = anchorUrl
     }
   : undefined;
 
-const app = await buildApp({ store, fileKey: process.env.FILE_KEY, adminRequirePasskey: process.env.ADMIN_REQUIRE_PASSKEY === "1" ? true : process.env.ADMIN_REQUIRE_PASSKEY === "0" ? false : undefined, anchorPublish, anchorEveryMs: process.env.ANCHOR_EVERY_MIN ? Number(process.env.ANCHOR_EVERY_MIN) * 60_000 : undefined, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : process.env.SIGNATURE_POLICY === "passkey" ? "passkey" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
+const chain = chainFromEnv(process.env);
+if (chain) console.log(`Тестовая сеть: ${chain.info().network}, контракт ${chain.info().contract}`);
+const app = await buildApp({ store, chain, fileKey: process.env.FILE_KEY, adminRequirePasskey: process.env.ADMIN_REQUIRE_PASSKEY === "1" ? true : process.env.ADMIN_REQUIRE_PASSKEY === "0" ? false : undefined, anchorPublish, anchorEveryMs: process.env.ANCHOR_EVERY_MIN ? Number(process.env.ANCHOR_EVERY_MIN) * 60_000 : undefined, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : process.env.SIGNATURE_POLICY === "passkey" ? "passkey" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
 const port = Number(process.env.PORT ?? 4000);
 await app.listen({ port, host: "0.0.0.0" });
 console.log(`StepPay API on :${port}`);

@@ -1,3 +1,4 @@
+import type { MirrorData } from "./chain";
 import { randomUUID } from "node:crypto";
 import type { Anchor } from "@steppay/engine";
 
@@ -100,6 +101,8 @@ export interface PlatformData {
   /** якоря истории и куда их опубликовали */
   anchors?: Anchor[];
   anchorPubs?: Record<number, AnchorPub[]>;
+  /** перенос сделок на контракт в тестовой сети: что уже перенесено и хеши транзакций */
+  mirror?: MirrorData;
 }
 
 export interface AnchorPub {
@@ -150,6 +153,15 @@ export function projectProblems(p: Project): string[] {
 }
 
 export class Platform {
+  /** Данные переноса на контракт: создаются при первом обращении, момент включения запоминается. */
+  mirrorData(): MirrorData {
+    return (this.data.mirror ??= { since: this.now(), deals: {} });
+  }
+
+  saveMirror() {
+    return this.save();
+  }
+
   constructor(
     private data: PlatformData,
     private persist: (d: PlatformData) => Promise<void>,

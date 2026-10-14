@@ -4,11 +4,13 @@
   "private": true,
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js test/anchor.test.js",
+    "test": "hardhat test test/StepEscrow.test.js test/conformance.test.js test/anchor.test.js test/chain-mirror.test.js",
     "test:invariants": "hardhat test test/invariants.test.js",
     "test:all": "hardhat test",
     "chain:local": "hardhat run scripts/testnet-deal.js",
     "chain:sepolia": "hardhat run scripts/testnet-deal.js --network sepolia",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
     "test:differential": "hardhat test test/differential.test.js",
     "anchor:publish": "hardhat run scripts/anchor.js"
   },

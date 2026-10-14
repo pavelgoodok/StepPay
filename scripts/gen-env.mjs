@@ -23,7 +23,7 @@ if (out && existsSync(out)) errors.push(`--out: файл ${out} уже есть,
 if (errors.length) { console.error(errors.join("\n")); process.exit(1); }
 
 const hex = (n) => randomBytes(n).toString("hex");
-const secrets = { AUTH_SECRET: hex(32), FILE_KEY: hex(32), ANCHOR_TOKEN: hex(24) };
+const secrets = { AUTH_SECRET: hex(32), FILE_KEY: hex(32), ANCHOR_TOKEN: hex(24), CHAIN_WALLET_SEED: hex(32) };
 
 const railway = [
   "NODE_ENV=production",
@@ -38,6 +38,13 @@ const railway = [
   "# ANCHOR_URL=https://...",
   `# ANCHOR_TOKEN=${secrets.ANCHOR_TOKEN}`,
   "# ANTHROPIC_API_KEY=sk-ant-...",
+  "# Тестовая сеть Ethereum (после pnpm deploy:sepolia в packages/contracts):",
+  "# CHAIN_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/...",
+  "# CHAIN_ID=11155111",
+  "# CHAIN_ESCROW=0x...",
+  "# CHAIN_TOKEN=0x...",
+  "# CHAIN_DEPLOYER_KEY=0x...   (только тестовый ключ)",
+  `# CHAIN_WALLET_SEED=${secrets.CHAIN_WALLET_SEED}`,
 ].join("\n");
 const vercel = `NEXT_PUBLIC_API_URL=${api || "https://ВАШ-API"}`;
 
