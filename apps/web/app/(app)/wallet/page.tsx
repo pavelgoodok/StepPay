@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { CircuitNet } from "@/components/circuit";
 import { IMG, Icon, Money, MoneyInput, Sheet, StageBars } from "@/components/ui";
 import { api, type WalletView } from "@/lib/api";
 import { dayLabel, rub, toKopecks } from "@/lib/format";
@@ -33,16 +34,26 @@ export default function WalletPage() {
   const groups: Record<string, WalletView["history"]> = {};
   data?.history.forEach((h) => (groups[dayLabel(h.at)] ??= []).push(h));
 
+  if (!data) {
+    return (
+      <div className="page">
+        <h1 className="h1">Кошелек</h1>
+        <div className="skeleton" />
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <h1 className="h1">Кошелек</h1>
       <div className="hero">
+        <CircuitNet />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
-        <div className="label">{data?.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
-        <div className="big"><Money value={data?.free ?? 0} /></div>
+        <div className="label">{data.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
+        <div className="big"><Money value={data.free} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
-        <span className="pill"><Icon name="lock" size={15} /> {rub(data?.reserved ?? 0)} в резерве</span>
+        <span className="pill"><Icon name="lock" size={15} /> {rub(data.reserved)} в резерве</span>
       </div>
 
       <div className="btns">
@@ -54,7 +65,7 @@ export default function WalletPage() {
         <button className="btn soft" onClick={() => toast("В демо переводы отключены")}><Icon name="arrow" size={18} /> Перевести</button>
       </div>
 
-      {data?.chain && (
+      {data.chain && (
         <Link href="/profile/chain" className="card row between" style={{ gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div className="title">tRUB в сети {data.chain.network}</div>
@@ -64,7 +75,7 @@ export default function WalletPage() {
         </Link>
       )}
 
-      {data && data.reserves.length > 0 && (
+      {data.reserves.length > 0 && (
         <>
           <h2 className="title">Резервы по сделкам</h2>
           <div className="card stack" style={{ gap: 14 }}>
@@ -79,7 +90,7 @@ export default function WalletPage() {
         </>
       )}
 
-      {!data?.chain && (
+      {!data.chain && (
         <div className="card row" style={{ background: "var(--blue-soft)", boxShadow: "none" }}>
           <Icon name="shield" size={30} />
           <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
@@ -87,8 +98,7 @@ export default function WalletPage() {
       )}
 
       <h2 className="title">История</h2>
-      {!data && <div className="skeleton" />}
-      {data && data.history.length === 0 && <div className="empty">Операций пока нет</div>}
+      {data.history.length === 0 && <div className="empty">Операций пока нет</div>}
       {Object.entries(groups).map(([day, items]) => (
         <div key={day}>
           <div className="small muted">{day}</div>

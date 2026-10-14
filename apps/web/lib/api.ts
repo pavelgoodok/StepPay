@@ -80,7 +80,10 @@ export const getToken = () => {
 export const setToken = (t: string | null) => {
   try {
     if (t) localStorage.setItem(TOKEN_KEY, t);
-    else localStorage.removeItem(TOKEN_KEY);
+    else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem("steppay.me");
+    }
   } catch {
     /* приватный режим - работаем без сохранения */
   }

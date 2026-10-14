@@ -159,9 +159,19 @@ export function Money({ value }: { value: number }) {
   const [shown, setShown] = useState(value);
   const [dir, setDir] = useState<"up" | "down" | null>(null);
   const from = useRef(value);
+  const mountedAt = useRef(0);
+  useEffect(() => {
+    mountedAt.current = performance.now();
+  }, []);
   useEffect(() => {
     const start = from.current;
     if (start === value) return;
+    // первое значение после загрузки страницы показываем сразу: считать «от нуля» при каждом обновлении незачем
+    if (start === 0 && performance.now() - mountedAt.current < 2500) {
+      from.current = value;
+      setShown(value);
+      return;
+    }
     setDir(value > start ? "up" : "down");
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const t0 = performance.now();

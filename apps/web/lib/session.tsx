@@ -1,6 +1,6 @@
 "use client";
 import { Tick } from "@/components/motion";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { API_URL, api, getToken, setToken, type PublicUser, type Wallet } from "./api";
 import { rub } from "./format";
 
@@ -28,6 +28,9 @@ const onChanged = (cb: () => void) => {
   return () => void listeners.delete(cb);
 };
 
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const ME_KEY = "steppay.me";
+
 const Ctx = createContext<Session | null>(null);
 export const useSession = () => {
   const c = useContext(Ctx);
@@ -38,12 +41,26 @@ export const useSession = () => {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [features, setFeatures] = useState({ topup: true });
+  const [features, setFeatures] = useState<{ topup: boolean; chain?: boolean }>({ topup: true });
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "ok" | "err" }[]>([]);
   const [adminLocked, setAdminLocked] = useState(false);
   const lastFree = useRef<number | null>(null);
+
+  // оболочка приложения рисуется сразу из сохраненного профиля, без пустого экрана и прыжков; свежие данные приходят следом
+  useIsoLayoutEffect(() => {
+    if (!getToken()) return;
+    try {
+      const raw = localStorage.getItem(ME_KEY);
+      if (!raw) return;
+      const c = JSON.parse(raw) as { user?: PublicUser; features?: { topup: boolean; chain?: boolean } };
+      if (c.user?.id) setUser(c.user);
+      if (c.features) setFeatures(c.features);
+    } catch {
+      /* кэш не прочитан: покажем загрузку */
+    }
+  }, []);
 
   const toast = useCallback((text: string, tone: "ok" | "err" = "ok") => {
     const id = Date.now() + Math.random();
@@ -59,6 +76,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUser(me.user);
       if (me.features) setFeatures(me.features);
       setWallet(me.wallet);
+      try {
+        localStorage.setItem(ME_KEY, JSON.stringify({ user: me.user, features: me.features }));
+      } catch {
+        /* приватный режим */
+      }
       if (lastFree.current !== null && me.wallet.free > lastFree.current) {
         toast(`Поступило ${rub(me.wallet.free - lastFree.current)}`);
       }
