@@ -118,3 +118,18 @@ describe("перенос сделок на контракт в тестовой 
     expect(chain.calls).toEqual([]);
   });
 });
+
+import { chainFromEnv } from "../src/chain";
+
+describe("настройки сети из переменных", () => {
+  const ok = { CHAIN_RPC_URL: "https://rpc.example", CHAIN_ESCROW: "0x" + "ab".repeat(20), CHAIN_TOKEN: "0x" + "cd".repeat(20), CHAIN_DEPLOYER_KEY: "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", CHAIN_WALLET_SEED: "seed" } as NodeJS.ProcessEnv;
+  it("пустые переменные: сеть выключена; полные: включена, ключ можно без 0x", () => {
+    expect(chainFromEnv({})).toBeUndefined();
+    expect(chainFromEnv(ok)?.info().chainId).toBe(11155111);
+  });
+  it("плохие значения дают понятную ошибку, а не падение внутри библиотеки", () => {
+    expect(() => chainFromEnv({ ...ok, CHAIN_DEPLOYER_KEY: "0x123" })).toThrow(/CHAIN_DEPLOYER_KEY/);
+    expect(() => chainFromEnv({ ...ok, CHAIN_ESCROW: "0xabc" })).toThrow(/CHAIN_ESCROW/);
+    expect(() => chainFromEnv({ ...ok, CHAIN_RPC_URL: "eth-sepolia.example" })).toThrow(/CHAIN_RPC_URL/);
+  });
+});

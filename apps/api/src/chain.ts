@@ -234,11 +234,18 @@ export class EthersChain implements ChainPort {
 export function chainFromEnv(env: NodeJS.ProcessEnv): ChainPort | undefined {
   const { CHAIN_RPC_URL: rpc, CHAIN_ESCROW: escrow, CHAIN_TOKEN: token, CHAIN_DEPLOYER_KEY: key } = env;
   if (!rpc || !escrow || !token || !key) return undefined;
+  const bad: string[] = [];
+  if (!/^https?:\/\//.test(rpc.trim())) bad.push("CHAIN_RPC_URL должен начинаться с https://");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(escrow.trim())) bad.push("CHAIN_ESCROW: адрес вида 0x и 40 символов");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(token.trim())) bad.push("CHAIN_TOKEN: адрес вида 0x и 40 символов");
+  if (!/^(0x)?[0-9a-fA-F]{64}$/.test(key.trim())) bad.push("CHAIN_DEPLOYER_KEY: 64 символа hex, можно с 0x, без пробелов и кавычек");
+  if (env.CHAIN_ID && !Number.isInteger(Number(env.CHAIN_ID))) bad.push("CHAIN_ID: число, например 11155111");
+  if (bad.length) throw new Error(bad.join("; "));
   const chainId = Number(env.CHAIN_ID ?? 11155111);
   const seed = env.CHAIN_WALLET_SEED ?? env.FILE_KEY ?? env.AUTH_SECRET;
   if (!seed) throw new Error("Для сети нужен CHAIN_WALLET_SEED, FILE_KEY или AUTH_SECRET: из него выводятся кошельки участников");
-  const provider = new JsonRpcProvider(rpc, chainId, { staticNetwork: true });
-  return new EthersChain({ provider, network: env.CHAIN_NETWORK ?? (chainId === 84532 ? "Base Sepolia" : "Sepolia"), chainId, escrow, token, deployerKey: key, seed, explorer: env.CHAIN_EXPLORER ?? (chainId === 11155111 ? "https://sepolia.etherscan.io" : chainId === 84532 ? "https://sepolia.basescan.org" : undefined), gasEth: env.CHAIN_GAS_ETH });
+  const provider = new JsonRpcProvider(rpc.trim(), chainId, { staticNetwork: true });
+  return new EthersChain({ provider, network: env.CHAIN_NETWORK ?? (chainId === 84532 ? "Base Sepolia" : "Sepolia"), chainId, escrow: escrow.trim(), token: token.trim(), deployerKey: key.trim().startsWith("0x") ? key.trim() : "0x" + key.trim(), seed, explorer: env.CHAIN_EXPLORER ?? (chainId === 11155111 ? "https://sepolia.etherscan.io" : chainId === 84532 ? "https://sepolia.basescan.org" : undefined), gasEth: env.CHAIN_GAS_ETH });
 }
 
 // ───────────────────────── зеркало ─────────────────────────

@@ -10,7 +10,18 @@ if (process.env.NODE_ENV === "production" && !process.env.CORS_ORIGIN) console.w
 let store: Store;
 if (process.env.DATABASE_URL) {
   const pgStore = new PgStore(process.env.DATABASE_URL);
-  await pgStore.init();
+  // сразу после запуска частная сеть Railway бывает недоступна несколько секунд: повторяем подключение, а не падаем
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await pgStore.init();
+      break;
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (attempt >= 10 || !["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(code ?? "")) throw e;
+      console.warn(`База данных недоступна (${code}), попытка ${attempt} из 10, повтор через 3 секунды`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
   store = pgStore;
 } else {
   console.warn("DATABASE_URL не задан - данные хранятся в памяти и пропадут при перезапуске");
@@ -33,7 +44,13 @@ const anchorPublish = anchorUrl
     }
   : undefined;
 
-const chain = chainFromEnv(process.env);
+let chain: ReturnType<typeof chainFromEnv>;
+try {
+  chain = chainFromEnv(process.env);
+} catch (e) {
+  // ошибка в настройках сети не должна ронять приложение: работаем без переноса сделок на контракт
+  console.error(`Тестовая сеть отключена, исправьте переменные CHAIN_*: ${(e as Error).message}`);
+}
 if (chain) console.log(`Тестовая сеть: ${chain.info().network}, контракт ${chain.info().contract}`);
 const app = await buildApp({ store, chain, fileKey: process.env.FILE_KEY, adminRequirePasskey: process.env.ADMIN_REQUIRE_PASSKEY === "1" ? true : process.env.ADMIN_REQUIRE_PASSKEY === "0" ? false : undefined, anchorPublish, anchorEveryMs: process.env.ANCHOR_EVERY_MIN ? Number(process.env.ANCHOR_EVERY_MIN) * 60_000 : undefined, secret, corsOrigin: process.env.CORS_ORIGIN, seedCatalog: true, demoMode: process.env.DEMO_MODE !== "off", allowTopup: process.env.ALLOW_TOPUP === "1" ? true : undefined, signaturePolicy: process.env.SIGNATURE_POLICY === "device" ? "device" : process.env.SIGNATURE_POLICY === "passkey" ? "passkey" : "any", adminPhones: (process.env.ADMIN_PHONES ?? "").split(",").map((x) => x.trim()).filter(Boolean) });
 const port = Number(process.env.PORT ?? 4000);
