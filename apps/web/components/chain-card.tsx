@@ -1,6 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { api, type ChainVerdict, type DealFull } from "@/lib/api";
+import { CopyText } from "./copy-text";
 import { Icon, Sheet } from "./ui";
 
 const short = (h: string) => `${h.slice(0, 8)}…${h.slice(-6)}`;
@@ -22,6 +24,7 @@ export function ChainCard({ d }: { d: DealFull }) {
     }
   };
   const stateText = sync?.state === "failed" ? "Остановлено" : sync?.state === "syncing" ? "Переносится" : sync ? "В сети" : `${c.txs.length} транзакций`;
+  const tone = sync?.state === "failed" ? "red" : sync?.state === "syncing" ? "amber" : sync ? "green" : "";
   const tx = (h: string) => (c.explorer ? `${c.explorer}/tx/${h}` : undefined);
   return (
     <>
@@ -31,7 +34,7 @@ export function ChainCard({ d }: { d: DealFull }) {
           <div className="title">Тестовая сеть</div>
           <div className="small muted ellipsis">{c.network}</div>
         </div>
-        <span className="chip">{stateText}</span>
+        <span className={`chip ${tone}`}>{stateText}</span>
       </button>
 
       {open && (
@@ -40,12 +43,7 @@ export function ChainCard({ d }: { d: DealFull }) {
           <div className="stack" style={{ marginTop: 14 }}>
             <div className="sub">Эта сделка проведена на смарт-контракте StepEscrow в сети {c.network}. Токены тестовые, стоимости не имеют и заменяют цифровой рубль.</div>
             <div className="note" style={{ marginTop: 0 }}>
-              <div className="small muted">Контракт, сделка №{c.dealId}</div>
-              {c.explorer ? (
-                <a className="mono small" style={{ wordBreak: "break-all", color: "var(--blue)" }} href={`${c.explorer}/address/${c.contract}`} target="_blank" rel="noreferrer">{c.contract}</a>
-              ) : (
-                <div className="mono small" style={{ wordBreak: "break-all" }}>{c.contract}</div>
-              )}
+              <CopyText label={`Контракт, сделка №${c.dealId}`} value={c.contract} href={c.explorer ? `${c.explorer}/address/${c.contract}` : undefined} />
             </div>
             {sync?.state === "failed" && <div className="note" style={{ marginTop: 0 }}><b>Перенос остановлен</b><div className="small muted">{sync.error}. Сделка в приложении работает как обычно, расхождение нужно разобрать вручную.</div></div>}
             {sync?.state === "syncing" && <div className="small muted">Действия переносятся в сеть, это занимает от секунд до пары минут. Не перенесено записей: {sync.pending}.</div>}
@@ -68,6 +66,7 @@ export function ChainCard({ d }: { d: DealFull }) {
                 </div>
               ))}
             </div>
+            {sync && <Link href="/profile/chain" className="small" style={{ color: "var(--blue)" }}>Мой кошелек в сети и откуда берутся токены</Link>}
             {!c.explorer && <div className="small muted">Сеть локальная, обозревателя у нее нет: хеши можно сверить в логе узла.</div>}
           </div>
         </Sheet>

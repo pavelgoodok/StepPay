@@ -84,6 +84,10 @@ export interface ChainPort {
   /** подготовить участника к действию: газ, токены на сумму, разрешение контракту тратить токены */
   prepare(actor: string, needTokens?: number): Promise<void>;
   send(actor: string, method: ChainMethod, dealId: number, args: unknown[]): Promise<string>;
+  /** адрес, эфир (wei, строкой) и токены tRUB (копейки) участника */
+  wallet(actor: string): Promise<{ address: string; eth: string; tokens: number }>;
+  /** выпускает тестовые токены на адрес участника, возвращает хеш транзакции */
+  faucet(actor: string, amount: number): Promise<string>;
   snapshot(dealId: number, users: string[]): Promise<ChainSnapshot>;
 }
 
@@ -138,7 +142,7 @@ export class EthersChain implements ChainPort {
   }
 
   /** Ключ участника: HKDF от секрета и идентификатора. Совпадает при каждом запуске, хранить его не нужно. */
-  private wallet(actor: string): Wallet {
+  private signer(actor: string): Wallet {
     if (actor === PLATFORM) return this.deployer;
     let w = this.wallets.get(actor);
     if (!w) {
@@ -150,7 +154,7 @@ export class EthersChain implements ChainPort {
   }
 
   addressOf(actor: string): string {
-    return this.wallet(actor).address;
+    return this.signer(actor).address;
   }
 
   private escrow(w: Wallet) {
@@ -162,7 +166,7 @@ export class EthersChain implements ChainPort {
 
   async prepare(actor: string, needTokens = 0): Promise<void> {
     if (actor === PLATFORM) return;
-    const w = this.wallet(actor);
+    const w = this.signer(actor);
     try {
       const eth = await this.o.provider.getBalance(w.address);
       if (eth < this.gas / 2n) await (await this.deployer.sendTransaction({ to: w.address, value: this.gas - eth })).wait();
@@ -208,7 +212,7 @@ export class EthersChain implements ChainPort {
 
   async send(actor: string, method: ChainMethod, dealId: number, args: unknown[]): Promise<string> {
     try {
-      const c = this.escrow(this.wallet(actor));
+      const c = this.escrow(this.signer(actor));
       const tx = await (c[method] as (...a: unknown[]) => Promise<{ hash: string; wait(): Promise<unknown> }>)!(dealId, ...args);
       await tx.wait();
       return tx.hash;
@@ -216,6 +220,23 @@ export class EthersChain implements ChainPort {
       const timeGated = ["autoAccept", "expireFunding", "expireStage", "expireDispute", "resolveDispute"].includes(method);
       const r = reason(e);
       throw new ChainError(`${method}: ${r}`, timeGated && /BadState/.test(r));
+    }
+  }
+
+  async wallet(actor: string) {
+    const address = this.addressOf(actor);
+    const [eth, tokens] = await Promise.all([this.o.provider.getBalance(address), this.token(this.deployer).balanceOf!(address) as Promise<bigint>]);
+    return { address, eth: eth.toString(), tokens: Number(tokens) };
+  }
+
+  async faucet(actor: string, amount: number): Promise<string> {
+    try {
+      await this.prepare(actor);
+      const tx = await this.token(this.deployer).mint!(this.addressOf(actor), BigInt(amount));
+      await tx.wait();
+      return tx.hash as string;
+    } catch (e) {
+      throw new ChainError(`Выдача токенов: ${e instanceof ChainError ? e.message : reason(e)}`);
     }
   }
 
@@ -240,6 +261,7 @@ export function chainFromEnv(env: NodeJS.ProcessEnv): ChainPort | undefined {
   if (!/^0x[0-9a-fA-F]{40}$/.test(token.trim())) bad.push("CHAIN_TOKEN: адрес вида 0x и 40 символов");
   if (!/^(0x)?[0-9a-fA-F]{64}$/.test(key.trim())) bad.push("CHAIN_DEPLOYER_KEY: 64 символа hex, можно с 0x, без пробелов и кавычек");
   if (env.CHAIN_ID && !Number.isInteger(Number(env.CHAIN_ID))) bad.push("CHAIN_ID: число, например 11155111");
+  if (Number(env.CHAIN_ID) === 1) bad.push("CHAIN_ID=1 это основная сеть Ethereum: токен тестовый, используйте Sepolia (11155111)");
   if (bad.length) throw new Error(bad.join("; "));
   const chainId = Number(env.CHAIN_ID ?? 11155111);
   const seed = env.CHAIN_WALLET_SEED ?? env.FILE_KEY ?? env.AUTH_SECRET;
@@ -306,6 +328,21 @@ export class ChainMirror {
   notify(state: State) {
     this.latest = state;
     this.running = this.running.then(() => this.sync()).catch(() => undefined);
+  }
+
+  /** Действие со счетом платформы выполняется в общей очереди: иначе номера транзакций (nonce) пересекутся с переносом сделок. */
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.running.then(fn);
+    this.running = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  wallet(userId: string) {
+    return this.o.chain.wallet(userId);
+  }
+
+  faucet(userId: string, amount: number) {
+    return this.exclusive(() => this.o.chain.faucet(userId, amount));
   }
 
   /** Дождаться, пока все накопленные действия обработаны (нужно тестам и проверкам). */

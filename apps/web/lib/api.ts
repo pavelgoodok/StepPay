@@ -63,6 +63,8 @@ export type DealFull = Deal & {
   /** перенос действий сделки на контракт в тестовой сети: есть, только если сеть подключена */
   chainSync?: { state: "syncing" | "synced" | "failed"; error?: string; pending: number; txs: number };
 };
+/** Кошелек участника в тестовой сети: токены tRUB в копейках, эфир на газ в wei (строкой). */
+export type ChainWallet = { enabled: false } | { enabled: true; network: string; chainId: number; contract: string; token: string; explorer?: string; address: string; eth: string; tokens: number };
 export type ChainVerdict = { ok: boolean; applied: boolean; diffs: string[] };
 
 const TOKEN_KEY = "steppay.token";

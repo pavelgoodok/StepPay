@@ -10,7 +10,7 @@ let t = 1_000_000;
 function fakeChain() {
   const calls: string[] = [];
   let n = 0;
-  const port: ChainPort & { calls: string[]; snap?: ChainSnapshot; failOn?: ChainMethod } = {
+  const port: ChainPort & { calls: string[]; snap?: ChainSnapshot; failOn?: ChainMethod; tokens?: number } = {
     calls,
     info: () => ({ network: "Тестовая", chainId: 11155111, contract: "0x" + "ab".repeat(20), token: "0x" + "cd".repeat(20), explorer: "https://sepolia.etherscan.io" }),
     addressOf: (a) => "0x" + Buffer.from(a).toString("hex").padEnd(40, "0").slice(0, 40),
@@ -23,6 +23,12 @@ function fakeChain() {
       if (port.failOn === m) throw new Error("контракт отказал");
       calls.push(`${m} ${a}`);
       return "0x" + calls.length.toString(16).padStart(64, "2");
+    },
+    wallet: async (a) => ({ address: "0x" + Buffer.from(a).toString("hex").padEnd(40, "0").slice(0, 40), eth: "3000000000000000", tokens: port.tokens ?? 0 }),
+    faucet: async (a, amount) => {
+      port.tokens = (port.tokens ?? 0) + amount;
+      calls.push(`faucet ${a} ${amount}`);
+      return "0x" + "f".repeat(64);
     },
     snapshot: async () => port.snap ?? { status: "funding", stages: ["pending", "pending"], reserves: {}, totalReserved: 0 },
   };
@@ -131,5 +137,28 @@ describe("настройки сети из переменных", () => {
     expect(() => chainFromEnv({ ...ok, CHAIN_DEPLOYER_KEY: "0x123" })).toThrow(/CHAIN_DEPLOYER_KEY/);
     expect(() => chainFromEnv({ ...ok, CHAIN_ESCROW: "0xabc" })).toThrow(/CHAIN_ESCROW/);
     expect(() => chainFromEnv({ ...ok, CHAIN_RPC_URL: "eth-sepolia.example" })).toThrow(/CHAIN_RPC_URL/);
+  });
+});
+
+describe("кошелек в сети и выдача токенов", () => {
+  it("без сети кошелька нет, с сетью виден адрес и баланс, токены выдаются с ограничениями", async () => {
+    const off = await setup();
+    expect((await off.call("anna", "GET", "/me/chain")).body).toEqual({ enabled: false });
+    expect((await off.call("anna", "POST", "/me/chain/faucet", { amount: 100000 })).status).toBe(404);
+
+    const chain = fakeChain();
+    const { call } = await setup(chain);
+    const w = (await call("anna", "GET", "/me/chain")).body;
+    expect(w).toMatchObject({ enabled: true, network: "Тестовая", tokens: 0, eth: "3000000000000000" });
+    expect(w.address).toMatch(/^0x[0-9a-f]{40}$/);
+
+    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 1_000_000 })).body).toMatchObject({ ok: true });
+    expect((await call("anna", "GET", "/me/chain")).body.tokens).toBe(1_000_000);
+    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 100 })).status).toBe(429); // слишком часто
+    expect((await call("ivan", "POST", "/me/chain/faucet", { amount: 5_000_000 })).status).toBe(400); // больше 10 000 рублей за раз
+    expect((await call("ivan", "POST", "/me/chain/faucet", { amount: 0 })).status).toBe(400);
+    t += 31_000;
+    chain.tokens = 5_000_000;
+    expect((await call("anna", "POST", "/me/chain/faucet", { amount: 100 })).status).toBe(400); // уже достаточно
   });
 });

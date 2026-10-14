@@ -18,6 +18,7 @@ export default function Profile() {
   const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
   const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
+  const chain = usePoll(() => api<{ enabled: boolean }>("/chain/status"), [], 120_000);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const keys = usePoll(() => api<{ id: string; label: string; createdAt: number; active: boolean; kind: "device" | "passkey" }[]>("/me/keys"), [user?.id]);
   const [localKey, setLocalKey] = useState<string | null>(null);
@@ -252,6 +253,7 @@ export default function Profile() {
         </>
       )}
       <p className="small muted" style={{ textAlign: "center" }}>StepPay, оплата по шагам в цифровых рублях. Версия 0.7</p>
+      {chain.data?.enabled && <Link href="/profile/chain" className="small muted" style={{ textAlign: "center", textDecoration: "underline", textUnderlineOffset: 3 }}>Тестовая сеть</Link>}
 
       {cropFile && <CropSheet file={cropFile} aspect={1} round outWidth={384} title="Фото профиля" onDone={(u) => void saveAvatar(u)} onClose={() => setCropFile(null)} />}
       {edit && (

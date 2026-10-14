@@ -138,4 +138,18 @@ describe("зеркало контракта: сделка в ядре повто
     assert.equal(v.ok, false);
     assert.ok(v.diffs.some((x) => x.includes("Резерв")));
   });
+
+  it("кошелек участника: адрес, эфир на газ и выдача тестовых токенов на настоящем контракте", async () => {
+    const ctx = await setup();
+    const before = await ctx.chain.wallet("anna");
+    assert.match(before.address, /^0x[0-9a-fA-F]{40}$/);
+    assert.equal(before.tokens, 0);
+    const hash = await ctx.chain.faucet("anna", 12_345);
+    assert.match(hash, /^0x[0-9a-f]{64}$/);
+    const after = await ctx.chain.wallet("anna");
+    assert.equal(after.tokens, 12_345);
+    assert.ok(BigInt(after.eth) > 0n, "участник получил эфир на газ");
+    assert.equal(ctx.chain.addressOf("anna"), before.address, "адрес стабилен");
+    assert.notEqual(ctx.chain.addressOf("ivan"), before.address);
+  });
 });
