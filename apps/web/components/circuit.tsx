@@ -1,74 +1,79 @@
 import { useId } from "react";
 
 /**
- * Рисунок для карточки кошелька: несколько тонких дорожек с объемными узлами. Статичный, без анимации.
- * Два варианта под форму карточки (широкая на планшете и компьютере, высокая на телефоне): стили выбирают нужный.
- * Дорожки идут вдоль всей карточки по краям, середина остается свободной под цифры.
+ * Стеклянные грани для карточки кошелька, как на референсе: несколько диагональных линий с фаской и подсветкой кромки,
+ * между ними мягкие панели и блики. Статично, без анимации. Два рисунка под форму карточки (широкая и высокая):
+ * какой показывать, решают стили по ширине самой карточки.
  */
-type Trace = { d: string; dy?: number };
-type Art = { box: string; traces: Trace[]; nodes: [number, number][] };
+type Art = { box: string; lines: string[]; panels: string[]; shines: { cx: number; cy: number; rx: number; ry: number; r: number; o: number }[] };
 
 const WIDE: Art = {
   box: "0 0 1200 340",
-  traces: [
-    { d: "M0 26H340L366 50H640L668 24H1200" },
-    { d: "M0 318H260L288 298H470H700L730 268H1010" },
-    { d: "M400 206H560L600 166H820L850 196H1010" },
-    { d: "M400 206H560L600 166H820L850 196H1010", dy: 16 },
+  lines: ["M600 340L940 0", "M770 340L1110 0", "M790 176H850L880 212H1200"],
+  panels: ["M600 340H770L1110 0H940Z"],
+  shines: [
+    { cx: 770, cy: 100, rx: 120, ry: 11, r: -45, o: 0.5 },
+    { cx: 1010, cy: 268, rx: 90, ry: 9, r: -14, o: 0.38 },
   ],
-  nodes: [[400, 206], [400, 222], [600, 166], [730, 268], [668, 24], [288, 298]],
 };
 
 const COMPACT: Art = {
   box: "0 0 1200 560",
-  traces: [
-    { d: "M0 50H300L340 90H620L660 50H1200" },
-    { d: "M0 526H380L410 496H760L790 526H1200" },
-    { d: "M820 130H980L1010 160H1200" },
-    { d: "M820 130H980L1010 160H1200", dy: 16 },
+  lines: ["M660 560L1200 20", "M850 560L1200 210", "M930 352H1000L1030 388H1200"],
+  panels: ["M660 560H850L1200 210V20Z"],
+  shines: [
+    { cx: 940, cy: 200, rx: 140, ry: 13, r: -45, o: 0.5 },
+    { cx: 1040, cy: 470, rx: 100, ry: 10, r: -14, o: 0.36 },
   ],
-  nodes: [[820, 130], [820, 146], [340, 90], [790, 526], [660, 50], [410, 496]],
 };
 
 function Drawing({ art, kind }: { art: Art; kind: "wide" | "compact" }) {
   const id = useId().replace(/:/g, "");
-  const g = `g${id}`;
-  const glow = `b${id}`;
-  const shade = `s${id}`;
-  const ball = `o${id}`;
+  const body = `b${id}`;
+  const panel = `p${id}`;
+  const blur = `f${id}`;
+  const soft = `s${id}`;
+  const glint = `g${id}`;
   const w = Number(art.box.split(" ")[2]);
   return (
     <svg className={`net net-${kind}`} viewBox={art.box} preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
       <defs>
-        <linearGradient id={g} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={w} y2="0">
-          <stop offset="0" stopColor="#c6dcff" stopOpacity="0.3" />
-          <stop offset="0.5" stopColor="#c6dcff" stopOpacity="0.38" />
-          <stop offset="1" stopColor="#ffffff" stopOpacity="0.85" />
+        <linearGradient id={body} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={w} y2="0">
+          <stop offset="0.4" stopColor="#2f66ff" />
+          <stop offset="1" stopColor="#9fd0ff" />
         </linearGradient>
-        <filter id={glow} x="-10%" y="-40%" width="120%" height="180%">
-          <feGaussianBlur stdDeviation="4" />
+        <linearGradient id={panel} x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stopColor="#7fb0ff" stopOpacity="0.06" />
+          <stop offset="0.55" stopColor="#8fbcff" stopOpacity="0.26" />
+          <stop offset="1" stopColor="#ffffff" stopOpacity="0.38" />
+        </linearGradient>
+        <filter id={blur} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="9" />
         </filter>
-        <filter id={shade} x="-60%" y="-60%" width="220%" height="220%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#00123f" floodOpacity="0.5" />
+        <filter id={soft} x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.4" />
         </filter>
-        <radialGradient id={ball} cx="0.34" cy="0.3" r="0.8">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="0.5" stopColor="#b3d0ff" />
-          <stop offset="1" stopColor="#4a7fe8" />
-        </radialGradient>
+        <filter id={glint} x="-30%" y="-100%" width="160%" height="300%">
+          <feGaussianBlur stdDeviation="5" />
+        </filter>
       </defs>
+
+      {art.panels.map((d, i) => (
+        <path key={`p${i}`} d={d} fill={`url(#${panel})`} />
+      ))}
+      {art.shines.map((s, i) => (
+        <ellipse key={`s${i}`} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} transform={`rotate(${s.r} ${s.cx} ${s.cy})`} fill="#fff" opacity={s.o} filter={`url(#${glint})`} />
+      ))}
+
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {art.traces.map((t, i) => (
-          <g key={i} transform={`translate(0 ${t.dy ?? 0})`}>
-            <path d={t.d} stroke={`url(#${g})`} strokeWidth="6" opacity="0.28" filter={`url(#${glow})`} vectorEffect="non-scaling-stroke" />
-            <path d={t.d} stroke="#001a5c" strokeOpacity="0.45" strokeWidth="2" transform="translate(0 1.5)" vectorEffect="non-scaling-stroke" />
-            <path d={t.d} stroke={`url(#${g})`} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        {art.lines.map((d, i) => (
+          <g key={i}>
+            <path d={d} stroke="#4f95ff" strokeWidth="14" opacity="0.4" filter={`url(#${blur})`} vectorEffect="non-scaling-stroke" />
+            <path d={d} stroke="#00104a" strokeOpacity="0.62" strokeWidth="9" transform="translate(1.4 2.4)" filter={`url(#${soft})`} vectorEffect="non-scaling-stroke" />
+            <path d={d} stroke={`url(#${body})`} strokeWidth="6" vectorEffect="non-scaling-stroke" />
+            <path d={d} stroke="#eaf5ff" strokeOpacity="0.95" strokeWidth="1.6" transform="translate(-0.9 -1.1)" vectorEffect="non-scaling-stroke" />
+            <path d={d} stroke="#ffffff" strokeOpacity="0.32" strokeWidth="0.9" transform="translate(2.6 2.8)" vectorEffect="non-scaling-stroke" />
           </g>
-        ))}
-      </g>
-      <g filter={`url(#${shade})`}>
-        {art.nodes.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="7.5" fill={`url(#${ball})`} />
         ))}
       </g>
     </svg>

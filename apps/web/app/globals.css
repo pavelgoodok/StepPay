@@ -605,3 +605,6 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 .hero > .net { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 .hero > .net-wide { display: none; }
 @container (min-width: 560px) { .hero > .net-wide { display: block; } .hero > .net-compact { display: none; } }
+
+/* стеклянная фаска по краю карточки: кромка с бликом сверху и тенью снизу, как на референсе */
+.hero:has(> .net) { box-shadow: inset 0 0 0 1px rgba(150,195,255,.38), inset 0 2px 1px rgba(255,255,255,.4), inset 2px 0 3px rgba(255,255,255,.16), inset 0 -3px 9px rgba(0,12,70,.6); }
