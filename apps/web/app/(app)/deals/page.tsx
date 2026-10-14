@@ -33,9 +33,8 @@ export default function Deals() {
       </div>
 
       <div className="hero bg-reserve plain">
-        <div className="label">Свободно</div>
-        <div className="big"><Money value={wallet?.free ?? 0} /></div>
-        <span className="pill"><Icon name="lock" size={15} /> {rub(wallet?.reserved ?? 0)} в резерве</span>
+        <div className="label">Зарезервировано по сделкам</div>
+        <div className="big"><Money value={wallet?.reserved ?? 0} /></div>
       </div>
 
       <div className="qa">
