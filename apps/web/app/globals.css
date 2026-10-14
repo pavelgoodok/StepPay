@@ -102,7 +102,7 @@ h1, h2, h3, p { margin: 0; }
 /* карта кошелька: плоский глубокий синий */
 .hero { position: relative; border-radius: 22px; padding: 22px; min-height: 172px; color: #fff; overflow: hidden; background: var(--g-navy); isolation: isolate; }
 .hero { --art: clamp(100px, 33%, 200px); }
-.hero > :not(.art):not(.burst):not(.net) { max-width: calc(100% - var(--art) - 6px); }
+.hero > :not(.art):not(.burst) { max-width: calc(100% - var(--art) - 6px); }
 .hero .art { position: absolute; top: 14px; bottom: 14px; right: 16px; width: var(--art); height: calc(100% - 28px); object-fit: contain; object-position: right center; z-index: 0; }
 .hero > * { position: relative; z-index: 1; }
 .hero .art { z-index: 0; }
@@ -600,11 +600,12 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 .skeleton ~ .skeleton { display: none; }
 .tabbar .skeleton, .side-user .skeleton { display: none; }
 
-/* карточка кошелька: рисунок на всю карточку, статичный; вариант выбирается по ширине самой карточки */
-.hero:has(> .net) { container-type: inline-size; }
-.hero > .net { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
-.hero > .net-wide { display: none; }
-@container (min-width: 560px) { .hero > .net-wide { display: block; } .hero > .net-compact { display: none; } }
-
-/* стеклянная фаска по краю карточки: кромка с бликом сверху и тенью снизу, как на референсе */
-.hero:has(> .net) { box-shadow: inset 0 0 0 1px rgba(150,195,255,.38), inset 0 2px 1px rgba(255,255,255,.4), inset 2px 0 3px rgba(255,255,255,.16), inset 0 -3px 9px rgba(0,12,70,.6); }
+/* готовые фоны блоков кошелька: карточка баланса и блок резервов; картинка прижата вправо, там рисунок, слева чистый фон под цифры */
+.hero.bg-wallet { background: #0a3aa6 url(/bg/wallet.webp) right center / cover no-repeat; }
+.hero.bg-reserve { background: #0a3aa6 url(/bg/reserve.webp) right center / cover no-repeat; }
+.hero.bg-reserve { --art: clamp(70px, 26%, 180px); min-height: 150px; }
+.hero.bg-reserve .rrow { display: block; padding: 12px 0; }
+.hero.bg-reserve .rrow + .rrow { border-top: 1px solid rgba(255,255,255,.14); }
+.hero.bg-reserve .bars i { background: rgba(255,255,255,.22); }
+.hero.bg-reserve .bars i.done { background: #fff; }
+.hero.bg-reserve .bars i.cur { background: rgba(255,255,255,.5); }

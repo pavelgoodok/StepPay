@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { CircuitNet } from "@/components/circuit";
 import { IMG, Icon, Money, MoneyInput, Sheet, StageBars } from "@/components/ui";
 import { api, type WalletView } from "@/lib/api";
 import { dayLabel, rub, toKopecks } from "@/lib/format";
@@ -46,10 +45,7 @@ export default function WalletPage() {
   return (
     <div className="page">
       <h1 className="h1">Кошелек</h1>
-      <div className="hero">
-        <CircuitNet />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="art" src={IMG.wallet} alt="" />
+      <div className="hero bg-wallet">
         <div className="label">{data.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
         <div className="big"><Money value={data.free} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
@@ -77,13 +73,14 @@ export default function WalletPage() {
 
       {data.reserves.length > 0 && (
         <>
-          <h2 className="title">Резервы по сделкам</h2>
-          <div className="card stack" style={{ gap: 14 }}>
+          <div className="hero bg-reserve">
+            <div className="label">В резерве по сделкам</div>
+            <div className="big"><Money value={data.reserved} /></div>
             {data.reserves.map((r) => (
-              <Link key={r.dealId} href={`/deals/${r.dealId}`} className="stack" style={{ gap: 0 }}>
+              <Link key={r.dealId} href={`/deals/${r.dealId}`} className="rrow">
                 <div className="row between"><b>{r.title}</b><b className="mono">{rub(r.amount)}</b></div>
                 <StageBars done={r.stages.done} total={r.stages.total} />
-                <div className="small muted">Принято {r.stages.done} из {r.stages.total} этапов</div>
+                <div className="small">Принято {r.stages.done} из {r.stages.total} этапов</div>
               </Link>
             ))}
           </div>
