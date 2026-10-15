@@ -180,11 +180,11 @@ export class Platform {
     return (this.data.mirror ??= { since: this.now(), deals: {} });
   }
 
-  /** Рейтинг из отзывов: средняя оценка со сглаживанием (три условных отзыва на 4,0), чтобы один отзыв не решал всё. */
+  /** Рейтинг: обычное среднее по оценкам, одна цифра после запятой. */
   ratingOf(userId: string): { rating: number | null; reviews: number } {
     let n = 0, sum = 0;
     for (const r of this.data.reviews ?? []) if (r.to === userId) { n++; sum += r.stars; }
-    return { rating: n === 0 ? null : Math.round(((sum + 12) / (n + 3)) * 10) / 10, reviews: n };
+    return { rating: n === 0 ? null : Math.round((sum / n) * 10) / 10, reviews: n };
   }
 
   reviewsAbout(userId: string): Review[] {
@@ -197,7 +197,7 @@ export class Platform {
 
   async addReview(r: { dealId: string; from: string; to: string; stars: number; text: string }): Promise<Review> {
     const list = (this.data.reviews ??= []);
-    if (list.some((x) => x.dealId === r.dealId && x.from === r.from)) fail("Вы уже оставили отзыв по этой сделке");
+    if (list.some((x) => x.dealId === r.dealId && x.from === r.from)) fail("Вы уже оставили отзыв по этому взаимодействию");
     const rev: Review = { id: this.id("r"), at: this.now(), ...r };
     list.push(rev);
     await this.save();

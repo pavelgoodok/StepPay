@@ -174,7 +174,7 @@ export default function DealPage() {
         {!draft && <JournalCard d={d} />}
         <ChainCard d={d} />
       </div>}
-      {d.status === "completed" && <ReviewCard dealId={id} />}
+      {!draft && <ReviewCard dealId={id} collapsible={d.status !== "completed"} />}
       {d.status === "completed" && (
         <Link href="/receipts" className="card tap row">
           <span className="setic"><Icon name="check" size={20} /></span>

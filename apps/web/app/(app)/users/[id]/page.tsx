@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ReviewCard } from "@/components/review-card";
 import { Ava, Icon } from "@/components/ui";
 import { RatingLine, Stars } from "@/components/stars";
 import { api, type Person, type ReviewItem } from "@/lib/api";
@@ -9,7 +10,7 @@ import { usePoll } from "@/lib/session";
 
 export default function UserReviews() {
   const { id } = useParams<{ id: string }>();
-  const { data, error } = usePoll(() => api<{ user: Person; rating: number | null; reviews: number; items: ReviewItem[] }>(`/users/${id}/reviews`), [id]);
+  const { data, error } = usePoll(() => api<{ user: Person; rating: number | null; reviews: number; open: { ref: string; title: string }[]; items: ReviewItem[] }>(`/users/${id}/reviews`), [id]);
   if (error && !data) return <div className="page"><div className="note bad">{error}</div></div>;
   if (!data) return <div className="page"><div className="skeleton" /></div>;
   return (
@@ -22,6 +23,7 @@ export default function UserReviews() {
         {data.rating != null && <Stars value={data.rating} size={22} />}
         <RatingLine rating={data.rating} reviews={data.reviews} />
       </div>
+      {data.open[0] && <ReviewCard dealId={data.open[0].ref} />}
       <h2 className="title">Отзывы</h2>
       {data.items.length === 0 && <div className="card empty"><div className="sub">Отзывы появятся после завершенных сделок</div></div>}
       {data.items.map((r) => (

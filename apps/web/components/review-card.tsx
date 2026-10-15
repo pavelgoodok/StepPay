@@ -9,19 +9,20 @@ import { useSession, usePoll } from "@/lib/session";
 const HINT: Record<number, string> = { 1: "Очень плохо", 2: "Плохо", 3: "Нормально", 4: "Хорошо", 5: "Отлично" };
 
 /** Отзыв по завершенной сделке: оценка 1-5 и комментарий. Низкая оценка требует пояснения. */
-export function ReviewCard({ dealId }: { dealId: string }) {
+export function ReviewCard({ dealId, collapsible }: { dealId: string; collapsible?: boolean }) {
   const { user, toast, refresh } = useSession();
-  const { data, reload } = usePoll(() => api<DealReviews>(`/deals/${dealId}/reviews`), [dealId], 20_000);
+  const { data, reload } = usePoll(() => api<DealReviews>(`/reviews/of/${dealId}`), [dealId], 20_000);
   const [stars, setStars] = useState(0);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   if (!data) return null;
   if (!data.canReview && data.items.length === 0) return null;
 
   async function send() {
     setBusy(true);
     try {
-      await api(`/deals/${dealId}/review`, { method: "POST", body: { stars, text } });
+      await api(`/reviews/of/${dealId}`, { method: "POST", body: { stars, text } });
       toast("Спасибо, отзыв сохранен");
       await Promise.all([reload(), refresh()]);
     } catch (e) {
@@ -32,6 +33,9 @@ export function ReviewCard({ dealId }: { dealId: string }) {
   }
 
   const low = stars > 0 && stars <= 2;
+  if (collapsible && data.canReview && data.target && !open && data.items.length === 0) {
+    return <button className="btn soft" onClick={() => setOpen(true)}>Оценить: {data.target.name}</button>;
+  }
   return (
     <div className="card stack">
       {data.canReview && data.target && (

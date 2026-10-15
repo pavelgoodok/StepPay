@@ -423,54 +423,63 @@ export function registerPlatformRoutes(c: Ctx) {
     return { id: th.id };
   });
 
-  /** Кого и по каким сделкам можно оценить: оценивают после завершения, по одному отзыву от человека. */
-  const reviewTarget = (d: NonNullable<ReturnType<typeof c.getState>["deals"][string]>, me: string): string | null => {
-    if (d.status !== "completed") return null;
-    if (me === d.executorId) return d.mode === "own" && d.ownerId ? d.ownerId : null;
-    if (me === d.ownerId || me in d.contributed) return d.executorId;
-    return null;
+  /**
+   * Оценить можно того, с кем взаимодействовал: по сделке (любого статуса) или по чату, где написали обе стороны.
+   * ref это номер сделки или чата, по одному отзыву от человека на каждое взаимодействие.
+   */
+  const reviewCtx = (ref: string, me: string): { title: string; to: string } | null => {
+    const d = c.getState().deals[ref];
+    if (d) {
+      if (me === d.executorId) return d.ownerId && d.mode !== "crowdfunding" ? { title: d.title, to: d.ownerId } : null;
+      if (me === d.ownerId || me in d.contributed) return { title: d.title, to: d.executorId };
+      return null;
+    }
+    const th = platform.thread(ref);
+    if (!th || (th.customerId !== me && th.executorId !== me)) return null;
+    const said = (u: string) => th.messages.some((m) => m.kind === "text" && m.by === u);
+    if (!said(th.customerId) || !said(th.executorId)) return null;
+    return { title: platform.service(th.serviceId)?.title ?? "Чат по услуге", to: me === th.customerId ? th.executorId : th.customerId };
   };
+  const myRefs = (me: string) => [...Object.keys(c.getState().deals), ...platform.threadsOf(me).map((t) => t.id)];
 
+  /** Задача на главной: завершенные сделки, по которым еще нет вашего отзыва. */
   app.get("/reviews/pending", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
     return Object.values(c.getState().deals).flatMap((d) => {
-      const to = reviewTarget(d, me);
-      if (!to || platform.reviewsOfDeal(d.id).some((r) => r.from === me)) return [];
-      return [{ dealId: d.id, title: d.title, target: brief(to) }];
+      if (d.status !== "completed") return [];
+      const ctx = reviewCtx(d.id, me);
+      if (!ctx || platform.reviewsOfDeal(d.id).some((r) => r.from === me)) return [];
+      return [{ dealId: d.id, title: d.title, target: brief(ctx.to) }];
     });
   });
 
-  app.get("/deals/:id/reviews", async (req, reply) => {
+  app.get("/reviews/of/:ref", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
-    const { id } = z.object({ id: z.string() }).parse(req.params);
-    const d = c.getState().deals[id];
-    if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
-    const items = platform.reviewsOfDeal(id);
-    const to = reviewTarget(d, me);
+    const { ref } = z.object({ ref: z.string() }).parse(req.params);
+    const ctx = reviewCtx(ref, me);
+    const items = platform.reviewsOfDeal(ref);
+    if (!ctx && !items.some((r) => r.from === me || r.to === me)) return reply.code(404).send({ error: "Нет данных" });
     return {
       items: items.map((r) => ({ ...r, from: brief(r.from), to: brief(r.to) })),
       mine: items.find((r) => r.from === me) ?? null,
-      canReview: !!to && !items.some((r) => r.from === me),
-      target: to ? brief(to) : null,
+      canReview: !!ctx && !items.some((r) => r.from === me),
+      target: ctx ? brief(ctx.to) : null,
     };
   });
 
-  app.post("/deals/:id/review", async (req, reply) => {
+  app.post("/reviews/of/:ref", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
-    const { id } = z.object({ id: z.string() }).parse(req.params);
+    const { ref } = z.object({ ref: z.string() }).parse(req.params);
     const b = z.object({ stars: z.number().int().min(1, "Поставьте оценку от 1 до 5").max(5, "Поставьте оценку от 1 до 5"), text: z.string().trim().max(1000).default("") }).parse(req.body);
-    const d = c.getState().deals[id];
-    if (!d) return reply.code(404).send({ error: "Сделка не найдена" });
-    if (d.status !== "completed") return reply.code(400).send({ error: "Отзыв можно оставить после завершения сделки" });
-    const to = reviewTarget(d, me);
-    if (!to) return reply.code(403).send({ error: "Оценить сделку могут ее участники" });
+    const ctx = reviewCtx(ref, me);
+    if (!ctx) return reply.code(403).send({ error: "Оценить можно того, с кем вы взаимодействовали: по сделке или по чату, где написали обе стороны" });
     if (b.stars <= 2 && b.text.length < 10) return reply.code(400).send({ error: "К низкой оценке нужен комментарий: что пошло не так" });
-    const review = await platform.addReview({ dealId: id, from: me, to, stars: b.stars, text: b.text });
-    notify([to], `${brief(me).name} оставил(а) отзыв по сделке «${d.title}»: ${b.stars} из 5`, id);
-    changed([to, me]);
+    const review = await platform.addReview({ dealId: ref, from: me, to: ctx.to, stars: b.stars, text: b.text });
+    notify([ctx.to], `${brief(me).name} оставил(а) отзыв: ${b.stars} из 5`, c.getState().deals[ref] ? ref : "");
+    changed([ctx.to, me]);
     return review;
   });
 
@@ -482,7 +491,11 @@ export function registerPlatformRoutes(c: Ctx) {
     return {
       user: brief(id),
       ...platform.ratingOf(id),
-      items: platform.reviewsAbout(id).slice(0, 100).map((r) => ({ id: r.id, stars: r.stars, text: r.text, at: r.at, dealTitle: deals[r.dealId]?.title ?? "Сделка", from: brief(r.from) })),
+      open: id === me ? [] : myRefs(me).flatMap((ref) => {
+        const ctx = reviewCtx(ref, me);
+        return ctx && ctx.to === id && !platform.reviewsOfDeal(ref).some((r) => r.from === me) ? [{ ref, title: ctx.title }] : [];
+      }),
+      items: platform.reviewsAbout(id).slice(0, 100).map((r) => ({ id: r.id, stars: r.stars, text: r.text, at: r.at, dealTitle: deals[r.dealId]?.title ?? (platform.thread(r.dealId) ? platform.service(platform.thread(r.dealId)!.serviceId)?.title ?? "Чат по услуге" : "Сделка"), from: brief(r.from) })),
     };
   });
 

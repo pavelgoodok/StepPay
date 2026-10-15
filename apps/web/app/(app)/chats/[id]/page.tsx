@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ReviewCard } from "@/components/review-card";
 import { Ava, Icon, MoneyInput, Sheet } from "@/components/ui";
 import { api, type ChatFull } from "@/lib/api";
 import { rub, toKopecks } from "@/lib/format";
@@ -93,6 +94,8 @@ export default function ChatPage() {
           </Link>
         );
       })}
+
+      <ReviewCard dealId={id} collapsible />
 
       {!isExec && c.deals.length === 0 && (
         <div className="note">Обсудите задачу и сумму. Когда договоритесь, исполнитель зарегистрирует задачу, и вы увидите ее здесь и в разделе «Сделки».</div>
