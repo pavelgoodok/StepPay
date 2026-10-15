@@ -6,17 +6,22 @@ import { CreateSheet } from "@/components/create-sheet";
 import { Ava, Icon, Logo } from "@/components/ui";
 import { useSession } from "@/lib/session";
 
-const TABS = [
+type Tab = { href: string; label: string; icon: string; desk?: boolean } | null;
+const TABS: Tab[] = [
   { href: "/deals", label: "Сделки", icon: "deals" },
   { href: "/catalog", label: "Каталог", icon: "sprout" },
   null,
   { href: "/chats", label: "Чаты", icon: "chat" },
+  { href: "/notifications", label: "Уведомления", icon: "bell", desk: true },
   { href: "/profile", label: "Профиль", icon: "user" },
 ];
-const ADMIN_TABS = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
+const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
+
+/** Стеклянная фигура в правом нижнем углу: своя для каждого раздела, лежит под карточками. */
+const decoOf = (p: string) => (/^\/(catalog|projects|services)/.test(p) ? "arch" : /^\/(wallet|receipts|admin)/.test(p) ? "s" : "ring");
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, ready, adminLocked } = useSession();
+  const { user, ready, adminLocked, unread } = useSession();
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
@@ -49,6 +54,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           Администратору нужен вход по passkey. <Link href="/profile" style={{ fontWeight: 700 }}>Добавьте passkey в профиле</Link> и войдите с ним.
         </div>
       )}
+      <div className={`deco deco-${decoOf(path)}`} aria-hidden />
       {user ? children : <div className="page"><div className="skeleton" /></div>}
       {demo && (
         <Link href="/demo" className="demo-pill" aria-label="Вернуться к демо-сценарию">▶ Демо</Link>
@@ -57,8 +63,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <Link href="/deals" className="side-logo" aria-label="StepPay"><Logo /></Link>
         {tabs.map((t) =>
           t ? (
-            <Link key={t.href} href={t.href} className={`tab ${active(t.href) ? "on" : ""}`}>
-              <span className="ti"><Icon name={t.icon} /></span>
+            <Link key={t.href} href={t.href} className={`tab ${t.desk ? "desk" : ""} ${active(t.href) ? "on" : ""}`}>
+              <span className="ti"><Icon name={t.icon} />{t.desk && unread > 0 && <span className="bell-n">{unread > 9 ? "9+" : unread}</span>}</span>
               {t.label}
             </Link>
           ) : (

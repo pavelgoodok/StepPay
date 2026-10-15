@@ -14,7 +14,7 @@ import { useSession, usePoll } from "@/lib/session";
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
 
 export default function Profile() {
-  const { user, users, login, logout, toast, refresh, wallet, features } = useSession();
+  const { user, users, login, logout, toast, refresh, wallet, features, unread } = useSession();
   const router = useRouter();
   const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
@@ -158,6 +158,13 @@ export default function Profile() {
           </div>
         </div>
         {features.chain && <span className="chip">tRUB</span>}
+        <Icon name="arrow" size={18} />
+      </Link>
+
+      <Link href="/notifications" className="card tap row" style={{ gap: 14 }}>
+        <span className="setic"><Icon name="bell" size={22} /></span>
+        <div className="grow"><div className="title">Уведомления</div><div className="small muted">События по сделкам</div></div>
+        {unread > 0 && <span className="chip">{unread}</span>}
         <Icon name="arrow" size={18} />
       </Link>
 

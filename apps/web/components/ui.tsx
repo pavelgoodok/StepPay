@@ -122,6 +122,7 @@ const P: Record<string, string> = {
   arrow: "M5 12h14M13 6l6 6-6 6",
   down: "M12 5v14M6 13l6 6 6-6",
   back: "M15 5l-7 7 7 7",
+  bell: "M6 17V11a6 6 0 0112 0v6l1.5 2h-15zM10 21h4",
   clock: "M12 7v5l3 2M12 21a9 9 0 100-18 9 9 0 000 18z",
   swap: "M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4",
   shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",

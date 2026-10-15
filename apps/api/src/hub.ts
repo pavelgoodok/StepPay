@@ -10,7 +10,11 @@ export class Hub {
     res.on("close", () => this.clients.get(userId)?.delete(res));
   }
 
+  /** Куда складывать уведомления, чтобы их можно было прочитать позже в отдельном разделе. */
+  sink?: (userIds: string[], data: { dealId: string; text: string }) => void;
+
   send(userIds: Iterable<string>, event: string, data: unknown) {
+    if (event === "notify" && this.sink) this.sink([...new Set(userIds)], data as { dealId: string; text: string });
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const id of new Set(userIds)) for (const res of this.clients.get(id) ?? []) {
       try {

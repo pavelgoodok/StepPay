@@ -145,6 +145,7 @@ export async function buildApp(opts: AppOptions) {
     if (raw) await opts.store.replaceFile(fid, sealFile(fileKey, fid, raw));
   }
   const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
+  hub.sink = (ids, d) => void platform.addNotes(ids, d.text, d.dealId).catch(() => undefined);
   const mirror = opts.chain
     ? new ChainMirror({
         chain: opts.chain,
@@ -397,7 +398,7 @@ export async function buildApp(opts: AppOptions) {
     const phone = dir.phoneOf(id);
     const h = req.headers.authorization;
     const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -795,7 +796,6 @@ export async function buildApp(opts: AppOptions) {
       const narration = await transact((s) => ({ state: prep.apply(s), result: prep.narration }));
       await prep.after?.();
       hub.send(everyone, "changed", {});
-      hub.send([narration.viewAs], "notify", { dealId: "", text: narration.title });
       return { step, total: DEMO_SCRIPT.length, ...narration };
     });
   }

@@ -19,6 +19,25 @@ interface Receipt {
 
 const when = (t: number) => new Date(t).toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+/** Печать StepPay: круглая, с кольцевой надписью и датой проведения. */
+function Stamp({ date }: { date: string }) {
+  return (
+    <svg className="stamp" viewBox="0 0 160 160" width="132" height="132" role="img" aria-label="Печать StepPay">
+      <defs>
+        <path id="stamp-top" d="M 24 80 A 56 56 0 0 1 136 80" />
+        <path id="stamp-bot" d="M 20 80 A 60 60 0 0 0 140 80" />
+      </defs>
+      <circle cx="80" cy="80" r="74" fill="none" stroke="currentColor" strokeWidth="3" />
+      <circle cx="80" cy="80" r="68" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle cx="80" cy="80" r="40" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <text fontSize="13" fontWeight="800" letterSpacing="2.2" fill="currentColor"><textPath href="#stamp-top" startOffset="50%" textAnchor="middle">STEPPAY · ОПЛАТА ПО ШАГАМ</textPath></text>
+      <text fontSize="12" fontWeight="700" letterSpacing="2" fill="currentColor"><textPath href="#stamp-bot" startOffset="50%" textAnchor="middle">ЦИФРОВОЙ РУБЛЬ</textPath></text>
+      <text x="80" y="74" textAnchor="middle" fontSize="15" fontWeight="800" fill="currentColor">ПРОВЕДЕНО</text>
+      <text x="80" y="94" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">{date}</text>
+    </svg>
+  );
+}
+
 export default function Receipts() {
   const { data } = usePoll(() => api<Receipt[]>("/receipts"), []);
   const [open, setOpen] = useState<Receipt | null>(null);
@@ -63,6 +82,7 @@ export default function Receipts() {
               <div className="row between" style={{ marginTop: 10, fontSize: 20 }}><b>Итого</b><b className="mono">{rub(open.amount)}</b></div>
               <div className="small muted">Оплата цифровыми рублями через StepPay</div>
             </div>
+            <Stamp date={when(open.at)} />
           </div>
           <p className="small muted" style={{ margin: "12px 0" }}>В демо чек только имитирует «Мой налог»: в продукте он регистрируется в ФНС для самозанятых автоматически.</p>
           <button className="btn soft" onClick={() => window.print()}>Распечатать или сохранить в PDF</button>

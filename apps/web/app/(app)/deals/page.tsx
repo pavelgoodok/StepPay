@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { Bell } from "@/components/bell";
 import { DealCard } from "@/components/deal-card";
 import { Ava, IMG, Icon, Logo, Money } from "@/components/ui";
 import { api, type DealSummary } from "@/lib/api";
@@ -29,7 +30,10 @@ export default function Deals() {
     <div className="page">
       <div className="top">
         <Logo />
-        <Link href="/profile"><Ava name={user.name} src={user.avatar} /></Link>
+        <div className="actions">
+          <Bell />
+          <Link href="/profile"><Ava name={user.name} src={user.avatar} /></Link>
+        </div>
       </div>
 
       <div className="hero bg-reserve plain">

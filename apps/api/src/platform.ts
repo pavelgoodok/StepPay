@@ -103,6 +103,16 @@ export interface PlatformData {
   anchorPubs?: Record<number, AnchorPub[]>;
   /** перенос сделок на контракт в тестовой сети: что уже перенесено и хеши транзакций */
   mirror?: MirrorData;
+  /** уведомления по участникам и время, до которого они прочитаны */
+  notes?: Record<string, Note[]>;
+  notesSeen?: Record<string, number>;
+}
+
+export interface Note {
+  id: string;
+  at: number;
+  text: string;
+  dealId: string;
 }
 
 export interface AnchorPub {
@@ -156,6 +166,28 @@ export class Platform {
   /** Данные переноса на контракт: создаются при первом обращении, момент включения запоминается. */
   mirrorData(): MirrorData {
     return (this.data.mirror ??= { since: this.now(), deals: {} });
+  }
+
+  async addNotes(userIds: string[], text: string, dealId: string) {
+    const notes = (this.data.notes ??= {});
+    const at = this.now();
+    for (const u of userIds) {
+      const list = (notes[u] ??= []);
+      list.push({ id: this.id("n"), at, text, dealId });
+      if (list.length > 100) list.splice(0, list.length - 100);
+    }
+    await this.save();
+  }
+
+  notesOf(userId: string): { items: Note[]; unread: number } {
+    const seen = this.data.notesSeen?.[userId] ?? 0;
+    const items = [...(this.data.notes?.[userId] ?? [])].reverse();
+    return { items, unread: items.filter((n) => n.at > seen).length };
+  }
+
+  async markNotesSeen(userId: string) {
+    (this.data.notesSeen ??= {})[userId] = this.now();
+    await this.save();
   }
 
   saveMirror() {

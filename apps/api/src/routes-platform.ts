@@ -418,10 +418,22 @@ export function registerPlatformRoutes(c: Ctx) {
     const th = await platform.openThread(id, me);
     if (text) {
       await platform.post(th.id, me, text);
-      notify([th.executorId], `${brief(me).name}: ${text.slice(0, 80)}`);
       changed([th.executorId]);
     }
     return { id: th.id };
+  });
+
+  app.get("/notifications", async (req, reply) => {
+    const me = c.authed(req, reply);
+    if (!me) return;
+    return platform.notesOf(me);
+  });
+
+  app.post("/notifications/read", async (req, reply) => {
+    const me = c.authed(req, reply);
+    if (!me) return;
+    await platform.markNotesSeen(me);
+    return { ok: true };
   });
 
   app.get("/chats", async (req, reply) => {
@@ -453,7 +465,6 @@ export function registerPlatformRoutes(c: Ctx) {
     if (!th || (th.customerId !== me && th.executorId !== me)) return reply.code(404).send({ error: "Чат не найден" });
     const m = await platform.post(id, me, text);
     const other = th.customerId === me ? th.executorId : th.customerId;
-    notify([other], `${brief(me).name}: ${text.slice(0, 80)}`);
     changed([other, me]);
     return m;
   });
