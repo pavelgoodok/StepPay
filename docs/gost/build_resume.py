@@ -7,6 +7,7 @@ SRC = ROOT / "docs/cbr/StepPay_resume.md"
 ORG = "Проект StepPay"
 SYS = "Платформа StepPay. Оплата по шагам в цифровых рублях"
 KIND = "Резюме проекта"
+AUTHOR = "Гудков Павел Алексеевич\npavlusha220@yandex.ru\n+7 995 540-71-20"
 DESIG = "STEPPAY.00003-01 90 01"
 
 
@@ -28,7 +29,7 @@ def make(pages):
     secs = sections()
     D = Doc()
     D.total = pages.get("__total__", "[N]")
-    D.approval_and_title(ORG, SYS, KIND, DESIG, "Автор проекта", "2026", "")
+    D.approval_and_title(ORG, SYS, KIND, DESIG, "Автор проекта", "2026", "", AUTHOR)
     D.toc([(1, f"{i} {s['title'].upper()}") for i, s in enumerate(secs, 1)], pages)
     for i, s in enumerate(secs, 1):
         D.h1(str(i), s["title"], newpage=False)

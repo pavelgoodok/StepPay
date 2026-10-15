@@ -158,7 +158,7 @@ class Doc:
     # ───── служебные страницы ─────
     total = "[N]"
 
-    def approval_and_title(self, org, system_name, doc_kind, designation, approver_title, year, place):
+    def approval_and_title(self, org, system_name, doc_kind, designation, approver_title, year, place, author=""):
         d = self.d
         # титульный лист
         self.center(org, line=1.15)
@@ -168,7 +168,12 @@ class Doc:
         self.center(doc_kind, bold=True, line=1.3, before=6)
         self.center(designation, line=1.3, before=12)
         self.center(f"Листов {self.total}", line=1.3, before=6)
-        for _ in range(10):
+        if author:
+            self.center("", line=1.15)
+            self.center("Разработчик", line=1.3)
+            for ln in author.split("\n"):
+                self.center(ln, line=1.3)
+        for _ in range(7 if author else 10):
             self.center("", line=1.15)
         self.center(f"{place} {year}".strip(), line=1.15)
         # новая секция: нумерация страниц вверху по центру, со второй страницы
