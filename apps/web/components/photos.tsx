@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { photoSrc, uploadPhoto } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Icon } from "./ui";
@@ -47,6 +48,17 @@ export function PhotoPicker({ value, onChange, max = 6 }: { value: string[]; onC
 
 export function PhotoGrid({ photos }: { photos?: string[] }) {
   const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    window.addEventListener("keydown", k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
   if (!photos?.length) return null;
   return (
     <>
@@ -58,12 +70,15 @@ export function PhotoGrid({ photos }: { photos?: string[] }) {
           </button>
         ))}
       </div>
-      {open && (
-        <div className="lightbox" onClick={() => setOpen(null)}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photoSrc(open)} alt="" />
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div className="lightbox" onClick={() => setOpen(null)}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoSrc(open)} alt="" />
+            <button className="lb-x" aria-label="Закрыть" onClick={() => setOpen(null)}><Icon name="x" size={20} /></button>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
