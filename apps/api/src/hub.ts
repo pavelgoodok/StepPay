@@ -12,11 +12,23 @@ export class Hub {
 
   send(userIds: Iterable<string>, event: string, data: unknown) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const id of new Set(userIds)) for (const res of this.clients.get(id) ?? []) res.write(payload);
+    for (const id of new Set(userIds)) for (const res of this.clients.get(id) ?? []) {
+      try {
+        res.write(payload);
+      } catch {
+        this.clients.get(id)?.delete(res);
+      }
+    }
   }
 
   heartbeat() {
-    for (const set of this.clients.values()) for (const res of set) res.write(": ping\n\n");
+    for (const set of this.clients.values()) for (const res of [...set]) {
+      try {
+        res.write(": ping\n\n");
+      } catch {
+        set.delete(res);
+      }
+    }
   }
 
   closeAll() {

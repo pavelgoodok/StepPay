@@ -132,7 +132,7 @@ describe("услуги и согласование задачи", () => {
     await call("ivan", "POST", `/chats/${th.id}/messages`, { text: "Добрый день" });
     // задачу регистрирует только исполнитель
     expect((await call("anna", "POST", `/chats/${th.id}/task`, { title: "Ремонт" })).status).toBeGreaterThanOrEqual(400);
-    const task = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", description: "4 кв. м" })).body;
+    const task = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000, description: "4 кв. м" })).body;
     const id = task.id ?? task.dealId;
     expect((await call("ivan", "GET", `/deals/${id}`)).body.status).toBe("draft");
     // пока нет условий, резерв невозможен
@@ -155,7 +155,7 @@ describe("контракт сделки в API", () => {
     const { call } = await setup();
     const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
     const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
-    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
     expect((await call("anna", "GET", `/deals/${id}/contract`)).body.contract).toBeNull(); // в согласовании контракта нет
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R, criteria: ["Швы ровные"] }] });
     await call("ivan", "POST", `/deals/${id}/propose`);
@@ -181,7 +181,7 @@ describe("подписи сторон в API", () => {
     const { call } = await setup();
     const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
     const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
-    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
     expect((await call("ivan", "POST", `/deals/${id}/sign`)).status).toBe(400); // контракта еще нет
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R }] });
     await call("ivan", "POST", `/deals/${id}/propose`);
@@ -202,7 +202,7 @@ describe("прогон сделки на контракте в сети", () => 
     const { call } = await setup();
     const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
     const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
-    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной" })).body.dealId;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
     const report = { network: "Sepolia", chainId: 11155111, contract: "0x" + "ab".repeat(20), dealId: 1, explorer: "https://sepolia.etherscan.io/", txs: [{ label: "Резерв", hash: "0x" + "cd".repeat(32), at: 1 }] };
     expect((await call("anna", "POST", `/deals/${id}/chain`, report)).status).toBe(403);
     expect((await call("admin", "POST", `/deals/${id}/chain`, { ...report, contract: "0x1" })).status).toBe(400);

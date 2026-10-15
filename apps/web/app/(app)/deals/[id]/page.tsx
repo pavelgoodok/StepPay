@@ -173,6 +173,7 @@ export default function DealPage() {
         {!draft && <JournalCard d={d} />}
         <ChainCard d={d} />
       </div>}
+      {d.meta?.agreed ? <div className="card row between"><div className="small muted">Договорились на</div><b className="mono">{rub(d.meta.agreed)}</b></div> : null}
       {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 
       {draft && isExec && (() => {

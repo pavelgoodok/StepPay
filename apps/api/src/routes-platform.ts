@@ -440,7 +440,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const th = platform.thread(id);
     if (!th || (th.customerId !== me && th.executorId !== me)) return reply.code(404).send({ error: "Чат не найден" });
     await platform.markRead(id, me);
-    const deals = Object.values(c.getState().deals).filter((d) => d.meta?.chatId === id).map((d) => ({ ...summary(d), description: d.meta?.description }));
+    const deals = Object.values(c.getState().deals).filter((d) => d.meta?.chatId === id).map((d) => ({ ...summary(d), description: d.meta?.description, agreed: d.meta?.agreed }));
     return { ...threadView(th, me), messages: th.messages, deals, me: brief(me) };
   });
 
@@ -463,7 +463,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const me = c.authed(req, reply);
     if (!me) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
-    const b = z.object({ title: z.string().trim().min(3, "Название от 3 символов").max(120), description: z.string().trim().max(2000).optional(), arbiterId: z.string().max(60).optional(), backupArbiterId: z.string().max(60).optional().or(z.literal("")) }).parse(req.body);
+    const b = z.object({ title: z.string().trim().min(3, "Название от 3 символов").max(120), description: z.string().trim().max(2000).optional(), amount: z.number().int().min(100, "Укажите сумму, на которую договорились").max(100_000_000_00), arbiterId: z.string().max(60).optional(), backupArbiterId: z.string().max(60).optional().or(z.literal("")) }).parse(req.body);
     const th = platform.thread(id);
     if (!th || th.executorId !== me) return reply.code(403).send({ error: "Задачу регистрирует исполнитель в чате с заказчиком" });
     // приемщик выбирается из реестра: по умолчанию первый, запасной по умолчанию второй, если он есть
@@ -475,11 +475,11 @@ export function registerPlatformRoutes(c: Ctx) {
     const dealId = `t_${Math.random().toString(36).slice(2, 10)}${c.now().toString(36)}`;
     const t = c.now();
     await c.transact((s) => ({
-      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId, backupArbiterId, status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description }, at: t }),
+      state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId, backupArbiterId, status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description, agreed: b.amount }, at: t }),
       result: true,
     }));
-    await platform.post(id, me, `Зарегистрирована задача «${b.title}». Исполнитель согласует этапы и отправит условия.`, "system", dealId);
-    notify([th.customerId], `${brief(me).name} зарегистрировал(а) задачу «${b.title}»`, dealId);
+    await platform.post(id, me, `Зарегистрирована задача «${b.title}» на ${(b.amount / 100).toLocaleString("ru-RU")} ₽. Исполнитель согласует этапы и отправит условия.`, "system", dealId);
+    notify([th.customerId], `${brief(me).name} зарегистрировал(а) задачу «${b.title}» на ${(b.amount / 100).toLocaleString("ru-RU")} ₽`, dealId);
     changed([th.customerId, me]);
     return { dealId };
   });

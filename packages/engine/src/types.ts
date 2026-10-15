@@ -129,7 +129,7 @@ export interface Deal {
   journal?: JournalEntry[];
   /** зафиксированный контракт: хеш условий на момент, когда они стали окончательными */
   contract?: { v: number; hash: string; sealedAt: number };
-  meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string };
+  meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string; agreed?: Money };
 }
 
 export type LedgerType = "topup" | "reserve" | "payout" | "refund" | "fee";

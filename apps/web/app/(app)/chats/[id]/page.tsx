@@ -2,9 +2,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Ava, Icon, Sheet } from "@/components/ui";
+import { Ava, Icon, MoneyInput, Sheet } from "@/components/ui";
 import { api, type ChatFull } from "@/lib/api";
-import { rub } from "@/lib/format";
+import { rub, toKopecks } from "@/lib/format";
 import { dealChip } from "@/lib/labels";
 import { useSession, usePoll } from "@/lib/session";
 
@@ -17,6 +17,7 @@ export default function ChatPage() {
   const [task, setTask] = useState(false);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
+  const [sum, setSum] = useState("");
   const [arbiters, setArbiters] = useState<{ id: string; name: string; resolved: number }[] | null>(null);
   const [arb, setArb] = useState("");
   const [backup, setBackup] = useState<string | null>(null);
@@ -54,10 +55,11 @@ export default function ChatPage() {
   async function register() {
     setBusy(true);
     try {
-      const r = await api<{ dealId: string }>(`/chats/${id}/task`, { method: "POST", body: { title: title.trim(), description: desc.trim() || undefined, arbiterId: arb || undefined, backupArbiterId: backup ?? undefined } });
+      const r = await api<{ dealId: string }>(`/chats/${id}/task`, { method: "POST", body: { title: title.trim(), amount: toKopecks(Number(sum)), description: desc.trim() || undefined, arbiterId: arb || undefined, backupArbiterId: backup ?? undefined } });
       setTask(false);
       setTitle("");
       setDesc("");
+      setSum("");
       toast("Задача зарегистрирована");
       window.location.assign(`/deals/${r.dealId}`);
     } catch (e) {
@@ -85,7 +87,7 @@ export default function ChatPage() {
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="small muted">Задача</div>
               <b className="ellipsis" style={{ display: "block" }}>{d.title}</b>
-              {d.target > 0 && <div className="small muted">{rub(d.target)}</div>}
+              {(d.target > 0 || d.agreed) && <div className="small muted">{rub(d.target > 0 ? d.target : (d.agreed ?? 0))}</div>}
             </div>
             <span className={`chip ${chip.tone}`}>{chip.text}</span>
           </Link>
@@ -123,6 +125,7 @@ export default function ChatPage() {
           <p className="sub" style={{ margin: "4px 0 14px" }}>Заказчик увидит ее со статусом «Согласование». Дальше вы разобьете работу на этапы и отправите условия.</p>
           <div className="stack">
             <input className="input" autoFocus placeholder="Название задачи" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <MoneyInput placeholder="Сумма, на которую договорились, ₽" value={sum} onChange={setSum} />
             <textarea className="input" placeholder="О чем договорились (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
             {(arbiters ?? []).length > 0 && (
               <>
@@ -142,7 +145,7 @@ export default function ChatPage() {
                 </div>
               </>
             )}
-            <button className="btn" disabled={busy || title.trim().length < 3} onClick={register}>Зарегистрировать</button>
+            <button className="btn" disabled={busy || title.trim().length < 3 || !Number(sum)} onClick={register}>Зарегистрировать</button>
           </div>
         </Sheet>
       )}

@@ -226,7 +226,7 @@ export interface ChatFull {
   service: { id: string; title: string };
   with: Person;
   messages: ChatMessage[];
-  deals: (DealSummary & { description?: string })[];
+  deals: (DealSummary & { description?: string; agreed?: number })[];
   me: Person;
 }
 export interface PlanResult {
