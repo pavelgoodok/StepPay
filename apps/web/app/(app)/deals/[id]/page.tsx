@@ -183,7 +183,7 @@ export default function DealPage() {
           <div className="card stack">
             <div className="title">Условия для заказчика</div>
             <div className="sub">Разбейте работу на этапы и укажите стоимость каждого. Заказчик увидит их, проверит и зарезервирует деньги.</div>
-            <StageEditor rows={cur} onChange={setRows} mode="own" seedText={[d.title, d.meta?.description].filter(Boolean).join(". ")} />
+            <StageEditor rows={cur} onChange={setRows} mode="own" initialBudget={d.meta?.agreed ? String(Math.round(d.meta.agreed / 100)) : ""} seedText={[d.title, d.meta?.description].filter(Boolean).join(". ")} />
             <div className="btns">
               <button className="btn soft" disabled={busy || !ready} onClick={() => run("/terms", { stages: rowsToStages(cur) }, "Сохранено")}>Сохранить</button>
               <button className="btn" disabled={busy || !ready} onClick={async () => {

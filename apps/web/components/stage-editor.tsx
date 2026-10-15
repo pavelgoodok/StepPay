@@ -19,10 +19,10 @@ export const stagesToRows = (st: { title: string; amount: number; criteria: stri
   st.length ? st.map((s) => ({ title: s.title, rub: String(Math.round(s.amount / 100)), criteria: s.criteria })) : [emptyRow()];
 
 /** Список этапов с суммами и автоподбором по описанию задачи. */
-export function StageEditor({ rows, onChange, mode, seedText = "" }: { rows: Row[]; onChange(r: Row[]): void; mode: "own" | "crowdfunding" | "grant"; seedText?: string }) {
+export function StageEditor({ rows, onChange, mode, seedText = "", initialBudget = "" }: { rows: Row[]; onChange(r: Row[]): void; mode: "own" | "crowdfunding" | "grant"; seedText?: string; initialBudget?: string }) {
   const { toast } = useSession();
   const [text, setText] = useState(seedText);
-  const [budget, setBudget] = useState("");
+  const [budget, setBudget] = useState(initialBudget);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
