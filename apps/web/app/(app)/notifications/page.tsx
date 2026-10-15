@@ -48,8 +48,8 @@ export default function Notifications() {
       {groups.length === 0 && (
         <div className="card empty">
           <Icon name="bell" size={30} />
-          <div className="title" style={{ marginTop: 8 }}>Пока тихо</div>
-          <div className="sub">Здесь появятся важные события по вашим сделкам: приемка этапов, споры, выплаты.</div>
+          <div className="title" style={{ marginTop: 8 }}>Уведомлений нет</div>
+          <div className="sub">Здесь отображаются события по сделкам: приемка этапов, споры, выплаты.</div>
         </div>
       )}
       {groups.map((g) => (

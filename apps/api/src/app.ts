@@ -598,22 +598,22 @@ export async function buildApp(opts: AppOptions) {
     const who = dir.get(actor)?.name ?? "Участник";
     const q = `«${stageTitle}»`;
     const text: Record<string, string> = {
-      fund: `${who} зарезервировал(а) деньги по «${d.title}»`,
-      submit: `${who} сдал(а) этап ${q} - проверьте`,
-      approve: `Этап ${q} принят: ${rub(amount)} уже у исполнителя`,
-      reject: d.mode === "grant" ? `Этап ${q} отклонен, остаток возвращен` : `Отказ по этапу ${q}: открыт спор`,
+      fund: `${who} зарезервировал(а) средства по сделке «${d.title}»`,
+      submit: `${who} сдал(а) этап ${q}: требуется приемка`,
+      approve: `Этап ${q} принят, выплата исполнителю: ${rub(amount)}`,
+      reject: d.mode === "grant" ? `Этап ${q} отклонен, остаток возвращен` : `Отказ по этапу ${q}, открыт спор`,
       vote: `${who} проголосовал(а) по этапу ${q}`,
       dispute: `Открыт спор по этапу ${q}`,
-      reply: `${who} написал(а) в споре по этапу ${q}`,
-      resolve: `Спор по этапу ${q} решен`,
+      reply: `${who} добавил(а) сообщение в споре по этапу ${q}`,
+      resolve: `Спор по этапу ${q} разрешен`,
       cancel: `Сделка «${d.title}» отменена, остаток возвращен`,
-      expired: `Срок вышел: сделка «${d.title}» закрыта, остаток возвращен`,
-      propose: `${who} отправил(а) условия по «${d.title}», можно резервировать`,
-      reopen: `${who} вернул(а) условия на правку: «${d.title}»`,
+      expired: `Срок истек: сделка «${d.title}» закрыта, остаток возвращен`,
+      propose: `${who} направил(а) условия по сделке «${d.title}»: доступно резервирование средств`,
+      reopen: `${who} вернул(а) условия на доработку по сделке «${d.title}»`,
       sign: d.status === "active" ? `${who} подписал(а) контракт «${d.title}»: работа началась` : `${who} подписал(а) контракт «${d.title}»`,
     };
     if (kind === "propose" || kind === "reopen") {
-      if (d.meta?.chatId) void platform.post(d.meta.chatId, actor, kind === "propose" ? "Условия отправлены. Можно проверить этапы и зарезервировать деньги." : "Условия возвращены на правку.", "system", d.id);
+      if (d.meta?.chatId) void platform.post(d.meta.chatId, actor, kind === "propose" ? "Условия направлены. Доступны проверка этапов и резервирование средств." : "Условия возвращены на доработку.", "system", d.id);
     }
     if (kind === "terms") {
       hub.send(people, "changed", { dealId: d.id });

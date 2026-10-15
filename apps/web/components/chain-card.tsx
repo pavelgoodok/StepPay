@@ -66,7 +66,7 @@ export function ChainCard({ d }: { d: DealFull }) {
                 </div>
               ))}
             </div>
-            {sync && <Link href="/profile/chain" className="small" style={{ color: "var(--blue)" }}>Мой кошелек в сети и откуда берутся токены</Link>}
+            {sync && <Link href="/profile/chain" className="small" style={{ color: "var(--blue)" }}>Кошелек в сети и выпуск токенов</Link>}
             {!c.explorer && <div className="small muted">Сеть локальная, обозревателя у нее нет: хеши можно сверить в логе узла.</div>}
           </div>
         </Sheet>

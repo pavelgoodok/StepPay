@@ -152,7 +152,7 @@ export default function EditProject() {
 
       {step === 0 && (
         <div className="card stack">
-          <div className="sub">Нужна один раз: администратор проверит, кто стоит за проектом. Данные видны только вам и администраторам.</div>
+          <div className="sub">Заполняется один раз. Администратор проверяет сведения об инициаторе проекта. Данные доступны только вам и администраторам.</div>
           {author && !editAuthor ? (
             <div className="stack">
               <div className="row between">
@@ -176,9 +176,9 @@ export default function EditProject() {
             <label>Категория</label>
             <div className="chips">{CATS.map((c) => <button key={c} className={`opt ${category === c ? "on" : ""}`} onClick={() => setCategory(c)}>{c}</button>)}</div>
           </div>
-          <div className="field"><label>Коротко, в одной фразе</label><input className="input" value={summary} maxLength={200} onChange={(e) => setSummary(e.target.value)} /></div>
+          <div className="field"><label>Краткое описание</label><input className="input" value={summary} maxLength={200} onChange={(e) => setSummary(e.target.value)} /></div>
           <div className="field">
-            <label>Подробно: что делаете, для кого и на что пойдут деньги</label>
+            <label>Подробное описание: назначение проекта, целевая аудитория, направления расходов</label>
             <textarea className="input" style={{ minHeight: 160 }} value={description} onChange={(e) => setDescription(e.target.value)} />
             <span className="small muted">{description.trim().length} из 100 символов минимум</span>
           </div>
@@ -196,7 +196,7 @@ export default function EditProject() {
         <div className="stack">
           <div className="card stack">
             <div className="title">Обложка</div>
-            <div className="sub">Главная картинка в каталоге. Подвигайте и приблизьте фото так, как оно должно выглядеть.</div>
+            <div className="sub">Основное изображение в каталоге. Задайте положение и масштаб.</div>
             {cover ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img className="pcover" src={photoSrc(cover.url)} alt="Обложка проекта" />

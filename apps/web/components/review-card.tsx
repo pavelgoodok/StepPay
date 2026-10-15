@@ -23,7 +23,7 @@ export function ReviewCard({ dealId, collapsible }: { dealId: string; collapsibl
     setBusy(true);
     try {
       await api(`/reviews/of/${dealId}`, { method: "POST", body: { stars, text } });
-      toast("Спасибо, отзыв сохранен");
+      toast("Отзыв сохранен");
       await Promise.all([reload(), refresh()]);
     } catch (e) {
       toast((e as Error).message, "err");

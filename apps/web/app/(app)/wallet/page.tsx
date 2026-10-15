@@ -121,13 +121,13 @@ export default function WalletPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="art" src={IMG.accept} alt="" />
           <h2>Пополнить кошелек</h2>
-          <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>{features.chain ? "Токены tRUB выпускаются в тестовой сети, это занимает до минуты" : "Демо: деньги появятся мгновенно"}</p>
+          <p className="sub" style={{ textAlign: "center", marginBottom: 14 }}>{features.chain ? "Выпуск токенов tRUB в тестовой сети занимает до одной минуты" : "Демо-режим: зачисление мгновенное"}</p>
           <div className="stack">
             <div className="chips" style={{ justifyContent: "center" }}>
               {[10000, 50000, 100000, 300000].map((v) => <button key={v} className={`opt ${amount === String(v) ? "on" : ""}`} onClick={() => setAmount(String(v))}>{rub(toKopecks(v))}</button>)}
             </div>
             <MoneyInput placeholder="Сумма, ₽" value={amount} onChange={setAmount} />
-            <button className="btn" disabled={busy || !Number(amount)} onClick={topup}>{busy ? <><span className="spin" /> {features.chain ? "Выпускаем в сети…" : "Пополняем…"}</> : "Пополнить"}</button>
+            <button className="btn" disabled={busy || !Number(amount)} onClick={topup}>{busy ? <><span className="spin" /> {features.chain ? "Выпуск токенов в сети…" : "Пополняем…"}</> : "Пополнить"}</button>
           </div>
         </Sheet>
       )}

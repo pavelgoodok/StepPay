@@ -153,7 +153,7 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {p.can.edit && <Link href={`/projects/${id}/edit`} className="btn">{p.status === "changes" ? "Исправить и отправить снова" : "Продолжить заполнение"}</Link>}
+      {p.can.edit && <Link href={`/projects/${id}/edit`} className="btn">{p.status === "changes" ? "Внести изменения и отправить повторно" : "Продолжить заполнение"}</Link>}
 
       {admin && p.status === "review" && (
         <div className="card stack">

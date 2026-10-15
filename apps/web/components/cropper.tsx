@@ -146,7 +146,7 @@ export function CropSheet({ file, aspect, round, outWidth, title, onDone, onClos
               <div className={`crop-mask ${round ? "round" : ""}`} />
             </div>
             <input className="zoom" type="range" min={1} max={6} step={0.01} value={zoom} aria-label="Масштаб" onChange={(e) => { view.current.zoom = Number(e.target.value); draw(); }} />
-            <div className="small muted" style={{ textAlign: "center" }}>Двигайте фото и меняйте масштаб</div>
+            <div className="small muted" style={{ textAlign: "center" }}>Задайте положение и масштаб изображения</div>
           </>
         )}
         <div className="btns" style={{ width: "100%" }}>

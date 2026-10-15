@@ -102,7 +102,7 @@ export default function ChatPage() {
       )}
 
       <div className="bubbles">
-        {c.messages.length === 0 && <div className="empty" style={{ padding: 16 }}>Напишите первое сообщение</div>}
+        {c.messages.length === 0 && <div className="empty" style={{ padding: 16 }}>Сообщений пока нет</div>}
         {c.messages.map((m) =>
           m.kind === "system" ? (
             <div key={m.id} className="sysmsg">
@@ -132,8 +132,8 @@ export default function ChatPage() {
           <p className="sub" style={{ margin: "4px 0 14px" }}>Заказчик увидит ее со статусом «Согласование». Дальше вы разобьете работу на этапы и отправите условия.</p>
           <div className="stack">
             <input className="input" autoFocus placeholder="Название задачи" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <MoneyInput placeholder="Сумма, на которую договорились, ₽" value={sum} onChange={setSum} />
-            <textarea className="input" placeholder="О чем договорились (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <MoneyInput placeholder="Согласованная сумма, ₽" value={sum} onChange={setSum} />
+            <textarea className="input" placeholder="Согласованные условия (необязательно)" value={desc} onChange={(e) => setDesc(e.target.value)} />
             {(arbiters ?? []).length > 0 && (
               <>
                 <div className="field">

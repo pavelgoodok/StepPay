@@ -80,7 +80,7 @@ export default function Receipts() {
               <div className="muted" style={{ marginTop: 6 }}>Наименование услуги</div>
               <div>{open.service}</div>
               <div className="row between" style={{ marginTop: 10, fontSize: 20 }}><b>Итого</b><b className="mono">{rub(open.amount)}</b></div>
-              <div className="small muted">Оплата цифровыми рублями через StepPay</div>
+              <div className="small muted">Оплата цифровыми рублями через сервис StepPay</div>
             </div>
             <Stamp date={when(open.at)} />
           </div>

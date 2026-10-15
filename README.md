@@ -32,7 +32,7 @@ cd apps/api && pnpm start
 cd apps/web && NEXT_PUBLIC_API_URL=http://localhost:4000 pnpm dev
 ```
 
-Откройте http://localhost:3000 и нажмите «Демо-сценарий для жюри».
+Откройте http://localhost:3000 и нажмите «Демонстрационный сценарий».
 
 ## Деплой
 

@@ -86,7 +86,7 @@ export default function Demo() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="art" src={IMG.rocket} alt="" />
           <div style={{ maxWidth: 220 }}>
-            <div className="label">Демо для жюри</div>
+            <div className="label">Демонстрационный сценарий</div>
             <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1, marginTop: 6 }}>Сценарий на 11 шагов</div>
           </div>
         </div>

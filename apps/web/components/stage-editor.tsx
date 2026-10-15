@@ -40,7 +40,7 @@ export function StageEditor({ rows, onChange, mode, seedText = "", initialBudget
           return { title: st.title, rub: sum ? String(part) : "", criteria: st.criteria };
         }),
       );
-      if (p.source !== "claude") setNote(p.reason?.text ? `Подобран готовый шаблон. ${p.reason.text}` : "Подобран готовый шаблон");
+      if (p.source !== "claude") setNote("Применен типовой шаблон этапов. Состав и суммы можно изменить.");
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -53,7 +53,7 @@ export function StageEditor({ rows, onChange, mode, seedText = "", initialBudget
   return (
     <div className="stack">
       <div className="ai" style={{ padding: 0 }}>
-        <textarea className="input" placeholder="Опишите задачу, и мы предложим этапы" value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: 72 }} />
+        <textarea className="input" placeholder="Описание задачи для подбора этапов" value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: 72 }} />
         <div className="row">
           <MoneyInput placeholder="Бюджет, ₽" value={budget} onChange={setBudget} />
           <button className="btn soft sm" style={{ whiteSpace: "nowrap" }} disabled={busy || text.trim().length < 5} onClick={plan}>

@@ -22,9 +22,9 @@ type Ask = { kind: "submit" | "reject" | "dispute" | "reply" | "pay" | "refund";
 const CLOSED_BY: Record<string, string> = {
   owner: "Принят заказчиком",
   votes: "Решение спонсоров",
-  auto: "Принят автоматически: ответа не было 3 дня",
+  auto: "Принят автоматически: ответ не поступил в течение 3 дней",
   arbiter: "Решение независимого приемщика",
-  expired: "Срок вышел: остаток возвращен",
+  expired: "Срок истек: остаток возвращен",
 };
 
 export default function DealPage() {
@@ -156,8 +156,8 @@ export default function DealPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="float" src={IMG.deadline} alt="" />
           <div>
-            <div className="title">Срок вышел, деньги вернулись</div>
-            <div className="small muted" style={{ marginTop: 4 }}>Сторона не уложилась в срок из контракта, остаток возвращен без чьего-либо согласия.</div>
+            <div className="title">Срок истек, средства возвращены</div>
+            <div className="small muted" style={{ marginTop: 4 }}>Срок, установленный контрактом, нарушен, остаток возвращен без согласия сторон.</div>
           </div>
         </div>
       )}
@@ -182,8 +182,8 @@ export default function DealPage() {
           <Icon name="arrow" size={18} />
         </Link>
       )}
-      {d.meta?.agreed ? <div className="card row between"><div className="small muted">Договорились на</div><b className="mono">{rub(d.meta.agreed)}</b></div> : null}
-      {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
+      {d.meta?.agreed ? <div className="card row between"><div className="small muted">Согласованная сумма</div><b className="mono">{rub(d.meta.agreed)}</b></div> : null}
+      {d.meta?.description && <div className="card"><div className="small muted">Согласованные условия</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 
       {draft && isExec && (() => {
         const cur = rows ?? stagesToRows(d.stages.map((x) => ({ title: x.title, amount: x.amount, criteria: x.criteria })));
@@ -215,12 +215,12 @@ export default function DealPage() {
       {needsMySign && !(isOwner && !crowd && !fullyReserved) && (
         <div className="card stack">
           <div className="title">Подпишите контракт</div>
-          <div className="small muted">{fullyReserved ? "Деньги зарезервированы. Работа начнется, когда контракт подпишут все стороны." : "Подпись нужна до начала работы. Условия зафиксированы хешем, их уже нельзя изменить."}</div>
+          <div className="small muted">{fullyReserved ? "Средства зарезервированы. Работа начнется после подписания контракта всеми сторонами." : "Подпись нужна до начала работы. Условия зафиксированы хешем, их уже нельзя изменить."}</div>
           <button className="btn" disabled={busy} onClick={() => signNow(d.contract!.hash, "Контракт подписан")}>Подписать контракт</button>
         </div>
       )}
       {d.status === "funding" && fullyReserved && !needsMySign && unsigned.length > 0 && (
-        <div className="card row"><Icon name="clock" size={22} /><div className="sub">Деньги зарезервированы. Ждем подпись контракта: {unsigned.join(", ")}.</div></div>
+        <div className="card row"><Icon name="clock" size={22} /><div className="sub">Средства зарезервированы. Ждем подпись контракта: {unsigned.join(", ")}.</div></div>
       )}
 
       {d.status === "funding" && !fullyReserved && (
@@ -236,10 +236,10 @@ export default function DealPage() {
                     {[1000, 5000, 10000, 50000].filter((v) => toKopecks(v) <= missing).map((v) => (
                       <button key={v} className="opt" onClick={() => setAmount(String(v))}>{rub(toKopecks(v))}</button>
                     ))}
-                    <button className="opt" onClick={() => setAmount(String(Math.floor(missing / 100)))}>Все недостающее</button>
+                    <button className="opt" onClick={() => setAmount(String(Math.floor(missing / 100)))}>Недостающая сумма</button>
                   </div>
                   <MoneyInput placeholder="Сумма, ₽" value={amount} onChange={setAmount} />
-                  <button className="btn" disabled={busy || !Number(amount)} onClick={() => run("/fund", { amount: toKopecks(Number(amount)) }, "Деньги зарезервированы")}>
+                  <button className="btn" disabled={busy || !Number(amount)} onClick={() => run("/fund", { amount: toKopecks(Number(amount)) }, "Средства зарезервированы")}>
                     Поддержать{Number(amount) ? ` на ${rub(toKopecks(Number(amount)))}` : ""}
                   </button>
                   <div className="small muted">В кошельке {rub(wallet?.free ?? 0)}</div>
@@ -249,7 +249,7 @@ export default function DealPage() {
           ) : isOwner ? (
             <>
               <div className="title">Зарезервируйте {rub(d.target)}</div>
-              <div className="small muted">Деньги замораживаются в кошельке и уходят исполнителю только за принятые этапы.</div>
+              <div className="small muted">Средства резервируются в кошельке и выплачиваются исполнителю после приемки этапов.</div>
               <button className="btn" disabled={busy || (wallet?.free ?? 0) < d.target} onClick={async () => {
                 if (needsMySign) {
                   await prepareKey();
@@ -321,7 +321,7 @@ export default function DealPage() {
                     {d.mode !== "grant" && <div className="note warn"><Icon name="clock" size={14} /> Автоприемка через {timeLeft(left)}</div>}
                     {!crowd && isOwner && (
                       <div className="btns">
-                        <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/approve`, {}, "Этап принят, деньги отправлены")}>Принял</button>
+                        <button className="btn green" disabled={busy} onClick={() => run(`/stages/${s.id}/approve`, {}, "Этап принят, средства выплачены")}>Принял</button>
                         <button className="btn danger" disabled={busy} onClick={() => { setAsk({ kind: "reject", stage: s }); setText(""); }}>{d.mode === "grant" ? "Отклонить" : "Отказать"}</button>
                       </div>
                     )}
@@ -342,7 +342,7 @@ export default function DealPage() {
 
                 {s.status === "disputed" && (isOwner || isExec || isArbiter || isBackup) && (
                   <button className="btn soft" style={{ marginTop: 12 }} onClick={() => { setAsk({ kind: "reply", stage: s }); setText(""); setPhotos([]); }}>
-                    <Icon name="camera" size={18} /> {isArbiter || isBackup ? "Задать вопрос сторонам" : "Ответить / добавить фото"}
+                    <Icon name="camera" size={18} /> {isArbiter || isBackup ? "Направить запрос сторонам" : "Ответить / добавить фото"}
                   </button>
                 )}
                 {s.status === "disputed" && isBackup && !backupReady(s) && (
@@ -354,7 +354,7 @@ export default function DealPage() {
                     <button className="btn danger" disabled={busy} onClick={() => { setAsk({ kind: "refund", stage: s }); setText(""); }}>Вернуть</button>
                   </div>
                 )}
-                {s.status === "disputed" && !isArbiter && !isBackup && <div className="note warn" style={{ marginTop: 10 }}>Деньги за этап заморожены до решения независимого приемщика</div>}
+                {s.status === "disputed" && !isArbiter && !isBackup && <div className="note warn" style={{ marginTop: 10 }}>Средства по этапу заблокированы до решения независимого приемщика</div>}
               </div>
             </div>
           );
@@ -378,7 +378,7 @@ export default function DealPage() {
 
       {ask && (() => {
         const k = ask.kind;
-        const title = { submit: `Сдать этап «${ask.stage.title}»`, reject: "Причина отказа", dispute: "Причина спора", reply: "Сообщение в споре", pay: "Выплатить исполнителю", refund: "Вернуть деньги заказчику" }[k];
+        const title = { submit: `Сдать этап «${ask.stage.title}»`, reject: "Причина отказа", dispute: "Причина спора", reply: "Сообщение в споре", pay: "Выплатить исполнителю", refund: "Вернуть средства заказчику" }[k];
         const needText = k === "reject" || k === "dispute";
         const hasPhotos = k === "submit" || k === "reply";
         const label = { submit: "Сдать на приемку", reject: "Отправить отказ", dispute: "Открыть спор", reply: "Отправить", pay: "Подтвердить выплату", refund: "Подтвердить возврат" }[k];
@@ -394,7 +394,7 @@ export default function DealPage() {
           <Sheet onClose={() => setAsk(null)}>
             <h2 style={{ fontSize: 22, textAlign: "left" }}>{title}</h2>
             <div className="stack" style={{ marginTop: 14 }}>
-              <textarea className="input" autoFocus placeholder={k === "submit" ? "Что сделано, на что обратить внимание" : k === "pay" || k === "refund" ? "Пояснение к решению (необязательно)" : "Опишите"} value={text} onChange={(e) => setText(e.target.value)} />
+              <textarea className="input" autoFocus placeholder={k === "submit" ? "Результат работ и примечания" : k === "pay" || k === "refund" ? "Пояснение к решению (необязательно)" : "Опишите"} value={text} onChange={(e) => setText(e.target.value)} />
               {hasPhotos && <PhotoPicker value={photos} onChange={setPhotos} />}
               <button className={`btn ${k === "submit" || k === "reply" || k === "pay" ? "" : "danger"}`} disabled={busy || (needText && !text.trim()) || (k === "reply" && !text.trim() && photos.length === 0)} onClick={go}>{label}</button>
             </div>

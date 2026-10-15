@@ -50,7 +50,7 @@ export default function Catalog() {
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={IMG.folder} alt="" />
-          <p style={{ marginTop: 8 }}>Ничего не найдено</p>
+          <p style={{ marginTop: 8 }}>Результатов нет</p>
         </div>
       )}
       <div className="grid2">

@@ -60,8 +60,8 @@ export function ServiceForm({ id }: { id?: string }) {
           </div>
         </div>
         <div className="field">
-          <label>Что вы делаете</label>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Опишите, чем вы занимаетесь" style={{ minHeight: 120 }} />
+          <label>Вид деятельности</label>
+          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Описание услуги" style={{ minHeight: 120 }} />
         </div>
         <div className="field">
           <label>Цена от, ₽ (необязательно)</label>

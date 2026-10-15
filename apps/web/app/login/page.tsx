@@ -121,11 +121,11 @@ export default function Login() {
         <div className="brand-grid">
           <div className="brand-copy">
             <h1>Оплата по шагам</h1>
-            <p>Деньги резервируются в цифровых рублях и уходят исполнителю только за принятый этап.</p>
+            <p>Средства резервируются в цифровых рублях и выплачиваются исполнителю после приемки этапа.</p>
             <ul className="points">
-              <li><Icon name="shield" size={18} /> Резерв подтверждает готовность платить</li>
-              <li><Icon name="check" size={18} /> Выплата только за принятый этап</li>
-              <li><Icon name="swap" size={18} /> Остаток возвращается автоматически</li>
+              <li><Icon name="shield" size={18} /> Резервирование средств до начала работ</li>
+              <li><Icon name="check" size={18} /> Выплата после приемки этапа</li>
+              <li><Icon name="swap" size={18} /> Автоматический возврат остатка</li>
             </ul>
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -138,7 +138,7 @@ export default function Login() {
           {step === "phone" ? (
             <>
               <h2>Вход или регистрация</h2>
-              <p className="sub">Введите номер телефона, мы пришлем код подтверждения</p>
+              <p className="sub">Укажите номер телефона, на него будет отправлен код подтверждения</p>
               <div className="field" style={{ marginTop: 18 }}>
                 <label>Номер телефона</label>
                 <input className="input big-input" inputMode="tel" autoComplete="tel" autoFocus placeholder="Номер телефона" value={phone} onChange={(e) => setPhone(formatPhone(e.target.value))} onKeyDown={(e) => e.key === "Enter" && phoneOk && requestCode()} />
@@ -170,25 +170,25 @@ export default function Login() {
               )}
               {isNew && (
                 <div className="field" style={{ marginTop: 14 }}>
-                  <label>Что вам нужно</label>
+                  <label>Вид участия</label>
                   <div className="kinds">
                     <button type="button" className={`kind ${kind === "customer" ? "on" : ""}`} onClick={() => setKind("customer")}>
                       <Icon name="sprout" size={22} />
-                      <b>Ищу исполнителя</b>
-                      <span>Заказать работу и платить по этапам</span>
+                      <b>Заказчик</b>
+                      <span>Размещение заказов и оплата по этапам</span>
                     </button>
                     <button type="button" className={`kind ${kind === "executor" ? "on" : ""}`} onClick={() => setKind("executor")}>
                       <Icon name="deals" size={22} />
-                      <b>Я исполнитель</b>
-                      <span>Предлагать услуги и получать выплаты</span>
+                      <b>Исполнитель</b>
+                      <span>Предоставление услуг и получение выплат</span>
                     </button>
                   </div>
                 </div>
               )}
               {isNew && (
                 <div className="field" style={{ marginTop: 14 }}>
-                  <label>Как вас зовут</label>
-                  <input className="input" autoComplete="name" placeholder="Имя и фамилия" value={name} onChange={(e) => setName(e.target.value)} />
+                  <label>Фамилия и имя</label>
+                  <input className="input" autoComplete="name" placeholder="Фамилия и имя" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
               )}
               <div className="field" style={{ marginTop: 14 }}>
@@ -199,13 +199,13 @@ export default function Login() {
               <button className="btn" style={{ marginTop: 16 }} disabled={busy || code.length !== 6 || (isNew && (name.trim().length < 2 || !kind))} onClick={() => verify()}>
                 {busy ? <span className="spin" /> : isNew ? "Зарегистрироваться" : "Войти"}
               </button>
-              <button className="btn ghost" disabled={wait > 0 || busy} onClick={requestCode}>{wait > 0 ? `Отправить код еще раз через ${wait} с` : "Отправить код еще раз"}</button>
+              <button className="btn ghost" disabled={wait > 0 || busy} onClick={requestCode}>{wait > 0 ? `Отправить код повторно через ${wait} с` : "Отправить код повторно"}</button>
             </>
           )}
         </div>
 
         <Link href="/demo" className="demo-link">
-          <span className="grow"><b>Демо-сценарий для жюри</b><span>без регистрации</span></span>
+          <span className="grow"><b>Демонстрационный сценарий</b><span>без регистрации</span></span>
           <Icon name="arrow" size={18} />
         </Link>
 

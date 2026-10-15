@@ -18,7 +18,7 @@ export function Stars({ value, onChange, size = 18 }: { value: number; onChange?
 
 /** Рейтинг числом со звездой: 4,3 · 12 отзывов. */
 export function RatingLine({ rating, reviews }: { rating?: number | null; reviews?: number }) {
-  if (!reviews || rating == null) return <span className="small muted">Пока без отзывов</span>;
+  if (!reviews || rating == null) return <span className="small muted">Отзывов нет</span>;
   const word = reviews % 10 === 1 && reviews % 100 !== 11 ? "отзыв" : [2, 3, 4].includes(reviews % 10) && ![12, 13, 14].includes(reviews % 100) ? "отзыва" : "отзывов";
   return (
     <span className="small rating-line">

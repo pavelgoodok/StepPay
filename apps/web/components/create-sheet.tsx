@@ -6,7 +6,7 @@ import { useSession } from "@/lib/session";
 import { Icon, Sheet } from "./ui";
 
 const OPTIONS = [
-  { id: "service", title: "Услугу", text: "Опишите, что вы делаете, и принимайте заказы", icon: "hammer" },
+  { id: "service", title: "Услугу", text: "Опишите услугу, чтобы получать заказы", icon: "hammer" },
   { id: "crowdfunding", title: "Проект на сбор средств", text: "Краудфандинг: деньги от поддержавших, выплата по этапам", icon: "crowd" },
   { id: "grant", title: "Проект на грант", text: "Заявка для грантодателей, проходит проверку", icon: "award" },
 ] as const;
@@ -36,7 +36,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       <Sheet onClose={onClose}>
         <button className="btn ghost sm" onClick={() => setKind(null)} style={{ marginBottom: 4, alignSelf: "flex-start" }}><Icon name="back" size={18} /> Назад</button>
         <h2 style={{ textAlign: "left", fontSize: 24 }}>{kind === "grant" ? "Заявка на грант" : "Проект на сбор средств"}</h2>
-        <p className="sub" style={{ margin: "4px 0 14px" }}>Дальше заполните анкету и описание, приложите документы. Проект опубликуют после проверки.</p>
+        <p className="sub" style={{ margin: "4px 0 14px" }}>Далее необходимо заполнить анкету и описание, приложить документы. Проект будет опубликован после проверки.</p>
         <div className="stack">
           <input className="input" autoFocus placeholder="Название проекта" value={title} onChange={(e) => setTitle(e.target.value)} />
           <button className="btn" disabled={busy || title.trim().length < 3} onClick={start}>Продолжить</button>
@@ -47,7 +47,7 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
 
   return (
     <Sheet onClose={onClose}>
-      <h2>Что добавить?</h2>
+      <h2>Выберите действие</h2>
       <div className="stack" style={{ marginTop: 16 }}>
         {OPTIONS.map((o) => (
           <button

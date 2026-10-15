@@ -569,7 +569,7 @@ export function registerPlatformRoutes(c: Ctx) {
       state: createDeal(s, { id: dealId, mode: "own", title: b.title, executorId: me, ownerId: th.customerId, arbiterId, backupArbiterId, status: "draft", signed: true, ...defaultDeadlines("own"), stages: [], meta: { serviceId: th.serviceId, chatId: id, description: b.description, agreed: b.amount }, at: t }),
       result: true,
     }));
-    await platform.post(id, me, `Зарегистрирована задача «${b.title}» на ${(b.amount / 100).toLocaleString("ru-RU")} ₽. Исполнитель согласует этапы и отправит условия.`, "system", dealId);
+    await platform.post(id, me, `Зарегистрирована задача «${b.title}» с согласованной суммой ${(b.amount / 100).toLocaleString("ru-RU")} ₽. Исполнитель сформирует этапы и направит условия.`, "system", dealId);
     notify([th.customerId], `${brief(me).name} зарегистрировал(а) задачу «${b.title}» на ${(b.amount / 100).toLocaleString("ru-RU")} ₽`, dealId);
     changed([th.customerId, me]);
     return { dealId };
