@@ -304,10 +304,12 @@ select.input { appearance: none; }
 .receipt { background: var(--surface); border-radius: 20px; padding: 18px; }
 @media print {
   @page { size: A4; margin: 0; }
-  body * { visibility: hidden; }
-  .sheet-bg, .sheet { position: static !important; transform: none !important; animation: none !important; background: none !important; overflow: visible !important; max-height: none !important; }
-  .printable, .printable * { visibility: visible; }
-  .printable { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 120mm; padding: 10mm; background: #fff; color: #000; border: 1px solid #c8cdd8; border-radius: 6mm; }
+  html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; margin: 0 !important; padding: 0 !important; }
+  body > :not(.sheet-bg) { display: none !important; }
+  .sheet-bg { position: static !important; display: block !important; background: none !important; animation: none !important; padding: 0 !important; }
+  .sheet { position: static !important; transform: none !important; animation: none !important; background: none !important; overflow: visible !important; max-height: none !important; width: auto !important; padding: 0 !important; border-radius: 0 !important; }
+  .sheet > :not(.printable) { display: none !important; }
+  .printable { display: block !important; width: 120mm; margin: 85mm auto 0; padding: 10mm; background: #fff; color: #000; border: 1px solid #c8cdd8; border-radius: 6mm; break-inside: avoid; page-break-inside: avoid; }
   .printable .muted, .printable .small { color: #444; }
   .printable .stamp { color: #0a3aa6; opacity: .85; }
 }
