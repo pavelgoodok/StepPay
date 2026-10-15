@@ -379,7 +379,7 @@ export async function buildApp(opts: AppOptions) {
   /** Краткие данные участника: имя и аватарка, чтобы клиенту не искать их самому. */
   const brief = (id: string) => {
     const a = dir.get(id);
-    return { id, name: a?.name ?? "Участник", avatar: a?.avatar };
+    return { id, name: a?.name ?? "Участник", avatar: a?.avatar, ...platform.ratingOf(id) };
   };
   const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
@@ -822,7 +822,7 @@ export async function buildApp(opts: AppOptions) {
   app.get("/me/stats", async (req, reply) => {
     const id = authed(req, reply);
     if (!id) return;
-    return executorStats(state, id);
+    return { ...executorStats(state, id), ...platform.ratingOf(id) };
   });
 
   app.get("/receipts", async (req, reply) => {

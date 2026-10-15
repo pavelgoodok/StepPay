@@ -16,6 +16,16 @@ export interface Person {
   id: string;
   name: string;
   avatar?: string;
+  /** рейтинг по отзывам, null пока отзывов нет */
+  rating?: number | null;
+  reviews?: number;
+}
+export interface ReviewItem { id: string; stars: number; text: string; at: number; dealTitle: string; from: Person }
+export interface DealReviews {
+  items: { id: string; stars: number; text: string; at: number; from: Person; to: Person }[];
+  mine: { stars: number; text: string } | null;
+  canReview: boolean;
+  target: Person | null;
 }
 export interface FoundUser {
   id: string;

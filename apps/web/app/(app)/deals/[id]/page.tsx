@@ -8,6 +8,7 @@ import { JournalCard } from "@/components/journal-card";
 import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { useChangedIds } from "@/components/motion";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
+import { ReviewCard } from "@/components/review-card";
 import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { deviceKeysAvailable, ensureDeviceKey, signContractOnDevice } from "@/lib/keys";
@@ -173,6 +174,7 @@ export default function DealPage() {
         {!draft && <JournalCard d={d} />}
         <ChainCard d={d} />
       </div>}
+      {d.status === "completed" && <ReviewCard dealId={id} />}
       {d.status === "completed" && (
         <Link href="/receipts" className="card tap row">
           <span className="setic"><Icon name="check" size={20} /></span>

@@ -155,6 +155,33 @@ describe("услуги и согласование задачи", () => {
     await call("anna", "POST", `/deals/${id}/stages/s1/approve`, {});
     expect(await free()).toBeGreaterThan(before);
   });
+
+  it("отзывы после завершения сделки формируют рейтинг", async () => {
+    const { call } = await setup();
+    const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один, сроки обсуждаем.", photos: [] })).body;
+    const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
+    const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
+    await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R, criteria: [] }] });
+    await call("ivan", "POST", `/deals/${id}/propose`);
+    await call("anna", "POST", `/deals/${id}/fund`, {});
+    // пока сделка не завершена, отзыв невозможен, а в ожидающих пусто
+    expect((await call("anna", "POST", `/deals/${id}/review`, { stars: 5 })).status).toBe(400);
+    expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]);
+    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { note: "готово" });
+    await call("anna", "POST", `/deals/${id}/stages/s1/approve`, {});
+    expect((await call("anna", "GET", "/reviews/pending")).body).toHaveLength(1);
+    // посторонний не оценивает; низкая оценка требует комментария
+    expect((await call("olga", "POST", `/deals/${id}/review`, { stars: 5 })).status).toBe(403);
+    expect((await call("anna", "POST", `/deals/${id}/review`, { stars: 2 })).status).toBe(400);
+    expect((await call("anna", "POST", `/deals/${id}/review`, { stars: 5, text: "Сделано аккуратно и в срок" })).status).toBe(200);
+    expect((await call("anna", "POST", `/deals/${id}/review`, { stars: 4 })).status).toBeGreaterThanOrEqual(400); // второй отзыв нельзя
+    expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]);
+    // исполнитель тоже оценивает заказчика
+    expect((await call("ivan", "POST", `/deals/${id}/review`, { stars: 4 })).status).toBe(200);
+    const about = (await call("anna", "GET", "/users/ivan/reviews")).body;
+    expect(about.reviews).toBe(1);
+    expect(about.rating).toBe(4.3); // (5 + 3 * 4) / (1 + 3): один отзыв не поднимает рейтинг до максимума
+  });
 });
 
 describe("контракт сделки в API", () => {

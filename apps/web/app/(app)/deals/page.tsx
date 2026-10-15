@@ -13,6 +13,7 @@ export default function Deals() {
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" ? "exec" : "payer");
   const { data, error } = usePoll(() => api<DealSummary[]>("/deals"), []);
+  const pending = usePoll(() => api<{ dealId: string; title: string; target: { name: string } }[]>("/reviews/pending"), [user?.id]);
   if (!user) return null;
 
   const byRole = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
@@ -51,6 +52,17 @@ export default function Deals() {
         <Link href="/chats"><span className="ic"><Icon name="chat" size={22} /></span>Чаты</Link>
         <Link href="/receipts"><span className="ic"><Icon name="check" size={22} /></span>Чеки</Link>
       </div>
+
+      {(pending.data ?? []).map((p) => (
+        <Link key={p.dealId} href={`/deals/${p.dealId}`} className="card tap row" style={{ background: "var(--amber-soft)" }}>
+          <Icon name="star" size={26} />
+          <div className="grow">
+            <div className="title">Оцените работу: {p.target.name}</div>
+            <div className="sub ellipsis">{p.title}</div>
+          </div>
+          <span className="chip amber">Оценить</span>
+        </Link>
+      ))}
 
       {needs.map((n) => (
         <Link key={n.d.id} href={`/deals/${n.d.id}`} className="card tap row" style={{ background: "var(--amber-soft)" }}>

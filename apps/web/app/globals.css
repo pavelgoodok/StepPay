@@ -642,3 +642,13 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 :root[data-theme="dark"] .deco { opacity: .26; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .deco { opacity: .26; } }
 a.hero { display: block; }
+.stars { display: inline-flex; gap: 2px; align-items: center; }
+.stars i, .stars button { display: inline-grid; place-items: center; color: var(--line, #c9d0de); line-height: 0; padding: 0; }
+.stars i.on, .stars button.on { color: #f5a524; }
+.stars button { padding: 2px; }
+.stars svg { fill: currentColor; stroke: currentColor; }
+.rating-line { display: inline-flex; align-items: center; gap: 4px; }
+.rating-line .rs { color: #f5a524; display: inline-grid; }
+.rating-line .rs svg { fill: currentColor; }
+.big-rating { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; }
+a.tile { display: block; }

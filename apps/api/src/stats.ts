@@ -7,8 +7,6 @@ export interface PublicProfile {
   autoAccepted: number;
   dealsCompleted: number;
   received: number;
-  /** 1-5, сглаженная доля принятых этапов; null, пока нет закрытых этапов */
-  rating: number | null;
 }
 
 /** Репутация исполнителя считается только из принятых и проваленных этапов. */
@@ -25,9 +23,7 @@ export function executorStats(s: State, userId: string): PublicProfile {
     }
   }
   const received = s.ledger.filter((l) => l.type === "payout" && l.userId === userId).reduce((a, l) => a + l.amount, 0);
-  const closed = accepted + failed;
-  const rating = closed === 0 ? null : Math.round((1 + (4 * (accepted + 2)) / (closed + 2)) * 10) / 10;
-  return { acceptedStages: accepted, failedStages: failed, disputes, autoAccepted: auto, dealsCompleted: completed, received, rating };
+  return { acceptedStages: accepted, failedStages: failed, disputes, autoAccepted: auto, dealsCompleted: completed, received };
 }
 
 export interface Receipt {

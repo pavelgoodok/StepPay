@@ -106,6 +106,18 @@ export interface PlatformData {
   /** уведомления по участникам и время, до которого они прочитаны */
   notes?: Record<string, Note[]>;
   notesSeen?: Record<string, number>;
+  /** отзывы по завершенным сделкам */
+  reviews?: Review[];
+}
+
+export interface Review {
+  id: string;
+  dealId: string;
+  from: string;
+  to: string;
+  stars: number;
+  text: string;
+  at: number;
 }
 
 export interface Note {
@@ -166,6 +178,30 @@ export class Platform {
   /** Данные переноса на контракт: создаются при первом обращении, момент включения запоминается. */
   mirrorData(): MirrorData {
     return (this.data.mirror ??= { since: this.now(), deals: {} });
+  }
+
+  /** Рейтинг из отзывов: средняя оценка со сглаживанием (три условных отзыва на 4,0), чтобы один отзыв не решал всё. */
+  ratingOf(userId: string): { rating: number | null; reviews: number } {
+    let n = 0, sum = 0;
+    for (const r of this.data.reviews ?? []) if (r.to === userId) { n++; sum += r.stars; }
+    return { rating: n === 0 ? null : Math.round(((sum + 12) / (n + 3)) * 10) / 10, reviews: n };
+  }
+
+  reviewsAbout(userId: string): Review[] {
+    return (this.data.reviews ?? []).filter((r) => r.to === userId).sort((a, b) => b.at - a.at);
+  }
+
+  reviewsOfDeal(dealId: string): Review[] {
+    return (this.data.reviews ?? []).filter((r) => r.dealId === dealId);
+  }
+
+  async addReview(r: { dealId: string; from: string; to: string; stars: number; text: string }): Promise<Review> {
+    const list = (this.data.reviews ??= []);
+    if (list.some((x) => x.dealId === r.dealId && x.from === r.from)) fail("Вы уже оставили отзыв по этой сделке");
+    const rev: Review = { id: this.id("r"), at: this.now(), ...r };
+    list.push(rev);
+    await this.save();
+    return rev;
   }
 
   async addNotes(userIds: string[], text: string, dealId: string) {

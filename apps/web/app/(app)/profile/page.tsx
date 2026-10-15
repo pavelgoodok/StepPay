@@ -16,7 +16,7 @@ const ROLE: Record<string, string> = { customer: "Заказчик", executor: "
 export default function Profile() {
   const { user, users, login, logout, toast, refresh, wallet, features, unread } = useSession();
   const router = useRouter();
-  const { data } = usePoll(() => api<{ rating: number | null; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
+  const { data } = usePoll(() => api<{ rating: number | null; reviews: number; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
   const mineS = usePoll(() => api<ServiceItem[]>("/my/services"), [user?.id]);
   const [cropFile, setCropFile] = useState<File | null>(null);
@@ -169,7 +169,7 @@ export default function Profile() {
       </Link>
 
       <div className="tiles">
-        <div className="tile"><b>{data?.rating != null ? data.rating.toFixed(1).replace(".", ",") : "-"}</b><span>рейтинг</span></div>
+        <Link href={`/users/${user.id}`} className="tile"><b>{data?.rating != null ? data.rating.toFixed(1).replace(".", ",") : "-"}</b><span>{data?.reviews ? `рейтинг, отзывов: ${data.reviews}` : "рейтинг, отзывов нет"}</span></Link>
         <div className="tile"><b>{data?.acceptedStages ?? 0}</b><span>принято этапов</span></div>
         <div className="tile"><b>{data?.disputes ?? 0}</b><span>споров</span></div>
       </div>

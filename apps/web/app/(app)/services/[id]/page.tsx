@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { PhotoGrid } from "@/components/photos";
 import { Ava, Icon } from "@/components/ui";
+import { RatingLine } from "@/components/stars";
 import { api, type ServiceItem } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { useSession, usePoll } from "@/lib/session";
@@ -50,7 +51,7 @@ export default function ServicePage() {
       </div>
       <div className="row">
         <Ava name={s.owner.name} src={s.owner.avatar} />
-        <div className="grow"><b>{s.owner.name}</b><div className="small muted">Исполнитель</div></div>
+        <Link href={`/users/${s.owner.id}`} className="grow"><b>{s.owner.name}</b><div><RatingLine rating={s.owner.rating} reviews={s.owner.reviews} /></div></Link>
         {s.priceFrom ? <b className="mono">от {rub(s.priceFrom)}</b> : null}
       </div>
       <div className="card stack">

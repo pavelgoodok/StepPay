@@ -199,7 +199,7 @@ describe("AI-планировщик", () => {
 describe("репутация, чеки, события", () => {
   it("статистика и рейтинг считаются по закрытым этапам и закрыты от посторонних; чеки по выплатам", async () => {
     const { app, call } = await setup();
-    expect((await call("ivan", "GET", "/me/stats")).body).toMatchObject({ rating: null, acceptedStages: 0 });
+    expect((await call("ivan", "GET", "/me/stats")).body).toMatchObject({ rating: null, reviews: 0, acceptedStages: 0 });
     expect((await app.inject({ method: "GET", url: "/me/stats" })).statusCode).toBe(401);
     expect((await app.inject({ method: "GET", url: "/users/ivan/public" })).statusCode).toBe(404); // публичной карточки нет
 
@@ -215,7 +215,7 @@ describe("репутация, чеки, события", () => {
 
     const pub = (await call("ivan", "GET", "/me/stats")).body;
     expect(pub).toMatchObject({ acceptedStages: 2, failedStages: 0, dealsCompleted: 1, received: 30_000 * R });
-    expect(pub.rating).toBe(5);
+    expect(pub.rating).toBeNull(); // рейтинг считается только по отзывам
 
     const rc = await call("ivan", "GET", "/receipts");
     expect(rc.body).toHaveLength(2);
@@ -467,7 +467,7 @@ describe("аватарки и данные участников", () => {
 
     const deal = (await app.inject({ method: "POST", url: "/deals", headers: ha, payload: { mode: "own", title: "Кран", executorId: b.user.id, stages: [{ title: "Замена", amount: 5_000 * R }] } })).json();
     const list = (await app.inject({ method: "GET", url: "/deals", headers: ha })).json();
-    expect(list[0].executor).toEqual({ id: b.user.id, name: "Исполнитель Два", avatar: up.url });
+    expect(list[0].executor).toMatchObject({ id: b.user.id, name: "Исполнитель Два", avatar: up.url });
     expect(list[0].owner).toMatchObject({ name: "Заказчик Один" });
     const full = (await app.inject({ method: "GET", url: `/deals/${deal.id}`, headers: ha })).json();
     expect(full.people[b.user.id].avatar).toBe(up.url);
