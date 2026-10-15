@@ -24,12 +24,13 @@ export function ModeSwitch({ compact }: { compact?: boolean }) {
     );
   }
   return (
-    <button className="mode-card" onClick={go}>
-      <span className="setic"><Icon name="swap" size={20} /></span>
-      <span className="grow">
-        <b>{pro ? "Профессиональный аккаунт" : "Личный аккаунт"}</b>
-        <span className="small">{pro ? "Переключиться на личный аккаунт" : "Переключиться на профессиональный аккаунт"}</span>
-      </span>
+    <button className="card tap row" style={{ gap: 14, width: "100%", textAlign: "left", display: "flex" }} onClick={go}>
+      <span className="setic"><Icon name="swap" size={22} /></span>
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="title">{pro ? "Профессиональный аккаунт" : "Личный аккаунт"}</div>
+        <div className="small muted">{pro ? "Переключиться на личный аккаунт" : "Переключиться на профессиональный аккаунт"}</div>
+      </div>
+      <Icon name="arrow" size={18} />
     </button>
   );
 }
