@@ -177,7 +177,7 @@ export default function Profile() {
         <div className="tile"><b>{data?.disputes ?? 0}</b><span>споров</span></div>
       </div>
 
-      {((mineP.data?.length ?? 0) > 0 || (mineS.data?.length ?? 0) > 0) && (
+      {user.kind === "executor" && ((mineP.data?.length ?? 0) > 0 || (mineS.data?.length ?? 0) > 0) && (
         <div className="card stack">
           {mineP.data && mineP.data.length > 0 && (
             <>

@@ -12,7 +12,8 @@ import { useSession, usePoll } from "@/lib/session";
 export default function ServicePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { toast } = useSession();
+  const { user, toast } = useSession();
+  const pro = user?.kind === "executor";
   const { data: s, error } = usePoll(() => api<ServiceItem>(`/services/${id}`), [id]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +59,9 @@ export default function ServicePage() {
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{s.description}</p>
         <PhotoGrid photos={s.photos} />
       </div>
-      {s.mine ? (
+      {s.mine && !pro ? (
+        <div className="note">Это ваша услуга. Для изменения переключитесь на профессиональный аккаунт в профиле.</div>
+      ) : s.mine ? (
         <div className="btns">
           <Link href={`/services/${id}/edit`} className="btn soft">Изменить</Link>
           <Link href="/chats" className="btn soft">Обращения</Link>

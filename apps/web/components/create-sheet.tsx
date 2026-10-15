@@ -13,7 +13,8 @@ const OPTIONS = [
 
 export function CreateSheet({ onClose }: { onClose(): void }) {
   const router = useRouter();
-  const { toast } = useSession();
+  const { user, toast, setMode } = useSession();
+  const pro = user?.kind === "executor";
   const [kind, setKind] = useState<ProjectKind | null>(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,6 +30,17 @@ export function CreateSheet({ onClose }: { onClose(): void }) {
       toast((e as Error).message, "err");
       setBusy(false);
     }
+  }
+
+  if (!pro) {
+    return (
+      <Sheet onClose={onClose}>
+        <h2>Профессиональный аккаунт</h2>
+        <p className="sub" style={{ margin: "8px 0 16px", textAlign: "center" }}>Создание услуг и проектов доступно в профессиональном аккаунте. В личном аккаунте можно просматривать каталог и выбирать исполнителей.</p>
+        <button className="btn" onClick={() => setMode("executor").catch((e) => toast((e as Error).message, "err"))}>Переключиться на профессиональный аккаунт</button>
+        <button className="btn ghost" onClick={onClose}>Закрыть</button>
+      </Sheet>
+    );
   }
 
   if (kind) {

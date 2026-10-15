@@ -166,9 +166,17 @@ export function registerPlatformRoutes(c: Ctx) {
     return projectView(p, me);
   });
 
+  /** Создавать услуги и проекты можно только в профессиональном аккаунте; в личном доступны просмотр и выбор. */
+  const proOnly = (me: string, reply: FastifyReply) => {
+    if (dir.get(me)?.kind === "executor") return true;
+    reply.code(403).send({ error: "Создание услуг и проектов доступно в профессиональном аккаунте. Переключитесь на него в профиле" });
+    return false;
+  };
+
   app.post("/projects", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const b = z
       .object({ kind: z.enum(["crowdfunding", "grant"]), title: projectFields.title, category: projectFields.category.default("Другое") })
       .parse(req.body);
@@ -179,6 +187,7 @@ export function registerPlatformRoutes(c: Ctx) {
   app.post("/projects/:id/update", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const patch = z.object(projectFields).partial().parse(req.body);
     return projectView(await platform.updateProject(id, me, patch), me);
@@ -187,6 +196,7 @@ export function registerPlatformRoutes(c: Ctx) {
   app.post("/projects/:id/submit", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const author = dir.authorOf(me);
     if (!author) return reply.code(400).send({ error: "Сначала заполните анкету автора: статус и ИНН" });
@@ -383,6 +393,7 @@ export function registerPlatformRoutes(c: Ctx) {
   app.post("/services", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const b = z.object(serviceFields).parse(req.body);
     return serviceItem(await platform.createService(me, b));
   });
@@ -390,6 +401,7 @@ export function registerPlatformRoutes(c: Ctx) {
   app.post("/services/:id/update", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const b = z.object({ ...serviceFields, active: z.boolean() }).partial().parse(req.body);
     return serviceItem(await platform.updateService(id, me, b));
@@ -398,6 +410,7 @@ export function registerPlatformRoutes(c: Ctx) {
   app.post("/services/:id/remove", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
+    if (!proOnly(me, reply)) return;
     const { id } = z.object({ id: z.string() }).parse(req.params);
     await platform.removeService(id, me);
     return { ok: true };
@@ -533,7 +546,7 @@ export function registerPlatformRoutes(c: Ctx) {
     if (!th || (th.customerId !== me && th.executorId !== me)) return reply.code(404).send({ error: "Чат не найден" });
     await platform.markRead(id, me);
     const deals = Object.values(c.getState().deals).filter((d) => d.meta?.chatId === id).map((d) => ({ ...summary(d), description: d.meta?.description, agreed: d.meta?.agreed }));
-    return { ...threadView(th, me), messages: th.messages, deals, me: brief(me) };
+    return { ...threadView(th, me), messages: th.messages, deals, me: brief(me), canRegister: customerReplied(th) };
   });
 
   app.post("/chats/:id/messages", async (req, reply) => {
@@ -550,6 +563,13 @@ export function registerPlatformRoutes(c: Ctx) {
   });
 
   /** Исполнитель регистрирует задачу после разговора: появляется сделка в статусе «Согласование». */
+  /** Задачу можно регистрировать, когда заказчик откликнулся на ответ исполнителя: после первого сообщения исполнителя есть сообщение заказчика. */
+  const customerReplied = (th: NonNullable<ReturnType<Platform["thread"]>>) => {
+    const msgs = th.messages.filter((m) => m.kind === "text");
+    const first = msgs.findIndex((m) => m.by === th.executorId);
+    return first >= 0 && msgs.slice(first + 1).some((m) => m.by === th.customerId);
+  };
+
   app.post("/chats/:id/task", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;
@@ -557,6 +577,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const b = z.object({ title: z.string().trim().min(3, "Название от 3 символов").max(120), description: z.string().trim().max(2000).optional(), amount: z.number().int().min(100, "Укажите сумму, на которую договорились").max(100_000_000_00), arbiterId: z.string().max(60).optional(), backupArbiterId: z.string().max(60).optional().or(z.literal("")) }).parse(req.body);
     const th = platform.thread(id);
     if (!th || th.executorId !== me) return reply.code(403).send({ error: "Задачу регистрирует исполнитель в чате с заказчиком" });
+    if (!customerReplied(th)) return reply.code(400).send({ error: "Задачу можно зарегистрировать после того, как заказчик ответит на ваше сообщение" });
     // приемщик выбирается из реестра: по умолчанию первый, запасной по умолчанию второй, если он есть
     const registry = dir.allIds().filter((x) => dir.isArbiter(x) && x !== th.customerId && x !== me);
     const arbiterId = b.arbiterId ?? registry[0];

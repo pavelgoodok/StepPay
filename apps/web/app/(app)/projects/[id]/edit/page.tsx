@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AuthorForm, FnsBadge } from "@/components/author-form";
 import { CropSheet } from "@/components/cropper";
+import { ProGate, useIsPro } from "@/components/pro-gate";
 import { PhotoPicker } from "@/components/photos";
 import { StageEditor, emptyRow, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { IMG, Icon, SegBar } from "@/components/ui";
@@ -17,6 +18,12 @@ const STEPS = ["Об авторе", "О проекте", "Этапы и сумм
 const COVER = "Обложка";
 
 export default function EditProject() {
+  const pro = useIsPro();
+  if (!pro) return <ProGate back="/profile" />;
+  return <EditProjectForm />;
+}
+
+function EditProjectForm() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { toast } = useSession();

@@ -249,6 +249,8 @@ export interface ChatFull {
   messages: ChatMessage[];
   deals: (DealSummary & { description?: string; agreed?: number })[];
   me: Person;
+  /** заказчик откликнулся на ответ исполнителя: можно регистрировать задачу */
+  canRegister?: boolean;
 }
 export interface PlanResult {
   title: string;

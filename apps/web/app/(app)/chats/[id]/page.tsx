@@ -118,7 +118,10 @@ export default function ChatPage() {
 
       <div className="composer-wrap">
       {isExec && (
-        <button className="btn soft" onClick={() => setTask(true)}>Зарегистрировать задачу</button>
+        <>
+          <button className="btn soft" disabled={!c.canRegister} onClick={() => setTask(true)}>Зарегистрировать задачу</button>
+          {!c.canRegister && <div className="small muted">Задачу можно зарегистрировать после того, как заказчик ответит на ваше сообщение.</div>}
+        </>
       )}
       <div className="composer">
         <input className="input" placeholder="Сообщение" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void send()} />

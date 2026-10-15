@@ -34,19 +34,29 @@ describe("реестр приемщиков", () => {
   it("задача получает приемщика и запасного из реестра, выбор проверяется", async () => {
     const { call, thread } = await setup();
     const th = await thread();
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     const def = (await call("ivan", "POST", `/chats/${th}/task`, { title: "Ремонт ванной", amount: 5000000 })).body;
     const d = (await call("ivan", "GET", `/deals/${def.dealId}`)).body;
     expect(d.arbiterId).toBe("expert");
     expect(d.backupArbiterId).toBe("expert2");
     expect(d.contract ?? null).toBeNull(); // черновик, условия еще не зафиксированы
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     expect((await call("ivan", "POST", `/chats/${th}/task`, { title: "Без запасного", amount: 5000000, arbiterId: "expert2", backupArbiterId: "" })).status).toBe(200);
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     expect((await call("ivan", "POST", `/chats/${th}/task`, { title: "Чужой приемщик", amount: 5000000, arbiterId: "anna" })).status).toBe(400); // не из реестра
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     expect((await call("ivan", "POST", `/chats/${th}/task`, { title: "Тот же", amount: 5000000, arbiterId: "expert", backupArbiterId: "expert" })).status).toBe(400);
   });
 
   it("запасной решает спор со второй половины срока, репутация считается", async () => {
     const { call, thread, advance } = await setup();
     const th = await thread();
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     const id = (await call("ivan", "POST", `/chats/${th}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId as string;
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R }] });
     await call("ivan", "POST", `/deals/${id}/propose`);
@@ -64,6 +74,8 @@ describe("реестр приемщиков", () => {
   it("приемщик, промолчавший до срока, получает отметку в репутации", async () => {
     const { call, thread, advance } = await setup();
     const th = await thread();
+    await call("ivan", "POST", `/chats/${th}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th}/messages`, { text: "Здравствуйте, обсудим условия" });
     const id = (await call("ivan", "POST", `/chats/${th}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId as string;
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R }] });
     await call("ivan", "POST", `/deals/${id}/propose`);

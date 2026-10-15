@@ -28,6 +28,8 @@ async function setup(signaturePolicy?: "device" | "any") {
   async function proposed() {
     const svc = (await call("ivan", "POST", "/services", { title: "Ремонт квартир", category: "Ремонт и строительство", description: "Делаю ремонт под ключ, работаю один.", photos: [] })).body;
     const th = (await call("anna", "POST", `/services/${svc.id}/chat`, { text: "Здравствуйте" })).body;
+    await call("ivan", "POST", `/chats/${th.id}/messages`, { text: "Добрый день" });
+    await call("anna", "POST", `/chats/${th.id}/messages`, { text: "Здравствуйте, обсудим условия" });
     const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId as string;
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R }] });
     await call("ivan", "POST", `/deals/${id}/propose`);
