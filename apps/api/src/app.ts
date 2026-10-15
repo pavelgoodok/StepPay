@@ -376,6 +376,14 @@ export async function buildApp(opts: AppOptions) {
     return { ok: true, name: dir.get(me)!.name, avatar: dir.get(me)!.avatar ?? null };
   });
 
+  app.post("/me/mode", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { kind } = z.object({ kind: z.enum(["customer", "executor"]) }).parse(req.body);
+    if (!(await dir.setKind(me, kind))) return reply.code(400).send({ error: "Режим изменить нельзя" });
+    return { ok: true, kind };
+  });
+
   /** Краткие данные участника: имя и аватарка, чтобы клиенту не искать их самому. */
   const brief = (id: string) => {
     const a = dir.get(id);

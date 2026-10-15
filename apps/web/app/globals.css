@@ -658,3 +658,10 @@ a.tile { display: block; }
 .kind svg { color: var(--blue); }
 .kind.on { border-color: var(--blue); background: var(--blue-soft); }
 @media (max-width: 380px) { .kinds { grid-template-columns: 1fr; } }
+.mode-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 16px; background: var(--surface2); color: var(--ink); }
+.mode-card .grow { display: flex; flex-direction: column; min-width: 0; }
+.mode-card .small { color: var(--muted); font-size: 12.5px; }
+.mode-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 700; }
+.mode-side { display: none; }
+.top .mode-chip { margin-left: auto; }
+@media (min-width: 1024px) { .mode-side { display: block; order: -1; margin: 0 0 12px; } .top .mode-chip { display: none; } }

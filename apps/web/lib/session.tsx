@@ -15,6 +15,8 @@ interface Session {
   users: PublicUser[];
   ready: boolean;
   refresh(): Promise<void>;
+  /** переключение между личным (заказчик) и профессиональным (исполнитель) аккаунтом */
+  setMode(kind: "customer" | "executor"): Promise<void>;
   login(userId: string): Promise<void>;
   /** вход по готовому токену (после подтверждения телефона) */
   completeLogin(token: string): Promise<void>;
@@ -98,6 +100,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const setMode = useCallback(async (kind: "customer" | "executor") => {
+    await api("/me/mode", { method: "POST", body: { kind } });
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
     (async () => {
       api<PublicUser[]>("/auth/demo-users").then(setUsers).catch(() => undefined);
@@ -179,7 +186,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, unread, chatUnread, features, users, ready, refresh, login, completeLogin, logout, toast, adminLocked }}>
+    <Ctx.Provider value={{ user, wallet, unread, chatUnread, features, users, ready, refresh, setMode, login, completeLogin, logout, toast, adminLocked }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

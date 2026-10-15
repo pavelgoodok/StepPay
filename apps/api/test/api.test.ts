@@ -333,6 +333,11 @@ describe("регистрация и вход по телефону", () => {
     const me = await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${ok.token}` } });
     expect(me.json().user.phone).toBe("+7 999 ***-**-67");
     expect(me.json().user.kind).toBe("executor"); // выбор при регистрации сохранен
+    // переключение между личным и профессиональным аккаунтом
+    const auth = { authorization: `Bearer ${ok.token}` };
+    expect((await app.inject({ method: "POST", url: "/me/mode", headers: auth, payload: { kind: "customer" } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/me", headers: auth })).json().user.kind).toBe("customer");
+    expect((await app.inject({ method: "POST", url: "/me/mode", headers: auth, payload: { kind: "admin" } })).statusCode).toBe(400);
     expect(me.json().wallet).toEqual({ free: 0, reserved: 0 });
 
     t += 31_000; // повторный запрос кода разрешен через 30 секунд

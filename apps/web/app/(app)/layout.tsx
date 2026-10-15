@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { CreateSheet } from "@/components/create-sheet";
+import { ModeSwitch } from "@/components/mode-switch";
 import { Ava, Icon, Logo } from "@/components/ui";
 import { useSession } from "@/lib/session";
 
@@ -62,6 +63,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       )}
       <nav className="tabbar">
         <Link href="/deals" className="side-logo" aria-label="StepPay"><Logo /></Link>
+        <div className="mode-side"><ModeSwitch /></div>
         {tabs.map((t) =>
           t ? (
             <Link key={t.href} href={t.href} className={`tab ${t.desk ? "desk" : ""} ${active(t.href) ? "on" : ""}`}>

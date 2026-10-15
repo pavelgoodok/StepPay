@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Ava, IMG, Icon, Initials, Sheet, Switch } from "@/components/ui";
 import { CropSheet } from "@/components/cropper";
+import { ModeSwitch } from "@/components/mode-switch";
 import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/api";
 import { rub } from "@/lib/format";
 import { PROJECT_STATUS } from "@/lib/labels";
@@ -160,6 +161,8 @@ export default function Profile() {
         {features.chain && <span className="chip">tRUB</span>}
         <Icon name="arrow" size={18} />
       </Link>
+
+      <ModeSwitch />
 
       <Link href="/notifications" className="card tap row" style={{ gap: 14 }}>
         <span className="setic"><Icon name="bell" size={22} /></span>

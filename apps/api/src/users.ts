@@ -96,13 +96,25 @@ export class Directory {
 
   get(id: string): PublicAccount | undefined {
     const d = DEMO_USERS.find((x) => x.id === id);
-    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined, arbiter: d.role === "arbiter" || undefined };
+    if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined, arbiter: d.role === "arbiter" || undefined, kind: this.demoKinds.get(id) ?? (d.role === "executor" ? "executor" : "customer") };
     const r = this.registered.get(id);
     if (!r) return undefined;
-    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor, arbiter: r.arbiter, kind: r.kind };
+    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor, arbiter: r.arbiter, kind: r.kind ?? "customer" };
   }
 
   private demoSessionsFrom = new Map<string, number>();
+  private demoKinds = new Map<string, "customer" | "executor">();
+
+  /** Переключение между личным (заказчик) и профессиональным (исполнитель) аккаунтом: один вход, два режима работы. */
+  async setKind(id: string, kind: "customer" | "executor") {
+    const r = this.registered.get(id);
+    if (r) {
+      r.kind = kind;
+      await this.persist([...this.registered.values()]);
+    } else if (this.get(id)) this.demoKinds.set(id, kind);
+    else return false;
+    return true;
+  }
 
   sessionsFrom(id: string): number {
     return this.registered.get(id)?.sessionsFrom ?? this.demoSessionsFrom.get(id) ?? 0;
