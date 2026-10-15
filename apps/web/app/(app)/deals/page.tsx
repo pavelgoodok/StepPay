@@ -41,7 +41,7 @@ export default function Deals() {
       </div>
 
       <Link href="/wallet" className="hero bg-reserve plain" aria-label="Открыть кошелек">
-        <div className="label">Зарезервировано по сделкам</div>
+        <div className="label">Зарезервировано</div>
         <div className="big"><Money value={wallet?.reserved ?? 0} /></div>
         <div className="small" style={{ opacity: 0.85 }}>Свободно {rub(wallet?.free ?? 0)} · открыть кошелек</div>
       </Link>

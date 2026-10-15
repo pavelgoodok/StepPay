@@ -171,13 +171,13 @@ describe("услуги и согласование задачи", () => {
     expect((await call("anna", "POST", `/reviews/of/${th.id}`, { stars: 4 })).status).toBeGreaterThanOrEqual(400); // второй отзыв нельзя
     expect((await call("anna", "GET", "/users/ivan/reviews")).body.open).toEqual([]);
 
-    // сделка: второй раз тому же человеку оценить нельзя, исполнитель оценивает заказчика один раз
+    // сделка: второй раз тому же исполнителю оценить нельзя
     const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
     expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]); // напоминание только по завершенным
     expect((await call("anna", "POST", `/reviews/of/${id}`, { stars: 3 })).status).toBe(409);
     expect((await call("anna", "GET", `/reviews/of/${id}`)).body.canReview).toBe(false);
-    expect((await call("ivan", "POST", `/reviews/of/${id}`, { stars: 4 })).status).toBe(200);
-    expect((await call("ivan", "POST", `/reviews/of/${th.id}`, { stars: 4 })).status).toBe(409);
+    expect((await call("ivan", "POST", `/reviews/of/${id}`, { stars: 4 })).status).toBe(403); // исполнитель заказчика не оценивает
+    expect((await call("ivan", "POST", `/reviews/of/${th.id}`, { stars: 4 })).status).toBe(403);
     const about = (await call("anna", "GET", "/users/ivan/reviews")).body;
     expect(about.reviews).toBe(1);
     expect(about.rating).toBe(5);

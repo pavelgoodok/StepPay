@@ -425,21 +425,21 @@ export function registerPlatformRoutes(c: Ctx) {
   });
 
   /**
-   * Оценить можно того, с кем взаимодействовал: по сделке (любого статуса) или по чату, где написали обе стороны.
+   * Оценивают исполнителя: заказчик, спонсор или грантодатель, который взаимодействовал с ним по сделке (любого статуса) или по чату, где написали обе стороны.
    * ref это номер сделки или чата, по одному отзыву от человека на каждое взаимодействие.
    */
   const reviewCtx = (ref: string, me: string): { title: string; to: string } | null => {
     const d = c.getState().deals[ref];
     if (d) {
-      if (me === d.executorId) return d.ownerId && d.mode !== "crowdfunding" ? { title: d.title, to: d.ownerId } : null;
+      if (me === d.executorId) return null; // оценивают исполнителя, рейтинг заказчиков не ведется
       if (me === d.ownerId || me in d.contributed) return { title: d.title, to: d.executorId };
       return null;
     }
     const th = platform.thread(ref);
-    if (!th || (th.customerId !== me && th.executorId !== me)) return null;
+    if (!th || th.customerId !== me) return null; // отзыв оставляет заказчик об исполнителе
     const said = (u: string) => th.messages.some((m) => m.kind === "text" && m.by === u);
     if (!said(th.customerId) || !said(th.executorId)) return null;
-    return { title: platform.service(th.serviceId)?.title ?? "Чат по услуге", to: me === th.customerId ? th.executorId : th.customerId };
+    return { title: platform.service(th.serviceId)?.title ?? "Чат по услуге", to: th.executorId };
   };
   const myRefs = (me: string) => [...Object.keys(c.getState().deals), ...platform.threadsOf(me).map((t) => t.id)];
 
@@ -477,7 +477,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const b = z.object({ stars: z.number().int().min(1, "Поставьте оценку от 1 до 5").max(5, "Поставьте оценку от 1 до 5"), text: z.string().trim().max(1000).default("") }).parse(req.body);
     const ctx = reviewCtx(ref, me);
     if (ctx && platform.reviewed(me, ctx.to)) return reply.code(409).send({ error: "Вы уже оставили отзыв этому человеку" });
-    if (!ctx) return reply.code(403).send({ error: "Оценить можно того, с кем вы взаимодействовали: по сделке или по чату, где написали обе стороны" });
+    if (!ctx) return reply.code(403).send({ error: "Оценить можно исполнителя, с которым вы взаимодействовали: по сделке или по чату, где написали обе стороны" });
     if (b.stars <= 2 && b.text.length < 10) return reply.code(400).send({ error: "К низкой оценке нужен комментарий: что пошло не так" });
     const review = await platform.addReview({ dealId: ref, from: me, to: ctx.to, stars: b.stars, text: b.text });
     notify([ctx.to], `${brief(me).name} оставил(а) отзыв: ${b.stars} из 5`, c.getState().deals[ref] ? ref : "");
