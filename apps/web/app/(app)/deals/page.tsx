@@ -11,11 +11,17 @@ import { useSession, usePoll } from "@/lib/session";
 export default function Deals() {
   const { user, wallet } = useSession();
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
-  const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" || user?.kind === "executor" ? "exec" : "payer");
+  const [pick, setPick] = useState<"payer" | "exec" | null>(null);
   const { data, error } = usePoll(() => api<DealSummary[]>("/deals"), []);
   const pending = usePoll(() => api<{ dealId: string; title: string; target: { name: string } }[]>("/reviews/pending"), [user?.id]);
   if (!user) return null;
 
+  // исполнителю не нужен выбор роли: переключатель показывается, только если сделки есть и в той и в другой роли
+  const isExecKind = user.role === "executor" || user.kind === "executor";
+  const execCount = (data ?? []).filter((d) => d.executorId === user.id).length;
+  const payerCount = (data ?? []).filter((d) => d.executorId !== user.id).length;
+  const both = execCount > 0 && payerCount > 0;
+  const view: "payer" | "exec" = both ? pick ?? (isExecKind ? "exec" : "payer") : execCount > 0 ? "exec" : payerCount > 0 ? "payer" : isExecKind ? "exec" : "payer";
   const byRole = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
   const isDone = (d: DealSummary) => d.status === "completed" || d.status === "cancelled";
   const mine = byRole.filter((d) => (filter === "all" ? true : filter === "done" ? isDone(d) : !isDone(d)));
@@ -41,14 +47,33 @@ export default function Deals() {
       </div>
 
       <Link href="/wallet" className="hero bg-reserve plain" aria-label="Открыть кошелек">
-        <div className="label">Зарезервировано</div>
-        <div className="big"><Money value={wallet?.reserved ?? 0} /></div>
-        <div className="small" style={{ opacity: 0.85 }}>Свободно {rub(wallet?.free ?? 0)} · открыть кошелек</div>
+        {isExecKind ? (
+          <>
+            <div className="label">Баланс</div>
+            <div className="big"><Money value={wallet?.free ?? 0} /></div>
+            <div className="small" style={{ opacity: 0.85 }}>Выплаты за принятые этапы · открыть кошелек</div>
+          </>
+        ) : (
+          <>
+            <div className="label">Зарезервировано</div>
+            <div className="big"><Money value={wallet?.reserved ?? 0} /></div>
+            <div className="small" style={{ opacity: 0.85 }}>Свободно {rub(wallet?.free ?? 0)} · открыть кошелек</div>
+          </>
+        )}
       </Link>
 
       <div className="qa">
-        <Link href="/wallet"><span className="ic"><Icon name="plus" size={22} /></span>Пополнить</Link>
-        <Link href="/catalog"><span className="ic"><Icon name="sprout" size={22} /></span>Каталог</Link>
+        {isExecKind ? (
+          <>
+            <Link href="/wallet"><span className="ic"><Icon name="wallet" size={22} /></span>Кошелек</Link>
+            <Link href="/services/new"><span className="ic"><Icon name="plus" size={22} /></span>Услуга</Link>
+          </>
+        ) : (
+          <>
+            <Link href="/wallet"><span className="ic"><Icon name="plus" size={22} /></span>Пополнить</Link>
+            <Link href="/catalog"><span className="ic"><Icon name="sprout" size={22} /></span>Каталог</Link>
+          </>
+        )}
         <Link href="/chats"><span className="ic"><Icon name="chat" size={22} /></span>Чаты</Link>
         <Link href="/receipts"><span className="ic"><Icon name="check" size={22} /></span>Чеки</Link>
       </div>
@@ -75,10 +100,12 @@ export default function Deals() {
         </Link>
       ))}
 
-      <div className="seg">
-        <button className={view === "payer" ? "on" : ""} onClick={() => setView("payer")}>Я заказчик</button>
-        <button className={view === "exec" ? "on" : ""} onClick={() => setView("exec")}>Я исполнитель</button>
-      </div>
+      {both && (
+        <div className="seg">
+          <button className={view === "payer" ? "on" : ""} onClick={() => setPick("payer")}>Я заказчик</button>
+          <button className={view === "exec" ? "on" : ""} onClick={() => setPick("exec")}>Я исполнитель</button>
+        </div>
+      )}
 
       <div className="sec"><h2>Мои сделки</h2></div>
       <div className="chips">
@@ -92,8 +119,9 @@ export default function Deals() {
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={IMG.folder} alt="" />
-          <p style={{ marginTop: 8 }}>{filter === "done" ? "Завершенных сделок пока нет" : view === "exec" ? "Сделок, где вы исполнитель, пока нет" : "Выберите исполнителя в каталоге услуг"}</p>
+          <p style={{ marginTop: 8 }}>{filter === "done" ? "Завершенных сделок пока нет" : view === "exec" ? "Сделок пока нет. Заказчики найдут вас через каталог услуг" : "Выберите исполнителя в каталоге услуг"}</p>
           {view !== "exec" && filter !== "done" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
+          {view === "exec" && filter !== "done" && <Link href="/services/new" className="btn soft sm" style={{ marginTop: 12 }}>Добавить услугу</Link>}
         </div>
       )}
       <div className="grid2">
