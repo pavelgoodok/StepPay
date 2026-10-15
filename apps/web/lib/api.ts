@@ -110,7 +110,14 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST"; body
   } catch {
     throw new ApiError("Нет связи с сервером", 0);
   }
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text().catch(() => "");
+  let data: unknown = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    // не JSON: прокси или перезапуск сервера отдали свою страницу; экраны ждут данные, а не мусор
+    throw new ApiError(res.ok ? "Сервер отвечает не так, как ожидалось. Попробуйте еще раз" : "Ошибка", res.status || 502);
+  }
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? "Ошибка", res.status);
   return data as T;
 }

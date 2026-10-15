@@ -1,6 +1,15 @@
 "use client";
 
-export default function AppError({ reset }: { error: Error; reset: () => void }) {
+import { useEffect } from "react";
+
+export default function AppError({ error, reset }: { error: Error; reset: () => void }) {
+  useEffect(() => {
+    if (/ChunkLoadError|Loading chunk/i.test(`${error.name} ${error.message}`)) {
+      try {
+        if (!sessionStorage.getItem("steppay.reloaded")) { sessionStorage.setItem("steppay.reloaded", "1"); location.reload(); }
+      } catch { /* кнопка ниже */ }
+    }
+  }, [error]);
   return (
     <div className="page" style={{ textAlign: "center", paddingTop: 60 }}>
       <h2 className="title">Что-то пошло не так</h2>
