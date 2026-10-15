@@ -53,6 +53,8 @@ export interface DealSummary {
   raised: number;
   sponsors: number;
   stages: { done: number; total: number };
+  reserved: number;
+  paid: number;
   currentStage: { id: string; title: string; status: string } | null;
 }
 export interface WalletView extends Wallet {

@@ -21,6 +21,9 @@ export function summary(d: Deal) {
     raised,
     sponsors: Object.keys(d.contributed).length,
     stages: stageCounts(d),
+    /** остаток резерва по сделке и сумма уже принятых этапов: для итогов на главной */
+    reserved: Object.values(d.reserves).reduce((a, b) => a + b, 0),
+    paid: d.stages.filter((x) => x.status === "accepted").reduce((a, x) => a + x.amount, 0),
     currentStage: current ? { id: current.id, title: current.title, status: current.status } : null,
   };
 }

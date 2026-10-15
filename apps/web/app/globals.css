@@ -665,3 +665,6 @@ a.tile { display: block; }
 .mode-side { display: none; }
 .top .mode-chip { margin-left: auto; }
 @media (min-width: 1024px) { .mode-side { display: block; order: -1; margin: 0 0 12px; } .top .mode-chip { display: none; } }
+@media (min-width: 1024px) { .side-logo { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .side-logo .mode-side { display: block; margin: 0; order: 0; } .side-logo .mode-chip { padding: 6px 10px; font-size: 12px; background: var(--surface2); white-space: nowrap; } .side-logo .mode-chip svg { display: none; } .side-logo .logo { height: 24px; } }
+.opt-n { opacity: .7; font-weight: 700; margin-left: 2px; }
+.tiles .tile b { font-size: 17px; }

@@ -62,8 +62,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <Link href="/demo" className="demo-pill" aria-label="Вернуться к демо-сценарию">▶ Демо</Link>
       )}
       <nav className="tabbar">
-        <Link href="/deals" className="side-logo" aria-label="StepPay"><Logo /></Link>
-        <div className="mode-side"><ModeSwitch /></div>
+        <div className="side-logo"><Link href="/deals" aria-label="StepPay"><Logo /></Link><span className="mode-side"><ModeSwitch compact /></span></div>
         {tabs.map((t) =>
           t ? (
             <Link key={t.href} href={t.href} className={`tab ${t.desk ? "desk" : ""} ${active(t.href) ? "on" : ""}`}>

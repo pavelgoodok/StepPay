@@ -21,7 +21,13 @@ export default function Deals() {
   const view: "payer" | "exec" = isExecKind ? "exec" : "payer";
   const byRole = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
   const isDone = (d: DealSummary) => d.status === "completed" || d.status === "cancelled";
-  const mine = byRole.filter((d) => (filter === "all" ? true : filter === "done" ? isDone(d) : !isDone(d)));
+  const openCount = byRole.filter((d) => !isDone(d)).length;
+  const doneCount = byRole.length - openCount;
+  // если текущих сделок нет, а завершенные есть, сразу показываем завершенные
+  const shownFilter = filter === "open" && openCount === 0 && doneCount > 0 ? "done" : filter;
+  const mine = byRole.filter((d) => (shownFilter === "all" ? true : shownFilter === "done" ? isDone(d) : !isDone(d)));
+  const sumReserved = byRole.reduce((a, d) => a + (isDone(d) ? 0 : d.reserved), 0);
+  const sumPaid = byRole.reduce((a, d) => a + d.paid, 0);
   type Need = { d: DealSummary; title: string; sub: string; chip: string };
   const needs: Need[] = [];
   for (const d of byRole) {
@@ -76,6 +82,12 @@ export default function Deals() {
         <Link href="/receipts"><span className="ic"><Icon name="check" size={22} /></span>Чеки</Link>
       </div>
 
+      <div className="tiles">
+        <div className="tile"><b>{rub(sumReserved)}</b><span>{isExecKind ? "ожидает выплаты" : "в резерве по сделкам"}</span></div>
+        <div className="tile"><b>{rub(sumPaid)}</b><span>{isExecKind ? "получено за этапы" : "выплачено исполнителям"}</span></div>
+        <div className="tile"><b>{openCount}</b><span>{isExecKind ? "сделок в работе" : "сделок в работе"}</span></div>
+      </div>
+
       {!isExecKind && (pending.data ?? []).map((p) => (
         <Link key={p.dealId} href={`/deals/${p.dealId}`} className="card tap row" style={{ background: "var(--amber-soft)" }}>
           <Icon name="star" size={26} />
@@ -101,8 +113,8 @@ export default function Deals() {
 
       <div className="sec"><h2>Мои сделки</h2></div>
       <div className="chips">
-        {([["open", "В работе"], ["done", "Завершены"], ["all", "Все"]] as const).map(([k, t]) => (
-          <button key={k} className={`opt ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{t}</button>
+        {([["open", "В работе", openCount], ["done", "Завершены", doneCount], ["all", "Все", byRole.length]] as const).map(([k, t, n]) => (
+          <button key={k} className={`opt ${shownFilter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{t} <span className="opt-n">{n}</span></button>
         ))}
       </div>
       {error && <div className="note bad">{error}</div>}
@@ -111,9 +123,9 @@ export default function Deals() {
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={IMG.folder} alt="" />
-          <p style={{ marginTop: 8 }}>{filter === "done" ? "Завершенных сделок пока нет" : view === "exec" ? "Сделок пока нет. Заказчики найдут вас через каталог услуг" : "Выберите исполнителя в каталоге услуг"}</p>
-          {view !== "exec" && filter !== "done" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
-          {view === "exec" && filter !== "done" && <Link href="/services/new" className="btn soft sm" style={{ marginTop: 12 }}>Добавить услугу</Link>}
+          <p style={{ marginTop: 8 }}>{shownFilter === "done" ? "Завершенных сделок пока нет" : view === "exec" ? "Сделок пока нет. Заказчики найдут вас через каталог услуг" : "Выберите исполнителя в каталоге услуг"}</p>
+          {view !== "exec" && shownFilter !== "done" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
+          {view === "exec" && shownFilter !== "done" && <Link href="/services/new" className="btn soft sm" style={{ marginTop: 12 }}>Добавить услугу</Link>}
         </div>
       )}
       <div className="grid2">
