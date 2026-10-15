@@ -376,7 +376,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const s = platform.service(id);
     if (!s || (!s.active && s.ownerId !== me)) return reply.code(404).send({ error: "Услуга не найдена" });
-    return { ...serviceItem(s), mine: s.ownerId === me };
+    return { ...serviceItem(s), mine: s.ownerId === me, chatId: platform.threadsOf(me).find((t) => t.serviceId === id && t.customerId === me)?.id };
   });
 
   app.post("/services", async (req, reply) => {

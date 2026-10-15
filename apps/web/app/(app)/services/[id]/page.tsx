@@ -62,6 +62,8 @@ export default function ServicePage() {
           <Link href={`/services/${id}/edit`} className="btn soft">Изменить</Link>
           {s.active && <button className="btn danger" onClick={hide}>Скрыть</button>}
         </div>
+      ) : s.chatId ? (
+        <Link href={`/chats/${s.chatId}`} className="btn">Перейти в чат</Link>
       ) : (
         <div className="card stack">
           <div className="title">Обсудить задачу</div>

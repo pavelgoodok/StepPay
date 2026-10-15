@@ -209,7 +209,7 @@ export interface ProjectFull extends ProjectItem {
   can: { edit: boolean; fundGrant: boolean; support: boolean };
   problems?: string[];
 }
-export interface ServiceItem { id: string; title: string; category: string; description: string; priceFrom?: number; photos: string[]; active: boolean; owner: Person; mine?: boolean }
+export interface ServiceItem { id: string; title: string; category: string; description: string; priceFrom?: number; photos: string[]; active: boolean; owner: Person; mine?: boolean; chatId?: string }
 export interface ChatItem {
   id: string;
   role: "customer" | "executor";
