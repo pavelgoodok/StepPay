@@ -21,11 +21,15 @@ export default function Deals() {
   const view: "payer" | "exec" = isExecKind ? "exec" : "payer";
   const byRole = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
   const isDone = (d: DealSummary) => d.status === "completed" || d.status === "cancelled";
-  const openCount = byRole.filter((d) => !isDone(d)).length;
-  const doneCount = byRole.length - openCount;
+  // текущие сделки зависят от режима аккаунта, а завершенные видны в обоих режимах: это общая история участника
+  const all = data ?? [];
+  const openList = byRole.filter((d) => !isDone(d));
+  const doneList = all.filter(isDone);
+  const openCount = openList.length;
+  const doneCount = doneList.length;
   // если текущих сделок нет, а завершенные есть, сразу показываем завершенные
   const shownFilter = filter === "open" && openCount === 0 && doneCount > 0 ? "done" : filter;
-  const mine = byRole.filter((d) => (shownFilter === "all" ? true : shownFilter === "done" ? isDone(d) : !isDone(d)));
+  const mine = shownFilter === "done" ? doneList : shownFilter === "all" ? [...openList, ...doneList] : openList;
   const sumReserved = byRole.reduce((a, d) => a + (isDone(d) ? 0 : d.reserved), 0);
   const sumPaid = byRole.reduce((a, d) => a + d.paid, 0);
   type Need = { d: DealSummary; title: string; sub: string; chip: string };
@@ -113,7 +117,7 @@ export default function Deals() {
 
       <div className="sec"><h2>Мои сделки</h2></div>
       <div className="chips">
-        {([["open", "В работе", openCount], ["done", "Завершены", doneCount], ["all", "Все", byRole.length]] as const).map(([k, t, n]) => (
+        {([["open", "В работе", openCount], ["done", "Завершены", doneCount], ["all", "Все", openCount + doneCount]] as const).map(([k, t, n]) => (
           <button key={k} className={`opt ${shownFilter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{t} <span className="opt-n">{n}</span></button>
         ))}
       </div>
@@ -130,7 +134,7 @@ export default function Deals() {
       )}
       <div className="grid2">
         {mine.map((d) => (
-          <DealCard key={d.id} d={d} who={view === "exec" ? (d.owner ?? { id: "crowd", name: "Спонсоры" }) : d.executor} />
+          <DealCard key={d.id} d={d} role={d.executorId === user.id ? "Заказчик" : "Исполнитель"} who={d.executorId === user.id ? (d.owner ?? { id: "crowd", name: "Спонсоры" }) : d.executor} />
         ))}
       </div>
     </div>

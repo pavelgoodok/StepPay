@@ -7,7 +7,7 @@ import { useChangeFlash } from "./motion";
 import { Ava, Icon, SegBar } from "./ui";
 
 /** Карточка сделки или проекта: кто, сколько, на каком этапе. Без декоративных полос, статус в тексте. */
-export function DealCard({ d, who, crowd }: { d: DealSummary; who: Person; crowd?: boolean }) {
+export function DealCard({ d, who, crowd, role }: { d: DealSummary; who: Person; crowd?: boolean; role?: string }) {
   const chip = dealChip(d);
   const total = d.stages.total;
   const funding = d.status === "funding" && crowd;
@@ -19,7 +19,7 @@ export function DealCard({ d, who, crowd }: { d: DealSummary; who: Person; crowd
         <Ava name={who.name} src={who.avatar} size="sm" />
         <div className="grow">
           <div className="dc-title ellipsis">{d.title}</div>
-          <div className="sub ellipsis">{who.name}</div>
+          <div className="sub ellipsis">{role ? `${role} · ` : ""}{who.name}</div>
         </div>
         <span className={`chip ${chip.tone}`}>{chip.text}</span>
       </div>
