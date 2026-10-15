@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { photoSrc } from "@/lib/api";
 import { group, rub } from "@/lib/format";
 
@@ -38,7 +39,8 @@ export function Sheet({ onClose, children }: { onClose(): void; children: ReactN
       document.body.style.overflow = prev;
     };
   }, [onClose]);
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="sheet-bg" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="grab" />
@@ -47,7 +49,8 @@ export function Sheet({ onClose, children }: { onClose(): void; children: ReactN
         </button>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
