@@ -6,7 +6,7 @@ import { useSession } from "@/lib/session";
 import { Icon, Sheet } from "./ui";
 
 const OPTIONS = [
-  { id: "service", title: "Услугу", text: "Опишите услугу, чтобы получать заказы", icon: "hammer" },
+  { id: "service", title: "Услуга", text: "Опишите услугу, чтобы получать заказы", icon: "hammer" },
   { id: "crowdfunding", title: "Проект на сбор средств", text: "Краудфандинг: деньги от поддержавших, выплата по этапам", icon: "crowd" },
   { id: "grant", title: "Проект на грант", text: "Заявка для грантодателей, проходит проверку", icon: "award" },
 ] as const;
