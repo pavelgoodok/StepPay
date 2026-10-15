@@ -147,6 +147,13 @@ describe("услуги и согласование задачи", () => {
     expect(after.status).toBe("active");
     const chat = (await call("anna", "GET", `/chats/${th.id}`)).body;
     expect(chat.messages.some((m: { kind: string }) => m.kind === "system")).toBe(true);
+    // до приемки у исполнителя ничего не появляется: ни при резерве, ни при сдаче этапа
+    const free = async () => (await call("ivan", "GET", "/wallet")).body.free as number;
+    const before = await free();
+    await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { note: "готово" });
+    expect(await free()).toBe(before);
+    await call("anna", "POST", `/deals/${id}/stages/s1/approve`, {});
+    expect(await free()).toBeGreaterThan(before);
   });
 });
 
