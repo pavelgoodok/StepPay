@@ -5,6 +5,7 @@ import { validInn } from "./inn";
 import type { Hub } from "./hub";
 import { PROJECT_CATEGORIES, PlatformError, SERVICE_CATEGORIES, projectGoal, projectProblems, type Platform, type Project, type Service } from "./platform";
 import { summary } from "./summary";
+import { executorStats } from "./stats";
 import type { AuthorProfile, Directory } from "./users";
 import type { FnsCheck } from "./fns";
 
@@ -449,7 +450,7 @@ export function registerPlatformRoutes(c: Ctx) {
     return Object.values(c.getState().deals).flatMap((d) => {
       if (d.status !== "completed") return [];
       const ctx = reviewCtx(d.id, me);
-      if (!ctx || platform.reviewsOfDeal(d.id).some((r) => r.from === me)) return [];
+      if (!ctx || platform.reviewed(me, ctx.to)) return [];
       return [{ dealId: d.id, title: d.title, target: brief(ctx.to) }];
     });
   });
@@ -464,7 +465,7 @@ export function registerPlatformRoutes(c: Ctx) {
     return {
       items: items.map((r) => ({ ...r, from: brief(r.from), to: brief(r.to) })),
       mine: items.find((r) => r.from === me) ?? null,
-      canReview: !!ctx && !items.some((r) => r.from === me),
+      canReview: !!ctx && !platform.reviewed(me, ctx.to),
       target: ctx ? brief(ctx.to) : null,
     };
   });
@@ -475,6 +476,7 @@ export function registerPlatformRoutes(c: Ctx) {
     const { ref } = z.object({ ref: z.string() }).parse(req.params);
     const b = z.object({ stars: z.number().int().min(1, "Поставьте оценку от 1 до 5").max(5, "Поставьте оценку от 1 до 5"), text: z.string().trim().max(1000).default("") }).parse(req.body);
     const ctx = reviewCtx(ref, me);
+    if (ctx && platform.reviewed(me, ctx.to)) return reply.code(409).send({ error: "Вы уже оставили отзыв этому человеку" });
     if (!ctx) return reply.code(403).send({ error: "Оценить можно того, с кем вы взаимодействовали: по сделке или по чату, где написали обе стороны" });
     if (b.stars <= 2 && b.text.length < 10) return reply.code(400).send({ error: "К низкой оценке нужен комментарий: что пошло не так" });
     const review = await platform.addReview({ dealId: ref, from: me, to: ctx.to, stars: b.stars, text: b.text });
@@ -491,9 +493,11 @@ export function registerPlatformRoutes(c: Ctx) {
     return {
       user: brief(id),
       ...platform.ratingOf(id),
+      services: platform.services().filter((s) => s.ownerId === id && s.active).map(serviceItem).reverse(),
+      stats: (() => { const st = executorStats(c.getState(), id); return { dealsCompleted: st.dealsCompleted, acceptedStages: st.acceptedStages }; })(),
       open: id === me ? [] : myRefs(me).flatMap((ref) => {
         const ctx = reviewCtx(ref, me);
-        return ctx && ctx.to === id && !platform.reviewsOfDeal(ref).some((r) => r.from === me) ? [{ ref, title: ctx.title }] : [];
+        return ctx && ctx.to === id && !platform.reviewed(me, id) ? [{ ref, title: ctx.title }] : [];
       }),
       items: platform.reviewsAbout(id).slice(0, 100).map((r) => ({ id: r.id, stars: r.stars, text: r.text, at: r.at, dealTitle: deals[r.dealId]?.title ?? (platform.thread(r.dealId) ? platform.service(platform.thread(r.dealId)!.serviceId)?.title ?? "Чат по услуге" : "Сделка"), from: brief(r.from) })),
     };

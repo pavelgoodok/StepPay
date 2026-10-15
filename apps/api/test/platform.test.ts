@@ -171,22 +171,26 @@ describe("услуги и согласование задачи", () => {
     expect((await call("anna", "POST", `/reviews/of/${th.id}`, { stars: 4 })).status).toBeGreaterThanOrEqual(400); // второй отзыв нельзя
     expect((await call("anna", "GET", "/users/ivan/reviews")).body.open).toEqual([]);
 
-    // сделка: оценка в процессе работы, до завершения
+    // сделка: второй раз тому же человеку оценить нельзя, исполнитель оценивает заказчика один раз
     const id = (await call("ivan", "POST", `/chats/${th.id}/task`, { title: "Ремонт ванной", amount: 5000000 })).body.dealId;
     expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]); // напоминание только по завершенным
-    expect((await call("anna", "POST", `/reviews/of/${id}`, { stars: 3 })).status).toBe(200);
-    expect((await call("ivan", "POST", `/reviews/of/${id}`, { stars: 4 })).status).toBe(200); // исполнитель оценивает заказчика
+    expect((await call("anna", "POST", `/reviews/of/${id}`, { stars: 3 })).status).toBe(409);
+    expect((await call("anna", "GET", `/reviews/of/${id}`)).body.canReview).toBe(false);
+    expect((await call("ivan", "POST", `/reviews/of/${id}`, { stars: 4 })).status).toBe(200);
+    expect((await call("ivan", "POST", `/reviews/of/${th.id}`, { stars: 4 })).status).toBe(409);
     const about = (await call("anna", "GET", "/users/ivan/reviews")).body;
-    expect(about.reviews).toBe(2);
-    expect(about.rating).toBe(4); // (5 + 3) / 2
-    expect((await call("ivan", "GET", "/me/stats")).body).toMatchObject({ rating: 4, reviews: 2 });
+    expect(about.reviews).toBe(1);
+    expect(about.rating).toBe(5);
+    expect(about.services).toHaveLength(1); // профиль исполнителя виден заказчикам: услуги и итоги
+    expect(about.stats).toMatchObject({ dealsCompleted: 0, acceptedStages: 0 });
+    expect((await call("ivan", "GET", "/me/stats")).body).toMatchObject({ rating: 5, reviews: 1 });
     // напоминание на главной по завершенной сделке без отзыва
     await call("ivan", "POST", `/deals/${id}/terms`, { stages: [{ title: "Плитка", amount: 100_000 * R, criteria: [] }] });
     await call("ivan", "POST", `/deals/${id}/propose`);
     await call("anna", "POST", `/deals/${id}/fund`, {});
     await call("ivan", "POST", `/deals/${id}/stages/s1/submit`, { note: "готово" });
     await call("anna", "POST", `/deals/${id}/stages/s1/approve`, {});
-    expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]); // отзыв по сделке уже оставлен
+    expect((await call("anna", "GET", "/reviews/pending")).body).toEqual([]); // отзыв этому человеку уже оставлен
   });
 });
 

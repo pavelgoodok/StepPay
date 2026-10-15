@@ -11,7 +11,7 @@ import { useSession, usePoll } from "@/lib/session";
 export default function Deals() {
   const { user, wallet } = useSession();
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
-  const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" ? "exec" : "payer");
+  const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" || user?.kind === "executor" ? "exec" : "payer");
   const { data, error } = usePoll(() => api<DealSummary[]>("/deals"), []);
   const pending = usePoll(() => api<{ dealId: string; title: string; target: { name: string } }[]>("/reviews/pending"), [user?.id]);
   if (!user) return null;

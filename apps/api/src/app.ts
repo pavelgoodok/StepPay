@@ -309,7 +309,7 @@ export async function buildApp(opts: AppOptions) {
   });
 
   app.post("/auth/otp/verify", async (req, reply) => {
-    const b = z.object({ phone: z.string().max(40), code: z.string().regex(/^\d{6}$/, "Код состоит из 6 цифр"), name: z.string().trim().min(2, "Укажите имя").max(60).optional() }).parse(req.body);
+    const b = z.object({ phone: z.string().max(40), code: z.string().regex(/^\d{6}$/, "Код состоит из 6 цифр"), name: z.string().trim().min(2, "Укажите имя").max(60).optional(), kind: z.enum(["customer", "executor"]).optional() }).parse(req.body);
     const phone = normalizePhone(b.phone);
     if (!phone) return reply.code(400).send({ error: "Неверный номер телефона" });
     const existing = dir.byPhone(phone);
@@ -321,8 +321,8 @@ export async function buildApp(opts: AppOptions) {
       return reply.code(400).send({ error: (e as Error).message });
     }
     if (!ok) return reply.code(400).send({ error: "Неверный код" });
-    const user = existing ?? (await dir.register(phone, b.name!, now()));
-    return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const } };
+    const user = existing ?? (await dir.register(phone, b.name!, now(), b.kind));
+    return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const, kind: dir.get(user.id)?.kind } };
   });
 
   // вход по passkey: без кода из СМС, подтверждение отпечатком, лицом или PIN

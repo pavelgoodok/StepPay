@@ -141,7 +141,7 @@ export default function Profile() {
         </div>
         {registered && user.avatar && <button className="btn ghost sm" onClick={removeAvatar}>Удалить фото</button>}
         <h1 className="h1" style={{ fontSize: 28, marginTop: 8 }}>{user.name}</h1>
-        <div className="muted">{ROLE[user.role]}{user.phone ? ` · ${user.phone}` : ""}</div>
+        <div className="muted">{user.role === "user" && user.kind ? ROLE[user.kind] : ROLE[user.role]}{user.phone ? ` · ${user.phone}` : ""}</div>
         {registered && (
           <button className="btn soft sm" style={{ marginTop: 12 }} onClick={() => { setName(user.name); setEdit(true); }}>
             <Icon name="user" size={16} /> Редактировать профиль

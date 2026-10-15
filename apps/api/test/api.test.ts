@@ -325,13 +325,14 @@ describe("регистрация и вход по телефону", () => {
     expect((await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode })).statusCode).toBe(400);
     const wrong = await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode === "000000" ? "111111" : "000000", name: "Петр" });
     expect(wrong.statusCode).toBe(400);
-    const ok = (await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Петр Сидоров" })).json();
-    expect(ok).toMatchObject({ isNew: true, user: { name: "Петр Сидоров", role: "user" } });
+    const ok = (await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Петр Сидоров", kind: "executor" })).json();
+    expect(ok).toMatchObject({ isNew: true, user: { name: "Петр Сидоров", role: "user", kind: "executor" } });
     // код одноразовый
     expect((await post(app, "/auth/otp/verify", { phone: "+79991234567", code: r1.demoCode, name: "Петр" })).statusCode).toBe(400);
 
     const me = await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${ok.token}` } });
     expect(me.json().user.phone).toBe("+7 999 ***-**-67");
+    expect(me.json().user.kind).toBe("executor"); // выбор при регистрации сохранен
     expect(me.json().wallet).toEqual({ free: 0, reserved: 0 });
 
     t += 31_000; // повторный запрос кода разрешен через 30 секунд

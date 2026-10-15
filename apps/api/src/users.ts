@@ -55,6 +55,8 @@ export interface RegisteredUser {
   keys?: DeviceKey[];
   /** ссылка вида /uploads/... на аватарку */
   avatar?: string;
+  /** кем человек зарегистрировался: ищет исполнителя или сам исполнитель; права это не меняет */
+  kind?: "customer" | "executor";
   createdAt: number;
 }
 
@@ -65,6 +67,7 @@ export interface PublicAccount {
   avatar?: string;
   grantor?: boolean;
   arbiter?: boolean;
+  kind?: "customer" | "executor";
 }
 
 /** Приводит российский номер к виду +79991234567; null, если это не номер. */
@@ -96,7 +99,7 @@ export class Directory {
     if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined, arbiter: d.role === "arbiter" || undefined };
     const r = this.registered.get(id);
     if (!r) return undefined;
-    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor, arbiter: r.arbiter };
+    return { id: r.id, name: r.name, role: this.adminPhones.includes(r.phone) ? "admin" : "user", avatar: r.avatar, grantor: r.grantor, arbiter: r.arbiter, kind: r.kind };
   }
 
   private demoSessionsFrom = new Map<string, number>();
@@ -210,8 +213,8 @@ export class Directory {
     return this.registered.get(id)?.phone;
   }
 
-  async register(phone: string, name: string, at: number): Promise<RegisteredUser> {
-    const user: RegisteredUser = { id: `u_${at.toString(36)}${Math.random().toString(36).slice(2, 7)}`, phone, name, createdAt: at };
+  async register(phone: string, name: string, at: number, kind: "customer" | "executor" = "customer"): Promise<RegisteredUser> {
+    const user: RegisteredUser = { id: `u_${at.toString(36)}${Math.random().toString(36).slice(2, 7)}`, phone, name, kind, createdAt: at };
     this.registered.set(user.id, user);
     await this.persist([...this.registered.values()]);
     return user;

@@ -74,9 +74,9 @@ export default function ChatPage() {
     <div className="page chat">
       <div className="row">
         <Link href="/chats" className="iconbtn" aria-label="Назад"><Icon name="back" size={18} /></Link>
-        <Ava name={c.with.name} src={c.with.avatar} size="sm" />
+        <Link href={`/users/${c.with.id}`}><Ava name={c.with.name} src={c.with.avatar} size="sm" /></Link>
         <div className="grow" style={{ minWidth: 0 }}>
-          <b className="ellipsis" style={{ display: "block" }}>{c.with.name}</b>
+          <Link href={`/users/${c.with.id}`} className="ellipsis" style={{ display: "block", fontWeight: 700 }}>{c.with.name}</Link>
           <Link href={`/services/${c.service.id}`} className="small muted ellipsis" style={{ display: "block" }}>{c.service.title}</Link>
         </div>
       </div>

@@ -11,6 +11,8 @@ export interface PublicUser {
   phone?: string;
   avatar?: string;
   grantor?: boolean;
+  /** кем зарегистрировался: заказчик или исполнитель */
+  kind?: "customer" | "executor";
 }
 export interface Person {
   id: string;

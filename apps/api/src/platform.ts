@@ -191,13 +191,18 @@ export class Platform {
     return (this.data.reviews ?? []).filter((r) => r.to === userId).sort((a, b) => b.at - a.at);
   }
 
+  /** Один отзыв от человека о человеке, сколько бы взаимодействий между ними ни было. */
+  reviewed(from: string, to: string): boolean {
+    return (this.data.reviews ?? []).some((r) => r.from === from && r.to === to);
+  }
+
   reviewsOfDeal(dealId: string): Review[] {
     return (this.data.reviews ?? []).filter((r) => r.dealId === dealId);
   }
 
   async addReview(r: { dealId: string; from: string; to: string; stars: number; text: string }): Promise<Review> {
     const list = (this.data.reviews ??= []);
-    if (list.some((x) => x.dealId === r.dealId && x.from === r.from)) fail("Вы уже оставили отзыв по этому взаимодействию");
+    if (list.some((x) => x.from === r.from && x.to === r.to)) fail("Вы уже оставили отзыв этому человеку");
     const rev: Review = { id: this.id("r"), at: this.now(), ...r };
     list.push(rev);
     await this.save();

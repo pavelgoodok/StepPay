@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IMG, Icon, Initials } from "@/components/ui";
 import { api, type PublicUser } from "@/lib/api";
 import { loginWithPasskey, passkeysAvailable } from "@/lib/passkeys";
@@ -36,13 +36,16 @@ export default function Login() {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [isNew, setIsNew] = useState(false);
+  const [kind, setKind] = useState<"customer" | "executor" | null>(null);
   const [demoCode, setDemoCode] = useState<string | null>(null);
   const [wait, setWait] = useState(0);
   const [busy, setBusy] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
 
+  // куда идти после входа: новый исполнитель создает витрину услуг, новый заказчик идет в каталог
+  const after = useRef("/deals");
   useEffect(() => {
-    if (user) router.replace("/deals");
+    if (user) router.replace(after.current);
   }, [user, router]);
 
   useEffect(() => {
@@ -59,6 +62,7 @@ export default function Login() {
     try {
       const r = await api<{ isNew: boolean; demoCode: string | null; retryAfter: number }>("/auth/otp/request", { method: "POST", body: { phone } });
       setIsNew(r.isNew);
+      setKind(null);
       setDemoCode(r.demoCode);
       setWait(r.retryAfter);
       setStep("code");
@@ -74,9 +78,10 @@ export default function Login() {
     if (value.length !== 6 || busy) return;
     setBusy(true);
     try {
-      const r = await api<{ token: string }>("/auth/otp/verify", { method: "POST", body: { phone, code: value, name: isNew ? name : undefined } });
+      const r = await api<{ token: string }>("/auth/otp/verify", { method: "POST", body: { phone, code: value, name: isNew ? name : undefined, kind: isNew ? kind ?? undefined : undefined } });
+      after.current = isNew ? (kind === "executor" ? "/services/new" : "/catalog") : "/deals";
       await completeLogin(r.token);
-      router.replace("/deals");
+      router.replace(after.current);
     } catch (e) {
       toast((e as Error).message, "err");
       setCode("");
@@ -154,7 +159,7 @@ export default function Login() {
               <h2>Код подтверждения</h2>
               <p className="sub">Отправили на {phone}</p>
               {demoCode && (
-                <button className="sms" onClick={() => { setCode(demoCode); if (!isNew || name.trim().length >= 2) void verify(demoCode); }}>
+                <button className="sms" onClick={() => { setCode(demoCode); if (!isNew || (name.trim().length >= 2 && kind)) void verify(demoCode); }}>
                   <span className="sms-ic"><Icon name="bolt" size={16} /></span>
                   <span className="grow">
                     <b>StepPay</b>
@@ -165,6 +170,23 @@ export default function Login() {
               )}
               {isNew && (
                 <div className="field" style={{ marginTop: 14 }}>
+                  <label>Что вам нужно</label>
+                  <div className="kinds">
+                    <button type="button" className={`kind ${kind === "customer" ? "on" : ""}`} onClick={() => setKind("customer")}>
+                      <Icon name="sprout" size={22} />
+                      <b>Ищу исполнителя</b>
+                      <span>Заказать работу и платить по этапам</span>
+                    </button>
+                    <button type="button" className={`kind ${kind === "executor" ? "on" : ""}`} onClick={() => setKind("executor")}>
+                      <Icon name="deals" size={22} />
+                      <b>Я исполнитель</b>
+                      <span>Предлагать услуги и получать выплаты</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isNew && (
+                <div className="field" style={{ marginTop: 14 }}>
                   <label>Как вас зовут</label>
                   <input className="input" autoComplete="name" placeholder="Имя и фамилия" value={name} onChange={(e) => setName(e.target.value)} />
                 </div>
@@ -172,9 +194,9 @@ export default function Login() {
               <div className="field" style={{ marginTop: 14 }}>
                 <label>Код из SMS</label>
                 <input className="input big-input code-input mono" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="······" value={code}
-                  onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 6); setCode(v); if (v.length === 6 && (!isNew || name.trim().length >= 2)) void verify(v); }} />
+                  onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 6); setCode(v); if (v.length === 6 && (!isNew || (name.trim().length >= 2 && kind))) void verify(v); }} />
               </div>
-              <button className="btn" style={{ marginTop: 16 }} disabled={busy || code.length !== 6 || (isNew && name.trim().length < 2)} onClick={() => verify()}>
+              <button className="btn" style={{ marginTop: 16 }} disabled={busy || code.length !== 6 || (isNew && (name.trim().length < 2 || !kind))} onClick={() => verify()}>
                 {busy ? <span className="spin" /> : isNew ? "Зарегистрироваться" : "Войти"}
               </button>
               <button className="btn ghost" disabled={wait > 0 || busy} onClick={requestCode}>{wait > 0 ? `Отправить код еще раз через ${wait} с` : "Отправить код еще раз"}</button>

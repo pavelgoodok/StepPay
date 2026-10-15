@@ -133,8 +133,8 @@ export default function DealPage() {
         <div className="small muted">{MODE_LABEL[d.mode]}</div>
         <h1 className="h1" style={{ fontSize: 28 }}>{d.title}</h1>
         <div className="sub">
-          Исполнитель: {d.people[d.executorId]?.name}
-          {d.ownerId && <> · {d.mode === "grant" ? "Грантодатель" : "Заказчик"}: {d.people[d.ownerId]?.name}</>}
+          Исполнитель: <Link href={`/users/${d.executorId}`} style={{ textDecoration: "underline" }}>{d.people[d.executorId]?.name}</Link>
+          {d.ownerId && <> · {d.mode === "grant" ? "Грантодатель" : "Заказчик"}: <Link href={`/users/${d.ownerId}`} style={{ textDecoration: "underline" }}>{d.people[d.ownerId]?.name}</Link></>}
         </div>
       </div>
 
