@@ -94,6 +94,10 @@ export default function ChatPage() {
         );
       })}
 
+      {!isExec && c.deals.length === 0 && (
+        <div className="note">Обсудите задачу и сумму. Когда договоритесь, исполнитель зарегистрирует задачу, и вы увидите ее здесь и в разделе «Сделки».</div>
+      )}
+
       <div className="bubbles">
         {c.messages.length === 0 && <div className="empty" style={{ padding: 16 }}>Напишите первое сообщение</div>}
         {c.messages.map((m) =>

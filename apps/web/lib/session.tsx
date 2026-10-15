@@ -8,6 +8,8 @@ interface Session {
   wallet: Wallet | null;
   /** число непрочитанных уведомлений */
   unread: number;
+  /** сообщения в чатах, которые вы еще не читали */
+  chatUnread: number;
   /** возможности сервера: пополнение без оплаты есть только в демо */
   features: { topup: boolean; chain?: boolean };
   users: PublicUser[];
@@ -43,6 +45,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PublicUser | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [unread, setUnread] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
   const [features, setFeatures] = useState<{ topup: boolean; chain?: boolean }>({ topup: true });
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
@@ -73,8 +76,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; features?: { topup: boolean; chain?: boolean }; adminLocked?: boolean }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; chatUnread?: number; features?: { topup: boolean; chain?: boolean }; adminLocked?: boolean }>("/me");
       setUnread(me.unread ?? 0);
+      setChatUnread(me.chatUnread ?? 0);
       setAdminLocked(!!me.adminLocked);
       setUser(me.user);
       if (me.features) setFeatures(me.features);
@@ -175,7 +179,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, unread, features, users, ready, refresh, login, completeLogin, logout, toast, adminLocked }}>
+    <Ctx.Provider value={{ user, wallet, unread, chatUnread, features, users, ready, refresh, login, completeLogin, logout, toast, adminLocked }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

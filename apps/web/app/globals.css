@@ -633,12 +633,12 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 .tab .ti { position: relative; }
 .tab .ti .bell-n { top: -2px; right: 2px; }
 @media (min-width: 1024px) { .tab.desk { display: flex; } }
-.deco { position: fixed; z-index: 0; right: -12vw; bottom: 78px; width: min(56vw, 300px); aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; opacity: .92; }
+.deco { position: fixed; z-index: 0; right: -24vw; bottom: 30px; width: min(96vw, 460px); aspect-ratio: 1; background: center / contain no-repeat; pointer-events: none; opacity: .34; }
 .deco-ring { background-image: url(/bg/deco-ring.webp); }
 .deco-s { background-image: url(/bg/deco-s.webp); }
-.deco-arch { background-image: url(/bg/deco-arch.webp); }
 .shell > .page, .shell > .note { position: relative; z-index: 1; }
-@media (min-width: 560px) and (max-width: 1023px) { .deco { right: calc(50% - 240px - 40px); bottom: 100px; width: 340px; } }
-@media (min-width: 1024px) { .deco { right: -50px; bottom: -70px; width: 420px; } }
-:root[data-theme="dark"] .deco { opacity: .8; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .deco { opacity: .8; } }
+@media (min-width: 560px) and (max-width: 1023px) { .deco { right: calc(50% - 240px - 110px); bottom: 40px; width: 420px; } }
+@media (min-width: 1024px) { .deco { right: -150px; bottom: -170px; width: 640px; opacity: .38; } }
+:root[data-theme="dark"] .deco { opacity: .26; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .deco { opacity: .26; } }
+a.hero { display: block; }

@@ -173,6 +173,13 @@ export default function DealPage() {
         {!draft && <JournalCard d={d} />}
         <ChainCard d={d} />
       </div>}
+      {d.status === "completed" && (
+        <Link href="/receipts" className="card tap row">
+          <span className="setic"><Icon name="check" size={20} /></span>
+          <div className="grow"><div className="title">Чеки по выплатам</div><div className="small muted">Сделка завершена, чеки по этапам готовы</div></div>
+          <Icon name="arrow" size={18} />
+        </Link>
+      )}
       {d.meta?.agreed ? <div className="card row between"><div className="small muted">Договорились на</div><b className="mono">{rub(d.meta.agreed)}</b></div> : null}
       {d.meta?.description && <div className="card"><div className="small muted">О чем договорились</div><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{d.meta.description}</div></div>}
 

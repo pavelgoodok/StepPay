@@ -60,6 +60,7 @@ export default function ServicePage() {
       {s.mine ? (
         <div className="btns">
           <Link href={`/services/${id}/edit`} className="btn soft">Изменить</Link>
+          <Link href="/chats" className="btn soft">Обращения</Link>
           {s.active && <button className="btn danger" onClick={hide}>Скрыть</button>}
         </div>
       ) : s.chatId ? (

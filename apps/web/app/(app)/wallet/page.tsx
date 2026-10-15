@@ -60,7 +60,7 @@ export default function WalletPage() {
         ) : (
           <button className="btn soft" onClick={() => toast("Пополнение подключается к платежной платформе")}><Icon name="plus" size={18} /> Пополнить</button>
         )}
-        <button className="btn soft" onClick={() => toast("В демо переводы отключены")}><Icon name="arrow" size={18} /> Перевести</button>
+        <Link href="/receipts" className="btn soft"><Icon name="check" size={18} /> Чеки</Link>
       </div>
 
       {data.chain && (

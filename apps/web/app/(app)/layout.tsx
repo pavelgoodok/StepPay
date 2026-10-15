@@ -7,6 +7,7 @@ import { Ava, Icon, Logo } from "@/components/ui";
 import { useSession } from "@/lib/session";
 
 type Tab = { href: string; label: string; icon: string; desk?: boolean } | null;
+const badgeOf = (href: string, unread: number, chats: number) => (href === "/notifications" ? unread : href === "/chats" ? chats : 0);
 const TABS: Tab[] = [
   { href: "/deals", label: "Сделки", icon: "deals" },
   { href: "/catalog", label: "Каталог", icon: "sprout" },
@@ -17,11 +18,11 @@ const TABS: Tab[] = [
 ];
 const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
 
-/** Стеклянная фигура в правом нижнем углу: своя для каждого раздела, лежит под карточками. */
-const decoOf = (p: string) => (/^\/(catalog|projects|services)/.test(p) ? "arch" : /^\/(wallet|receipts|admin)/.test(p) ? "s" : "ring");
+/** Стеклянная фигура в правом нижнем углу: кольцо или лента по разделам, лежит под карточками. */
+const decoOf = (p: string) => (/^\/(deals|wallet|chats)/.test(p) ? "ring" : "s");
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, ready, adminLocked, unread } = useSession();
+  const { user, ready, adminLocked, unread, chatUnread } = useSession();
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
@@ -64,7 +65,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {tabs.map((t) =>
           t ? (
             <Link key={t.href} href={t.href} className={`tab ${t.desk ? "desk" : ""} ${active(t.href) ? "on" : ""}`}>
-              <span className="ti"><Icon name={t.icon} />{t.desk && unread > 0 && <span className="bell-n">{unread > 9 ? "9+" : unread}</span>}</span>
+              <span className="ti"><Icon name={t.icon} />{badgeOf(t.href, unread, chatUnread) > 0 && <span className="bell-n">{badgeOf(t.href, unread, chatUnread) > 9 ? "9+" : badgeOf(t.href, unread, chatUnread)}</span>}</span>
               {t.label}
             </Link>
           ) : (

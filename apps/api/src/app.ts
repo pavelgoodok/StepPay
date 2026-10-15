@@ -398,7 +398,7 @@ export async function buildApp(opts: AppOptions) {
     const phone = dir.phoneOf(id);
     const h = req.headers.authorization;
     const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
+    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, chatUnread: platform.threadsOf(id).reduce((n, th) => n + platform.unread(th, id), 0), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {

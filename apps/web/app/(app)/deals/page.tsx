@@ -10,11 +10,14 @@ import { useSession, usePoll } from "@/lib/session";
 
 export default function Deals() {
   const { user, wallet } = useSession();
+  const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [view, setView] = useState<"payer" | "exec">(user?.role === "executor" ? "exec" : "payer");
   const { data, error } = usePoll(() => api<DealSummary[]>("/deals"), []);
   if (!user) return null;
 
-  const mine = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
+  const byRole = (data ?? []).filter((d) => (view === "exec" ? d.executorId === user.id : d.executorId !== user.id));
+  const isDone = (d: DealSummary) => d.status === "completed" || d.status === "cancelled";
+  const mine = byRole.filter((d) => (filter === "all" ? true : filter === "done" ? isDone(d) : !isDone(d)));
   type Need = { d: DealSummary; title: string; sub: string; chip: string };
   const needs: Need[] = [];
   for (const d of data ?? []) {
@@ -36,10 +39,11 @@ export default function Deals() {
         </div>
       </div>
 
-      <div className="hero bg-reserve plain">
+      <Link href="/wallet" className="hero bg-reserve plain" aria-label="Открыть кошелек">
         <div className="label">Зарезервировано по сделкам</div>
         <div className="big"><Money value={wallet?.reserved ?? 0} /></div>
-      </div>
+        <div className="small" style={{ opacity: 0.85 }}>Свободно {rub(wallet?.free ?? 0)} · открыть кошелек</div>
+      </Link>
 
       <div className="qa">
         <Link href="/wallet"><span className="ic"><Icon name="plus" size={22} /></span>Пополнить</Link>
@@ -65,14 +69,19 @@ export default function Deals() {
       </div>
 
       <div className="sec"><h2>Мои сделки</h2></div>
+      <div className="chips">
+        {([["open", "В работе"], ["done", "Завершены"], ["all", "Все"]] as const).map(([k, t]) => (
+          <button key={k} className={`opt ${filter === k ? "on" : ""}`} onClick={() => setFilter(k)}>{t}</button>
+        ))}
+      </div>
       {error && <div className="note bad">{error}</div>}
       {!data && <div className="skeleton" />}
       {data && mine.length === 0 && (
         <div className="empty">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={IMG.folder} alt="" />
-          <p style={{ marginTop: 8 }}>{view === "exec" ? "Сделок, где вы исполнитель, пока нет" : "Выберите исполнителя в каталоге услуг"}</p>
-          {view !== "exec" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
+          <p style={{ marginTop: 8 }}>{filter === "done" ? "Завершенных сделок пока нет" : view === "exec" ? "Сделок, где вы исполнитель, пока нет" : "Выберите исполнителя в каталоге услуг"}</p>
+          {view !== "exec" && filter !== "done" && <Link href="/catalog" className="btn soft sm" style={{ marginTop: 12 }}>В каталог</Link>}
         </div>
       )}
       <div className="grid2">
