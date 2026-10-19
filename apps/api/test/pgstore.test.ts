@@ -53,3 +53,42 @@ describe("единственный пишущий экземпляр", () => {
     expect(await new PgStore("postgres://x", pool).acquireLeader(5, 30)).toBe(false);
   });
 });
+
+describe("состояние в таблицах", () => {
+  const mk = async (db: PGlite) => {
+    const st = new PgStore("postgres://pglite", asPool(db));
+    await st.init();
+    return st;
+  };
+  it("переносит прежний единый документ и дальше пишет только изменения", async () => {
+    const db = new PGlite();
+    await db.query("create table app_state (id int primary key, state jsonb not null, updated_at timestamptz not null default now())");
+    const old = { wallets: { a: 100 }, deals: {}, ledger: [{ id: 1, at: 1, type: "topup", userId: "a", amount: 100 }] };
+    await db.query("insert into app_state (id, state) values (1, $1)", [JSON.stringify(old)]);
+    const s1 = await (await mk(db)).load();
+    expect(s1.wallets.a).toBe(100);
+    expect(s1.ledger).toHaveLength(1);
+    const st = await mk(db);
+    const loaded = await st.load();
+    loaded.wallets.a = 250;
+    loaded.wallets.b = 5;
+    loaded.ledger.push({ id: 2, at: 2, type: "topup", userId: "b", amount: 5 });
+    await st.save(loaded);
+    const again = await (await mk(db)).load();
+    expect(again.wallets).toEqual({ a: 250, b: 5 });
+    expect(again.ledger.map((e) => e.id)).toEqual([1, 2]);
+  });
+  it("удаляет исчезнувшие строки и переписывает журнал после сброса", async () => {
+    const db = new PGlite();
+    const st = await mk(db);
+    const s = await st.load();
+    s.wallets.a = 1;
+    s.ledger.push({ id: 1, at: 1, type: "topup", userId: "a", amount: 1 }, { id: 2, at: 2, type: "topup", userId: "a", amount: 1 });
+    await st.save(s);
+    await st.save({ wallets: { z: 9 }, deals: {}, ledger: [{ id: 1, at: 5, type: "topup", userId: "z", amount: 9 }] });
+    const r = await (await mk(db)).load();
+    expect(r.wallets).toEqual({ z: 9 });
+    expect(r.ledger).toHaveLength(1);
+    expect(r.ledger[0]!.userId).toBe("z");
+  });
+});
