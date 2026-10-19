@@ -21,6 +21,8 @@ export interface Person {
   /** рейтинг по отзывам, null пока отзывов нет */
   rating?: number | null;
   reviews?: number;
+  /** данные подтверждены администратором */
+  verified?: boolean;
 }
 export interface ReviewItem { id: string; stars: number; text: string; at: number; dealTitle: string; from: Person }
 export interface DealReviews {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ReviewCard } from "@/components/review-card";
 import { Ava, Icon } from "@/components/ui";
-import { RatingLine, Stars } from "@/components/stars";
+import { RatingLine, Stars, VerifiedMark } from "@/components/stars";
 import { api, type Person, type ReviewItem, type ServiceItem } from "@/lib/api";
 import { dayLabel, rub } from "@/lib/format";
 import { usePoll } from "@/lib/session";
@@ -18,7 +18,7 @@ export default function UserReviews() {
       <button className="btn ghost sm" style={{ paddingLeft: 0, alignSelf: "flex-start" }} onClick={() => history.back()}><Icon name="back" size={18} /> Назад</button>
       <div className="card pcard">
         <Ava name={data.user.name} src={data.user.avatar} size="lg" />
-        <h1 className="h1" style={{ fontSize: 26, marginTop: 8 }}>{data.user.name}</h1>
+        <h1 className="h1" style={{ fontSize: 26, marginTop: 8 }}>{data.user.name}<VerifiedMark show={data.user.verified} /></h1>
         {data.rating != null && <div className="big-rating">{data.rating.toFixed(1).replace(".", ",")}</div>}
         {data.rating != null && <Stars value={data.rating} size={22} />}
         <RatingLine rating={data.rating} reviews={data.reviews} />

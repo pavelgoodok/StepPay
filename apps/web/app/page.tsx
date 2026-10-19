@@ -7,7 +7,7 @@ export default function Home() {
   const { user, ready } = useSession();
   const router = useRouter();
   useEffect(() => {
-    if (ready) router.replace(user ? "/deals" : "/login");
+    if (ready) router.replace(user ? (user.role === "admin" ? "/admin" : "/deals") : "/login");
   }, [ready, user, router]);
   return null;
 }

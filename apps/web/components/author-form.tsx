@@ -5,7 +5,7 @@ import { LEGAL_LABEL } from "@/lib/labels";
 import { useSession } from "@/lib/session";
 
 /** Анкета автора: статус и ИНН. Нужна один раз, дальше подставляется ко всем проектам. */
-export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | null; onSaved(a: AuthorProfile): void }) {
+export function AuthorForm({ initial, onSaved, verify }: { initial?: AuthorProfile | null; onSaved(a: AuthorProfile): void; /** отправить данные на подтверждение администратору */ verify?: boolean }) {
   const { toast } = useSession();
   const [a, setA] = useState<AuthorProfile>(initial ?? { legalStatus: "selfemployed", inn: "", orgName: "", email: "" });
   const [busy, setBusy] = useState(false);
@@ -15,8 +15,8 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
   async function save() {
     setBusy(true);
     try {
-      const r = await api<{ fns?: AuthorProfile["fns"] }>("/me/author", { method: "POST", body: { ...a, orgName: org ? a.orgName : undefined } });
-      toast(r.fns?.status === "mismatch" ? "Анкета сохранена, но ФНС не подтвердила данные" : r.fns?.status === "match" ? "Анкета сохранена, ФНС подтвердила данные" : "Анкета сохранена", r.fns?.status === "mismatch" ? "err" : "ok");
+      const r = await api<{ fns?: AuthorProfile["fns"] }>(verify ? "/me/verification" : "/me/author", { method: "POST", body: { ...a, orgName: org ? a.orgName : undefined } });
+      toast(verify ? "Заявка отправлена, решение придет в уведомлениях" : r.fns?.status === "mismatch" ? "Анкета сохранена, но ФНС не подтвердила данные" : r.fns?.status === "match" ? "Анкета сохранена, ФНС подтвердила данные" : "Анкета сохранена", r.fns?.status === "mismatch" ? "err" : "ok");
       onSaved({ ...a, fns: r.fns });
     } catch (e) {
       toast((e as Error).message, "err");
@@ -46,7 +46,7 @@ export function AuthorForm({ initial, onSaved }: { initial?: AuthorProfile | nul
         <label>Почта для связи</label>
         <input className="input" type="email" value={a.email ?? ""} onChange={(e) => setA({ ...a, email: e.target.value })} placeholder="Электронная почта" />
       </div>
-      <button className="btn soft" disabled={busy || a.inn.length !== innLen || (org && !a.orgName?.trim())} onClick={save}>Сохранить анкету</button>
+      <button className="btn soft" disabled={busy || a.inn.length !== innLen || (org && !a.orgName?.trim())} onClick={save}>{verify ? "Отправить на подтверждение" : "Сохранить анкету"}</button>
     </div>
   );
 }

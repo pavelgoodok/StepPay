@@ -28,3 +28,9 @@ export function RatingLine({ rating, reviews }: { rating?: number | null; review
     </span>
   );
 }
+
+/** Отметка «Проверено» рядом с именем: данные подтверждены администратором. */
+export function VerifiedMark({ show }: { show?: boolean }) {
+  if (!show) return null;
+  return <span className="chip green" style={{ marginLeft: 8, verticalAlign: "middle" }}>Проверено</span>;
+}

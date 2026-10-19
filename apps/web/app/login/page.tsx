@@ -45,7 +45,7 @@ export default function Login() {
   // куда идти после входа: новый исполнитель создает витрину услуг, новый заказчик идет в каталог
   const after = useRef("/deals");
   useEffect(() => {
-    if (user) router.replace(after.current);
+    if (user) router.replace(user.role === "admin" ? "/admin" : after.current);
   }, [user, router]);
 
   useEffect(() => {
@@ -93,7 +93,6 @@ export default function Login() {
     setBusy(true);
     try {
       await completeLogin(await loginWithPasskey());
-      router.replace("/deals");
     } catch (e) {
       toast((e as Error).message, "err");
       setBusy(false);
@@ -104,7 +103,6 @@ export default function Login() {
     setBusy(true);
     try {
       await login(id);
-      router.replace("/deals");
     } catch (e) {
       toast((e as Error).message, "err");
       setBusy(false);

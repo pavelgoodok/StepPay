@@ -17,7 +17,7 @@ const TABS: Tab[] = [
   { href: "/notifications", label: "Уведомления", icon: "bell", desk: true },
   { href: "/profile", label: "Профиль", icon: "user" },
 ];
-const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Проверка", icon: "shield" }, ...TABS.slice(1)];
+const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Панель", icon: "shield" }, ...TABS.slice(1)];
 
 /** Стеклянная фигура в правом нижнем углу: кольцо или лента по разделам, лежит под карточками. */
 const decoOf = (p: string) => (/^\/(deals|wallet|chats)/.test(p) ? "ring" : "s");

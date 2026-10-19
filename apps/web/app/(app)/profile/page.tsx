@@ -1,4 +1,5 @@
 "use client";
+import { VerificationCard } from "@/components/verification-card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -176,6 +177,8 @@ export default function Profile() {
         <div className="tile"><b>{data?.acceptedStages ?? 0}</b><span>принято этапов</span></div>
         <div className="tile"><b>{data?.disputes ?? 0}</b><span>споров</span></div>
       </div>
+
+      {user.kind === "executor" && <VerificationCard />}
 
       {user.kind === "executor" && ((mineP.data?.length ?? 0) > 0 || (mineS.data?.length ?? 0) > 0) && (
         <div className="card stack">
