@@ -29,8 +29,15 @@ export function RatingLine({ rating, reviews }: { rating?: number | null; review
   );
 }
 
-/** Отметка «Проверено» рядом с именем: данные подтверждены администратором. */
-export function VerifiedMark({ show }: { show?: boolean }) {
+/** Отметка «Проверено» рядом с именем: данные подтверждены администратором. В списках показывается значком. */
+export function VerifiedMark({ show, compact }: { show?: boolean; compact?: boolean }) {
   if (!show) return null;
+  if (compact) {
+    return (
+      <span className="vmark" title="Данные подтверждены администратором" aria-label="Проверено">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+      </span>
+    );
+  }
   return <span className="chip green" style={{ marginLeft: 8, verticalAlign: "middle" }}>Проверено</span>;
 }

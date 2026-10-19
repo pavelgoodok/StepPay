@@ -739,3 +739,5 @@ a.tile { display: block; }
   .adm-main { padding: 20px 14px 40px; }
   .adm-queue, .adm-kpis { grid-template-columns: 1fr; }
 }
+.vmark { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 6px; border-radius: 50%; background: var(--green); color: #fff; vertical-align: -2px; flex: none; }
+.vmark svg { width: 11px; height: 11px; }

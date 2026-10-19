@@ -1,4 +1,5 @@
 "use client";
+import { VerifiedMark } from "@/components/stars";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -87,7 +88,7 @@ export default function ProjectPage() {
 
       <div className="row">
         <Ava name={p.owner.name} src={p.owner.avatar} />
-        <div className="grow"><b>{p.owner.name}</b><div className="small muted">Автор проекта</div></div>
+        <div className="grow"><b>{p.owner.name}</b><VerifiedMark show={p.owner.verified} compact /><div className="small muted">Автор проекта</div></div>
       </div>
 
       {p.dealId && p.kind === "crowdfunding" ? (

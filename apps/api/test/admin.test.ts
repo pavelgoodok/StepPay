@@ -63,6 +63,10 @@ describe("панель администратора", () => {
     expect((await call("admin", "POST", `/admin/verifications/${id}/decision`, { action: "approve" })).status).toBe(200);
     expect((await call("anna", "GET", "/me/verification")).body.status).toBe("approved");
     expect((await call("ivan", "GET", "/users/anna/reviews")).body.user.verified).toBe(true);
+    // отметка видна в каталоге услуг у владельца
+    const svc = await call("anna", "POST", "/services", { title: "Дизайн интерьера", category: "Разработка и дизайн", description: "Проектирую интерьеры квартир и офисов под ключ" });
+    expect(svc.status).toBe(200);
+    expect((await call("ivan", "GET", `/services/${svc.body.id}`)).body.owner.verified).toBe(true);
     expect((await call("admin", "GET", "/admin/verifications?status=approved")).body).toHaveLength(1);
     expect((await call("admin", "GET", "/admin/dashboard")).body.users.verified).toBeGreaterThanOrEqual(1);
     expect((await call("anna", "GET", "/notifications")).body.items[0].text).toMatch(/подтверждены/);

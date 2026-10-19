@@ -1,4 +1,5 @@
 "use client";
+import { VerifiedMark } from "@/components/stars";
 import Link from "next/link";
 import type { ProjectItem, ServiceItem } from "@/lib/api";
 import { photoSrc } from "@/lib/api";
@@ -50,6 +51,7 @@ export function ProjectCard({ p, href, showStatus }: { p: ProjectItem; href?: st
         <div className="row" style={{ gap: 8 }}>
           <Ava name={p.owner.name} src={p.owner.avatar} size="sm" />
           <span className="sub ellipsis">{p.owner.name}</span>
+          <VerifiedMark show={p.owner.verified} compact />
         </div>
       </div>
     </Link>
@@ -74,6 +76,7 @@ export function ServiceCard({ s, href }: { s: ServiceItem; href?: string }) {
           <div className="row" style={{ gap: 8, minWidth: 0 }}>
             <Ava name={s.owner.name} src={s.owner.avatar} size="sm" />
             <span className="sub ellipsis">{s.owner.name}</span>
+            <VerifiedMark show={s.owner.verified} compact />
           </div>
           {s.priceFrom ? <b className="mono" style={{ whiteSpace: "nowrap" }}>от {rub(s.priceFrom)}</b> : null}
         </div>
