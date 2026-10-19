@@ -65,14 +65,37 @@ export class MemoryStore implements Store {
 }
 
 export class PgStore implements Store {
-  private pool: Pick<pg.Pool, "query">;
-  constructor(url: string, pool?: Pick<pg.Pool, "query">) {
+  private pool: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>;
+  private leader?: pg.PoolClient;
+  constructor(url: string, pool?: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>) {
     this.pool =
       pool ??
       new pg.Pool({
         connectionString: url,
         ssl: url.includes("railway.internal") || url.includes("localhost") ? false : { rejectUnauthorized: false },
       });
+  }
+  /**
+   * Единственный пишущий экземпляр: состояние держится в памяти, поэтому два процесса, пишущих в одну базу,
+   * затирали бы друг друга (в том числе при выкладке новой версии, пока старая еще работает).
+   * Блокировка Postgres держится на отдельном соединении и снимается сама, когда процесс завершается.
+   */
+  async acquireLeader(waitMs = 2000, maxWaitMs = 10 * 60_000): Promise<boolean> {
+    if (!this.pool.connect) return true;
+    const client = await this.pool.connect();
+    const started = Date.now();
+    for (;;) {
+      const r = await client.query("select pg_try_advisory_lock(727001) as ok");
+      if (r.rows[0]?.ok) {
+        this.leader = client;
+        return true;
+      }
+      if (Date.now() - started > maxWaitMs) {
+        client.release();
+        return false;
+      }
+      await new Promise((res) => setTimeout(res, waitMs));
+    }
   }
   async init() {
     await this.pool.query(

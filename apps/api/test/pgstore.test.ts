@@ -34,3 +34,22 @@ describe("PgStore на Postgres", () => {
     await db.close();
   }, 30000);
 });
+
+describe("единственный пишущий экземпляр", () => {
+  it("второй экземпляр ждет, пока первый освободит блокировку", async () => {
+    let held = true;
+    let tries = 0;
+    const client = { query: async () => ({ rows: [{ ok: !held && ++tries > 0 }] }), release() {} };
+    const pool = { query: async () => ({ rows: [] }), connect: async () => client } as unknown as Pick<pg.Pool, "query" | "connect">;
+    const store = new PgStore("postgres://x", pool);
+    setTimeout(() => (held = false), 30);
+    expect(await store.acquireLeader(10, 1000)).toBe(true);
+    expect(tries).toBe(1);
+  });
+
+  it("сдается, если блокировка не освободилась за отведенное время", async () => {
+    const client = { query: async () => ({ rows: [{ ok: false }] }), release() {} };
+    const pool = { query: async () => ({ rows: [] }), connect: async () => client } as unknown as Pick<pg.Pool, "query" | "connect">;
+    expect(await new PgStore("postgres://x", pool).acquireLeader(5, 30)).toBe(false);
+  });
+});

@@ -22,6 +22,8 @@ if (process.env.DATABASE_URL) {
       await new Promise((r) => setTimeout(r, 3000));
     }
   }
+  // при выкладке новая версия ждет, пока старая освободит блокировку, и только потом начинает писать
+  if (!(await pgStore.acquireLeader())) throw new Error("Другой экземпляр API держит блокировку базы дольше 10 минут");
   store = pgStore;
 } else {
   console.warn("DATABASE_URL не задан - данные хранятся в памяти и пропадут при перезапуске");
