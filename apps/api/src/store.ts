@@ -25,7 +25,22 @@ export interface Store {
   replaceFile(id: string, file: StoredFile): Promise<void>;
   /** закрытые файлы, которые лежат без шифрования */
   plainPrivateFileIds(): Promise<string[]>;
+  /** состояние движка в базе изменилось другим экземпляром */
+  stale(): Promise<boolean>;
+  /** пользователи или данные платформы изменены другим экземпляром */
+  auxStale(): Promise<boolean>;
+  loadAux(): Promise<{ users: RegisteredUser[]; platform: PlatformData }>;
+  /** обмен короткими сообщениями между экземплярами (события для открытых соединений) */
+  publish(msg: string): Promise<void>;
+  subscribe(cb: (msg: string) => void): Promise<void>;
+  /** коды входа общие для всех экземпляров */
+  otpGet(phone: string): Promise<unknown>;
+  otpSet(phone: string, value: unknown): Promise<void>;
+  otpDel(phone: string): Promise<void>;
 }
+
+/** Запись отклонена: состояние в базе изменил другой экземпляр, нужно перечитать и повторить. */
+export class StaleError extends Error {}
 
 export class MemoryStore implements Store {
   private state: State = createState();
@@ -61,6 +76,27 @@ export class MemoryStore implements Store {
   }
   async plainPrivateFileIds() {
     return [...this.files].filter(([, f]) => f.private && !f.data.subarray(0, 4).equals(Buffer.from("SPE1"))).map(([id]) => id);
+  }
+  async stale() {
+    return false;
+  }
+  async auxStale() {
+    return false;
+  }
+  async loadAux() {
+    return { users: this.users, platform: this.platform };
+  }
+  async publish() {}
+  async subscribe() {}
+  private otp = new Map<string, unknown>();
+  async otpGet(phone: string) {
+    return this.otp.get(phone);
+  }
+  async otpSet(phone: string, value: unknown) {
+    this.otp.set(phone, value);
+  }
+  async otpDel(phone: string) {
+    this.otp.delete(phone);
   }
 }
 
@@ -112,6 +148,57 @@ export class PgStore implements Store {
     await this.pool.query("create table if not exists deals (id text primary key, data jsonb not null, updated_at timestamptz not null default now())");
     await this.pool.query("create table if not exists docs (coll text not null, key text not null, ord int not null default 0, data jsonb not null, primary key (coll, key))");
     await this.pool.query("create table if not exists ledger (id int primary key, data jsonb not null)");
+    // 7 - версия состояния движка (запись только при совпадении), 8 - версия пользователей и платформы
+    await this.pool.query("insert into app_state (id, state) values (7, '0'::jsonb), (8, '0'::jsonb) on conflict (id) do nothing");
+  }
+  private ver?: number;
+  private auxVer?: number;
+  private async readVer(id: number): Promise<number> {
+    const r = await this.pool.query("select state from app_state where id = $1", [id]);
+    return Number(r.rows[0]?.state ?? 0);
+  }
+  async stale() {
+    return this.ver !== undefined && (await this.readVer(7)) !== this.ver;
+  }
+  async auxStale() {
+    return this.auxVer !== undefined && (await this.readVer(8)) !== this.auxVer;
+  }
+  async loadAux() {
+    this.auxVer = undefined;
+    const users = await this.loadUsers();
+    const platform = await this.loadPlatform();
+    return { users, platform };
+  }
+  async publish(msg: string) {
+    await this.pool.query("select pg_notify('steppay', $1)", [msg]);
+  }
+  async subscribe(cb: (msg: string) => void) {
+    if (!this.pool.connect) return;
+    const pool = this.pool as unknown as pg.Pool;
+    const open = async (): Promise<void> => {
+      try {
+        const client = await pool.connect();
+        client.on("notification", (m: pg.Notification) => m.payload && cb(m.payload));
+        client.on("error", () => {
+          client.release(true);
+          setTimeout(() => void open(), 3000);
+        });
+        await client.query("listen steppay");
+      } catch {
+        setTimeout(() => void open(), 3000);
+      }
+    };
+    await open();
+  }
+  async otpGet(phone: string) {
+    const r = await this.pool.query("select data from docs where coll = 'otp' and key = $1", [phone]);
+    return r.rows[0]?.data;
+  }
+  async otpSet(phone: string, value: unknown) {
+    await this.pool.query("insert into docs (coll, key, data) values ('otp', $1, $2) on conflict (coll, key) do update set data = excluded.data", [phone, JSON.stringify(value)]);
+  }
+  async otpDel(phone: string) {
+    await this.pool.query("delete from docs where coll = 'otp' and key = $1", [phone]);
   }
   /** Что уже записано в таблицы: в базу уходят только изменившиеся строки. */
   private saved?: { wallets: Map<string, number>; deals: Map<string, string>; ledger: string[] };
@@ -122,18 +209,23 @@ export class PgStore implements Store {
       // первый запуск после перехода на таблицы: переносим прежний единый документ
       const old = await this.pool.query("select state from app_state where id = 1");
       this.saved = undefined;
+      this.ver = undefined;
       if (old.rows[0]?.state) await this.save(old.rows[0].state as State);
       await this.pool.query("insert into app_state (id, state) values (4, 'true'::jsonb) on conflict (id) do nothing");
     }
-    const [w, d, l] = await Promise.all([
-      this.pool.query("select user_id, amount from wallets"),
-      this.pool.query("select id, data from deals"),
-      this.pool.query("select data from ledger order by id"),
-    ]);
+    // один запрос: версия и все таблицы читаются из одного снимка базы
+    const r = await this.pool.query(
+      `select (select state from app_state where id = 7) as v,
+              (select coalesce(jsonb_object_agg(user_id, amount), '{}'::jsonb) from wallets) as w,
+              (select coalesce(jsonb_object_agg(id, data), '{}'::jsonb) from deals) as d,
+              (select coalesce(jsonb_agg(data order by id), '[]'::jsonb) from ledger) as l`,
+    );
+    const row = r.rows[0] as { v: unknown; w: Record<string, number>; d: State["deals"]; l: State["ledger"] };
     const state: State = createState();
-    for (const r of w.rows) state.wallets[r.user_id as string] = Number(r.amount);
-    for (const r of d.rows) state.deals[r.id as string] = r.data as State["deals"][string];
-    state.ledger = l.rows.map((r) => r.data as State["ledger"][number]);
+    for (const [k, v] of Object.entries(row.w)) state.wallets[k] = Number(v);
+    state.deals = row.d;
+    state.ledger = row.l;
+    this.ver = Number(row.v ?? 0);
     this.remember(state);
     return state;
   }
@@ -161,20 +253,25 @@ export class PgStore implements Store {
     const ledger = state.ledger.slice(from).map((e) => ({ id: e.id, data: e }));
     const goneWallets = prev ? [...prev.wallets.keys()].filter((id) => !(id in state.wallets)) : [];
     const goneDeals = prev ? [...prev.deals.keys()].filter((id) => !(id in state.deals)) : [];
-    // один оператор с несколькими CTE выполняется в Postgres как одна транзакция
-    await this.pool.query(
-      `with w as (insert into wallets (user_id, amount) select user_id, amount from jsonb_to_recordset($1::jsonb) as x(user_id text, amount bigint)
-                  on conflict (user_id) do update set amount = excluded.amount returning 1),
+    // один оператор с несколькими CTE выполняется в Postgres как одна транзакция;
+    // запись проходит, только если версия в базе та же, что мы читали (иначе состояние изменил другой экземпляр)
+    const r = await this.pool.query(
+      `with v as (update app_state set state = to_jsonb((state#>>'{}')::int + 1), updated_at = now()
+                  where id = 7 and ($7::int is null or (state#>>'{}')::int = $7::int) returning (state#>>'{}')::int as n),
+            w as (insert into wallets (user_id, amount) select user_id, amount from jsonb_to_recordset($1::jsonb) as x(user_id text, amount bigint)
+                  where exists (select 1 from v) on conflict (user_id) do update set amount = excluded.amount returning 1),
             d as (insert into deals (id, data) select id, data from jsonb_to_recordset($2::jsonb) as x(id text, data jsonb)
-                  on conflict (id) do update set data = excluded.data returning 1),
+                  where exists (select 1 from v) on conflict (id) do update set data = excluded.data returning 1),
             l as (insert into ledger (id, data) select id, data from jsonb_to_recordset($3::jsonb) as x(id int, data jsonb)
-                  on conflict (id) do update set data = excluded.data returning 1),
-            dw as (delete from wallets where user_id = any($4::text[]) returning 1),
-            dd as (delete from deals where id = any($5::text[]) returning 1),
-            dl as (delete from ledger where id > $6::int returning 1)
-       select 1`,
-      [JSON.stringify(wallets), JSON.stringify(deals), JSON.stringify(ledger), goneWallets, goneDeals, state.ledger.length],
+                  where exists (select 1 from v) on conflict (id) do update set data = excluded.data returning 1),
+            dw as (delete from wallets where user_id = any($4::text[]) and exists (select 1 from v) returning 1),
+            dd as (delete from deals where id = any($5::text[]) and exists (select 1 from v) returning 1),
+            dl as (delete from ledger where id > $6::int and exists (select 1 from v) returning 1)
+       select n from v`,
+      [JSON.stringify(wallets), JSON.stringify(deals), JSON.stringify(ledger), goneWallets, goneDeals, state.ledger.length, this.ver ?? null],
     );
+    if (r.rows.length === 0) throw new StaleError("Состояние изменено другим экземпляром");
+    this.ver = Number(r.rows[0]!.n);
     this.saved = { wallets: new Map(Object.entries(state.wallets)), deals: dealJson, ledger: ledgerJson };
   }
   /** Документы пользователей и платформы: что уже записано в таблицу docs (подпись строки по ключу). */
@@ -197,18 +294,25 @@ export class PgStore implements Store {
       if (colls.includes(coll) && !want.has(k)) gone.push({ coll, key });
     }
     if (changed.length === 0 && gone.length === 0) return;
-    await this.pool.query(
-      `with u as (insert into docs (coll, key, ord, data) select coll, key, ord, data from jsonb_to_recordset($1::jsonb) as x(coll text, key text, ord int, data jsonb)
+    const w = await this.pool.query(
+      `with a as (update app_state set state = to_jsonb((state#>>'{}')::int + 1), updated_at = now() where id = 8 returning (state#>>'{}')::int as n),
+            u as (insert into docs (coll, key, ord, data) select coll, key, ord, data from jsonb_to_recordset($1::jsonb) as x(coll text, key text, ord int, data jsonb)
                   on conflict (coll, key) do update set ord = excluded.ord, data = excluded.data returning 1),
             d as (delete from docs using jsonb_to_recordset($2::jsonb) as x(coll text, key text) where docs.coll = x.coll and docs.key = x.key returning 1)
-       select 1`,
+       select n from a`,
       [JSON.stringify(changed), JSON.stringify(gone)],
     );
+    // свою запись считаем увиденной, только если до нее мы были на актуальной версии
+    const n = Number(w.rows[0]?.n);
+    if (this.auxVer !== undefined && n === this.auxVer + 1) this.auxVer = n;
     for (const g of gone) this.docs.delete(this.docKey(g.coll, g.key));
     for (const r of changed) this.docs.set(this.docKey(r.coll, r.key), want.get(this.docKey(r.coll, r.key))!);
   }
   private async readDocs(colls: string[]) {
+    const v = await this.readVer(8);
+    this.auxVer = this.auxVer === undefined ? v : Math.min(this.auxVer, v);
     const r = await this.pool.query("select coll, key, ord, data from docs where coll = any($1::text[]) order by ord, key", [colls]);
+    for (const k of [...this.docs.keys()]) if (colls.includes(k.split("\u0000")[0]!)) this.docs.delete(k);
     for (const x of r.rows) this.docs.set(this.docKey(x.coll as string, x.key as string), JSON.stringify([x.ord, x.data]));
     return r.rows as { coll: string; key: string; ord: number; data: unknown }[];
   }

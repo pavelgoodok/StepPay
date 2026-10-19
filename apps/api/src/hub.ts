@@ -13,8 +13,18 @@ export class Hub {
   /** Куда складывать уведомления, чтобы их можно было прочитать позже в отдельном разделе. */
   sink?: (userIds: string[], data: { dealId: string; text: string }) => void;
 
+  /** Передача события другим экземплярам API, чтобы оно дошло до их открытых соединений. */
+  relay?: (userIds: string[], event: string, data: unknown) => void;
+
   send(userIds: Iterable<string>, event: string, data: unknown) {
-    if (event === "notify" && this.sink) this.sink([...new Set(userIds)], data as { dealId: string; text: string });
+    const ids = [...new Set(userIds)];
+    if (event === "notify" && this.sink) this.sink(ids, data as { dealId: string; text: string });
+    this.relay?.(ids, event, data);
+    this.deliver(ids, event, data);
+  }
+
+  /** Доставка только в соединения этого экземпляра (так же приходят события от других экземпляров). */
+  deliver(userIds: Iterable<string>, event: string, data: unknown) {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const id of new Set(userIds)) for (const res of this.clients.get(id) ?? []) {
       try {

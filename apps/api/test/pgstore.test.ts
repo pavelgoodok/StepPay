@@ -126,3 +126,75 @@ describe("пользователи и платформа в таблице docs"
     expect(p2.threads).toHaveLength(1);
   });
 });
+
+describe("несколько экземпляров API на одной базе", () => {
+  const mk = async (db: PGlite) => {
+    const st = new PgStore("postgres://pglite", asPool(db));
+    await st.init();
+    return st;
+  };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const boot = async (db: PGlite) => {
+    const store = new PgStore("postgres://pglite", asPool(db));
+    await store.init();
+    return buildApp({ store, secret: "s", seedCatalog: true });
+  };
+  const token = async (app: Awaited<ReturnType<typeof boot>>, userId: string) => (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId } })).json().token as string;
+  const wallet = async (app: Awaited<ReturnType<typeof boot>>, tok: string) => (await app.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${tok}` } })).json().wallet.free as number;
+  const topup = (app: Awaited<ReturnType<typeof boot>>, tok: string, amount: number) =>
+    app.inject({ method: "POST", url: "/wallet/topup", headers: { authorization: `Bearer ${tok}` }, payload: { amount } });
+
+  it("одновременные пополнения на двух экземплярах не теряются", async () => {
+    const db = new PGlite();
+    const a = await boot(db);
+    const b = await boot(db);
+    const ta = await token(a, "anna");
+    const base = await wallet(a, ta);
+    const calls = [];
+    for (let i = 0; i < 6; i++) calls.push(topup(a, ta, 100), topup(b, ta, 1000));
+    const res = await Promise.all(calls);
+    expect(res.every((r) => r.statusCode === 200)).toBe(true);
+    await sleep(300);
+    expect(await wallet(a, ta)).toBe(base + 6 * 100 + 6 * 1000);
+    expect(await wallet(b, ta)).toBe(base + 6 * 100 + 6 * 1000);
+    await a.close();
+    await b.close();
+  }, 60_000);
+
+  it("код входа, запрошенный на одном экземпляре, подтверждается на другом, а пользователь виден обоим", async () => {
+    const db = new PGlite();
+    const a = await boot(db);
+    const b = await boot(db);
+    const phone = "+79990001122";
+    const code = (await a.inject({ method: "POST", url: "/auth/otp/request", payload: { phone } })).json().demoCode as string;
+    const v = await b.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone, code, name: "Иван Иванов" } });
+    expect(v.statusCode).toBe(200);
+    await sleep(300);
+    const me = await a.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${v.json().token}` } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.name).toBe("Иван Иванов");
+    // повторное использование кода невозможно
+    const again = await a.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone, code } });
+    expect(again.statusCode).toBe(400);
+    await a.close();
+    await b.close();
+  }, 60_000);
+
+  it("устаревшая запись отклоняется версией состояния", async () => {
+    const db = new PGlite();
+    const s1 = await mk(db);
+    const s2 = await mk(db);
+    const x = await s1.load();
+    const y = await s2.load();
+    x.wallets.a = 1;
+    await s1.save(x);
+    y.wallets.a = 2;
+    await expect(s2.save(y)).rejects.toThrow(/другим экземпляром/);
+    expect(await s2.stale()).toBe(true);
+    const fresh = await s2.load();
+    expect(fresh.wallets.a).toBe(1);
+    fresh.wallets.a = 3;
+    await s2.save(fresh);
+    expect((await (await mk(db)).load()).wallets.a).toBe(3);
+  });
+});

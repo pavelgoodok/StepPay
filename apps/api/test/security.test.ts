@@ -232,3 +232,20 @@ describe("шифрование анкет авторов и миграция", (
     expect(got.json()).toMatchObject({ email: "old@example.com" });
   });
 });
+
+describe("рассылка событий между экземплярами", () => {
+  it("send передает событие другим экземплярам, deliver только своим соединениям", async () => {
+    const { Hub } = await import("../src/hub");
+    const hub = new Hub();
+    const relayed: unknown[] = [];
+    hub.relay = (ids, event) => relayed.push([ids, event]);
+    const written: string[] = [];
+    hub.add("u1", { write: (x: string) => written.push(x), on() {} } as never);
+    hub.send(["u1", "u1"], "changed", { dealId: "d" });
+    expect(relayed).toEqual([[["u1"], "changed"]]);
+    expect(written).toHaveLength(1);
+    hub.deliver(["u1"], "changed", {});
+    expect(relayed).toHaveLength(1);
+    expect(written).toHaveLength(2);
+  });
+});

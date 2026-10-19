@@ -245,6 +245,13 @@ export class Platform {
     return this.persist(this.data);
   }
 
+  /** Подставляет данные, перечитанные из базы после изменений другого экземпляра. Перенос в сеть остается локальным. */
+  replace(next: PlatformData) {
+    const mirror = this.data.mirror;
+    this.data = next;
+    if (mirror) this.data.mirror = mirror;
+  }
+
   private id(prefix: string) {
     return `${prefix}_${randomUUID().slice(0, 8)}`;
   }

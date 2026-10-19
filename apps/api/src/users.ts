@@ -94,6 +94,11 @@ export class Directory {
     for (const r of initial) this.registered.set(r.id, r);
   }
 
+  /** Подставляет пользователей, перечитанных из базы после изменений другого экземпляра. */
+  replace(users: RegisteredUser[]) {
+    this.registered = new Map(users.map((u) => [u.id, u]));
+  }
+
   get(id: string): PublicAccount | undefined {
     const d = DEMO_USERS.find((x) => x.id === id);
     if (d && (this.demo || d.role === "arbiter")) return { id: d.id, name: d.name, role: d.role, grantor: d.role === "funder" || undefined, arbiter: d.role === "arbiter" || undefined, kind: this.demoKinds.get(id) ?? (d.role === "executor" ? "executor" : "customer") };

@@ -37,7 +37,7 @@ import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeD
 import { DEMO_USERS } from "./users";
 import { executorStats, receiptsFor } from "./stats";
 import { stageCounts, summary } from "./summary";
-import type { Store } from "./store";
+import { StaleError, type Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
 import { ChainMirror, type ChainPort } from "./chain";
@@ -138,13 +138,25 @@ export async function buildApp(opts: AppOptions) {
   const loadedUsers = unsealUsers(fileKey, await opts.store.loadUsers());
   if (loadedUsers.lost > 0) console.warn(`Не удалось расшифровать анкеты авторов: ${loadedUsers.lost}. Проверьте FILE_KEY и AUTH_SECRET`);
   if (loadedUsers.legacy) await opts.store.saveUsers(sealUsers(fileKey, loadedUsers.users));
-  const dir = new Directory((users) => opts.store.saveUsers(sealUsers(fileKey, users)), loadedUsers.users, demoOn, adminPhones);
+  /** Пока идет запись пользователей или платформы, перечитывать их из базы нельзя: свежее изменение в памяти затерлось бы. */
+  let inflight = 0;
+  let epoch = 0;
+  const guarded = async (job: () => Promise<void>) => {
+    inflight++;
+    epoch++;
+    try {
+      await job();
+    } finally {
+      inflight--;
+    }
+  };
+  const dir = new Directory((users) => guarded(() => opts.store.saveUsers(sealUsers(fileKey, users))), loadedUsers.users, demoOn, adminPhones);
   // закрытые файлы, загруженные до включения шифрования, шифруются при запуске
   for (const fid of await opts.store.plainPrivateFileIds()) {
     const raw = await opts.store.getFile(fid);
     if (raw) await opts.store.replaceFile(fid, sealFile(fileKey, fid, raw));
   }
-  const platform = new Platform(await opts.store.loadPlatform(), (d) => opts.store.savePlatform(d), now);
+  const platform = new Platform(await opts.store.loadPlatform(), (d) => guarded(() => opts.store.savePlatform(d)), now);
   hub.sink = (ids, d) => void platform.addNotes(ids, d.text, d.dealId).catch(() => undefined);
   const mirror = opts.chain
     ? new ChainMirror({
@@ -178,28 +190,34 @@ export async function buildApp(opts: AppOptions) {
     if (!st.required.includes(userId) || st.signed.includes(userId)) return s;
     return signContract(s, dealId, userId, at, signFor(dealId, d.contract.hash, userId));
   };
-  const otp = new OtpService(opts.secret, opts.otpDelivery ?? demoDelivery, now);
+  const otp = new OtpService(opts.secret, opts.otpDelivery ?? demoDelivery, now, opts.store);
 
   let state: State = await opts.store.load();
-  if (state.ledger.length === 0 && Object.keys(state.deals).length === 0) {
-    if (demoOn) {
-      state = opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now());
-      await opts.store.save(state);
+  /** Запись при запуске: если другой экземпляр успел записать раньше (например, оба засеяли демо), берем его состояние. */
+  const saveBoot = async (next: State) => {
+    try {
+      await opts.store.save(next);
+      state = next;
+    } catch (e) {
+      if (!(e instanceof StaleError)) throw e;
+      state = await opts.store.load();
     }
+  };
+  if (state.ledger.length === 0 && Object.keys(state.deals).length === 0) {
+    if (demoOn) await saveBoot(opts.seedCatalog ? freshDemoState(now()) : seedUsers(state, now()));
   }
   // сделки, созданные до появления контрактов, получают контракт с хешем текущих условий
   const unsealed = Object.values(state.deals).filter((d) => d.status !== "draft" && !d.contract);
   if (unsealed.length > 0) {
-    state = structuredClone(state);
-    for (const d of Object.values(state.deals)) if (d.status !== "draft" && !d.contract) sealContract(d, d.createdAt);
-    await opts.store.save(state);
+    const next = structuredClone(state);
+    for (const d of Object.values(next.deals)) if (d.status !== "draft" && !d.contract) sealContract(d, d.createdAt);
+    await saveBoot(next);
   }
   if (demoOn && opts.seedCatalog && platform.isEmpty()) await platform.reset(freshDemoPlatform(now()));
   if (!demoOn) {
     const cleaned = purgeDemo(state);
     if (cleaned.changed) {
-      state = cleaned.state;
-      await opts.store.save(state);
+      await saveBoot(cleaned.state);
       await platform.clearAnchors();
     }
     await platform.purgeDemo(new Set(DEMO_USERS.map((u) => u.id)), (id) => !state.deals[id]);
@@ -213,19 +231,90 @@ export async function buildApp(opts: AppOptions) {
   for (let i = 0; i < DEMO_COVERS.length; i++) await putFile(DEMO_COVER_IDS[i]!, { mime: "image/jpeg", data: DEMO_COVERS[i]! });
   await putFile(DEMO_DOC_ID, { mime: "application/pdf", data: DEMO_DOC, private: true, ownerId: "games" });
 
-  /** Все изменения последовательны: чтение-изменение-запись без гонок. */
+  /** Изменения последовательны внутри экземпляра; между экземплярами запись защищена версией состояния в базе. */
   let queue: Promise<unknown> = Promise.resolve();
-  function transact<T>(fn: (s: State) => { state: State; result: T }): Promise<T> {
-    const run = queue.then(async () => {
-      const out = fn(state);
-      await opts.store.save(out.state);
-      state = out.state;
-      mirror?.notify(out.state);
-      return out.result;
-    });
+  function enqueue<T>(job: () => Promise<T>): Promise<T> {
+    const run = queue.then(job);
     queue = run.catch(() => undefined);
     return run;
   }
+  async function refreshState() {
+    if (await opts.store.stale()) state = await opts.store.load();
+  }
+  /**
+   * Применяет чистую функцию движка к актуальному состоянию. Если другой экземпляр успел записать раньше,
+   * запись отклоняется, состояние перечитывается и функция выполняется заново: двойного списания не будет.
+   */
+  function transact<T>(fn: (s: State) => { state: State; result: T }): Promise<T> {
+    return enqueue(async () => {
+      await refreshState();
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const out = fn(state);
+        try {
+          await opts.store.save(out.state);
+        } catch (e) {
+          if (!(e instanceof StaleError)) throw e;
+          state = await opts.store.load();
+          continue;
+        }
+        state = out.state;
+        mirror?.notify(out.state);
+        return out.result;
+      }
+      throw new Error("Не удалось сохранить изменения из-за параллельных операций");
+    });
+  }
+  /** Подтягивает пользователей и данные платформы, измененные другим экземпляром. */
+  async function refreshAux() {
+    for (let i = 0; i < 6; i++) {
+      if (inflight > 0) {
+        await new Promise((r) => setTimeout(r, 20));
+        continue;
+      }
+      if (!(await opts.store.auxStale())) return;
+      const seen = epoch;
+      const fresh = await opts.store.loadAux();
+      if (inflight > 0 || epoch !== seen) continue;
+      dir.replace(unsealUsers(fileKey, fresh.users).users);
+      platform.replace(fresh.platform);
+      return;
+    }
+  }
+  let lastSync = 0;
+  let syncing: Promise<void> | undefined;
+  /** Не чаще раза в 250 мс сверяет версии в базе: на одном экземпляре это два коротких запроса. */
+  async function refreshAll(force = false) {
+    if (syncing) return syncing;
+    if (!force && Date.now() - lastSync < 250) return;
+    syncing = (async () => {
+      try {
+        await enqueue(refreshState);
+        await refreshAux();
+      } catch {
+        // база временно недоступна: отвечаем из памяти, ошибку покажет сама операция
+      } finally {
+        lastSync = Date.now();
+        syncing = undefined;
+      }
+    })();
+    return syncing;
+  }
+  const instanceId = randomUUID();
+  hub.relay = (ids, event, data) => {
+    const msg = JSON.stringify({ o: instanceId, ids, event, data });
+    if (msg.length < 7500) void opts.store.publish(msg).catch(() => undefined);
+  };
+  void opts.store
+    .subscribe((msg) => {
+      try {
+        const m = JSON.parse(msg) as { o: string; ids: string[]; event: string; data: unknown };
+        if (m.o === instanceId) return;
+        void refreshAll(true).then(() => hub.deliver(m.ids, m.event, m.data));
+      } catch {
+        // чужое или битое сообщение
+      }
+    })
+    .catch(() => undefined);
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof EngineError || err instanceof PlatformError) return reply.code(400).send({ error: err.message });
@@ -246,6 +335,7 @@ export async function buildApp(opts: AppOptions) {
   };
   app.addHook("onRequest", async (req, reply) => {
     if (req.url === "/health") return;
+    await refreshAll();
     const ip = req.ip;
     const bucket = req.url.startsWith("/auth") ? ["auth", limits.auth] : req.url.startsWith("/uploads") && req.method === "POST" ? ["uploads", limits.uploads] : ["all", limits.general];
     if (over(`${bucket[0]}:${ip}`, bucket[1] as number)) return reply.code(429).header("retry-after", "30").send({ error: "Слишком много запросов, подождите минуту" });
@@ -316,7 +406,7 @@ export async function buildApp(opts: AppOptions) {
     if (!existing && !b.name) return reply.code(400).send({ error: "Укажите имя для регистрации" });
     let ok: boolean;
     try {
-      ok = otp.verify(phone, b.code);
+      ok = await otp.verify(phone, b.code);
     } catch (e) {
       return reply.code(400).send({ error: (e as Error).message });
     }
