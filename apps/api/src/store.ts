@@ -1,6 +1,6 @@
 import pg from "pg";
 import { createState, type State } from "@steppay/engine";
-import type { PlatformData } from "./platform";
+import type { Note, PlatformData } from "./platform";
 import type { RegisteredUser } from "./users";
 
 /** Хранилище целиком держит состояние движка. Для MVP (один инстанс) этого достаточно. */
@@ -64,6 +64,8 @@ export class MemoryStore implements Store {
   }
 }
 
+const PLATFORM_COLLS = ["projects", "services", "threads", "reviews", "anchors", "audit", "notes", "meta"];
+
 export class PgStore implements Store {
   private pool: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>;
   private leader?: pg.PoolClient;
@@ -108,6 +110,7 @@ export class PgStore implements Store {
     );
     await this.pool.query("create table if not exists wallets (user_id text primary key, amount bigint not null)");
     await this.pool.query("create table if not exists deals (id text primary key, data jsonb not null, updated_at timestamptz not null default now())");
+    await this.pool.query("create table if not exists docs (coll text not null, key text not null, ord int not null default 0, data jsonb not null, primary key (coll, key))");
     await this.pool.query("create table if not exists ledger (id int primary key, data jsonb not null)");
   }
   /** Что уже записано в таблицы: в базу уходят только изменившиеся строки. */
@@ -174,25 +177,82 @@ export class PgStore implements Store {
     );
     this.saved = { wallets: new Map(Object.entries(state.wallets)), deals: dealJson, ledger: ledgerJson };
   }
+  /** Документы пользователей и платформы: что уже записано в таблицу docs (подпись строки по ключу). */
+  private docs = new Map<string, string>();
+  private docKey = (coll: string, key: string) => `${coll}\u0000${key}`;
+
+  /** Записывает набор документов: меняются только отличающиеся строки, исчезнувшие удаляются. */
+  private async syncDocs(colls: string[], rows: { coll: string; key: string; ord: number; data: unknown }[]) {
+    const want = new Map<string, string>();
+    const changed: typeof rows = [];
+    for (const r of rows) {
+      const sig = JSON.stringify([r.ord, r.data]);
+      const k = this.docKey(r.coll, r.key);
+      want.set(k, sig);
+      if (this.docs.get(k) !== sig) changed.push(r);
+    }
+    const gone: { coll: string; key: string }[] = [];
+    for (const k of this.docs.keys()) {
+      const [coll, key] = k.split("\u0000") as [string, string];
+      if (colls.includes(coll) && !want.has(k)) gone.push({ coll, key });
+    }
+    if (changed.length === 0 && gone.length === 0) return;
+    await this.pool.query(
+      `with u as (insert into docs (coll, key, ord, data) select coll, key, ord, data from jsonb_to_recordset($1::jsonb) as x(coll text, key text, ord int, data jsonb)
+                  on conflict (coll, key) do update set ord = excluded.ord, data = excluded.data returning 1),
+            d as (delete from docs using jsonb_to_recordset($2::jsonb) as x(coll text, key text) where docs.coll = x.coll and docs.key = x.key returning 1)
+       select 1`,
+      [JSON.stringify(changed), JSON.stringify(gone)],
+    );
+    for (const g of gone) this.docs.delete(this.docKey(g.coll, g.key));
+    for (const r of changed) this.docs.set(this.docKey(r.coll, r.key), want.get(this.docKey(r.coll, r.key))!);
+  }
+  private async readDocs(colls: string[]) {
+    const r = await this.pool.query("select coll, key, ord, data from docs where coll = any($1::text[]) order by ord, key", [colls]);
+    for (const x of r.rows) this.docs.set(this.docKey(x.coll as string, x.key as string), JSON.stringify([x.ord, x.data]));
+    return r.rows as { coll: string; key: string; ord: number; data: unknown }[];
+  }
+  /** Переносит прежний единый документ (строка app_state) в таблицу docs один раз. */
+  private async migrateDocs(oldId: number, markId: number, write: (old: unknown) => Promise<void>) {
+    const done = await this.pool.query("select 1 from app_state where id = $1", [markId]);
+    if (done.rows.length > 0) return;
+    const old = await this.pool.query("select state from app_state where id = $1", [oldId]);
+    if (old.rows[0]?.state) await write(old.rows[0].state);
+    await this.pool.query("insert into app_state (id, state) values ($1, 'true'::jsonb) on conflict (id) do nothing", [markId]);
+  }
+
   async loadUsers(): Promise<RegisteredUser[]> {
-    const r = await this.pool.query("select state from app_state where id = 2");
-    return (r.rows[0]?.state as RegisteredUser[] | undefined) ?? [];
+    await this.migrateDocs(2, 5, (old) => this.saveUsers(old as RegisteredUser[]));
+    return (await this.readDocs(["user"])).map((r) => r.data as RegisteredUser);
   }
   async saveUsers(users: RegisteredUser[]) {
-    await this.pool.query(
-      "insert into app_state (id, state) values (2, $1) on conflict (id) do update set state = excluded.state, updated_at = now()",
-      [JSON.stringify(users)],
-    );
+    await this.syncDocs(["user"], users.map((u, i) => ({ coll: "user", key: u.id, ord: i, data: u })));
   }
   async loadPlatform(): Promise<PlatformData> {
-    const r = await this.pool.query("select state from app_state where id = 3");
-    return (r.rows[0]?.state as PlatformData | undefined) ?? { projects: [], services: [], threads: [] };
+    await this.migrateDocs(3, 6, (old) => this.savePlatform(old as PlatformData));
+    const rows = await this.readDocs(PLATFORM_COLLS);
+    const list = <T>(coll: string) => rows.filter((r) => r.coll === coll).map((r) => r.data as T);
+    const notes: Record<string, Note[]> = {};
+    for (const r of rows) if (r.coll === "notes") notes[r.key] = r.data as Note[];
+    const out: PlatformData = { projects: list("projects"), services: list("services"), threads: list("threads"), audit: list("audit"), anchors: list("anchors"), reviews: list("reviews"), notes };
+    for (const k of ["notesSeen", "anchorPubs", "mirror"] as const) {
+      const v = rows.find((r) => r.coll === "meta" && r.key === k)?.data;
+      if (v !== undefined) (out as unknown as Record<string, unknown>)[k] = v;
+    }
+    return out;
   }
   async savePlatform(data: PlatformData) {
-    await this.pool.query(
-      "insert into app_state (id, state) values (3, $1) on conflict (id) do update set state = excluded.state, updated_at = now()",
-      [JSON.stringify(data)],
-    );
+    const rows: { coll: string; key: string; ord: number; data: unknown }[] = [];
+    const arr = (coll: string, items: unknown[] | undefined, key: (x: any, i: number) => string) => (items ?? []).forEach((x, i) => rows.push({ coll, key: key(x, i), ord: i, data: x }));
+    arr("projects", data.projects, (x) => x.id);
+    arr("services", data.services, (x) => x.id);
+    arr("threads", data.threads, (x) => x.id);
+    arr("reviews", data.reviews, (x) => x.id);
+    arr("anchors", data.anchors, (x) => String(x.n));
+    arr("audit", data.audit, (_x, i) => String(i).padStart(9, "0"));
+    for (const [u, n] of Object.entries(data.notes ?? {})) rows.push({ coll: "notes", key: u, ord: 0, data: n });
+    for (const k of ["notesSeen", "anchorPubs", "mirror"] as const) if (data[k] !== undefined) rows.push({ coll: "meta", key: k, ord: 0, data: data[k] });
+    await this.syncDocs(PLATFORM_COLLS, rows);
   }
   async putFile(id: string, file: StoredFile) {
     await this.pool.query("insert into files (id, mime, data, owner_id, private) values ($1, $2, $3, $4, $5) on conflict do nothing", [id, file.mime, file.data, file.ownerId ?? null, !!file.private]);

@@ -92,3 +92,37 @@ describe("состояние в таблицах", () => {
     expect(r.ledger[0]!.userId).toBe("z");
   });
 });
+
+describe("пользователи и платформа в таблице docs", () => {
+  it("переносят прежние документы и пишут только изменения", async () => {
+    const db = new PGlite();
+    await db.query("create table app_state (id int primary key, state jsonb not null, updated_at timestamptz not null default now())");
+    await db.query("insert into app_state (id, state) values (2, $1), (3, $2)", [
+      JSON.stringify([{ id: "u1", phone: "1", name: "A", createdAt: 1 }, { id: "u2", phone: "2", name: "B", createdAt: 2 }]),
+      JSON.stringify({ projects: [{ id: "p2" }, { id: "p1" }], services: [], threads: [{ id: "t1" }], notes: { u1: [{ id: "n1" }] }, notesSeen: { u1: 5 }, reviews: [{ id: "r1" }] }),
+    ]);
+    const open = async () => {
+      const st = new PgStore("postgres://pglite", asPool(db));
+      await st.init();
+      return st;
+    };
+    const a = await open();
+    const users = await a.loadUsers();
+    const plat = await a.loadPlatform();
+    expect(users.map((u) => u.id)).toEqual(["u1", "u2"]);
+    expect(plat.projects.map((p) => p.id)).toEqual(["p2", "p1"]); // порядок сохранен
+    expect(plat.notesSeen).toEqual({ u1: 5 });
+    users.push({ id: "u3", phone: "3", name: "C", createdAt: 3 });
+    users.shift();
+    plat.projects.pop();
+    plat.notes!.u9 = [];
+    await a.saveUsers(users);
+    await a.savePlatform(plat);
+    const b = await open();
+    expect((await b.loadUsers()).map((u) => u.id)).toEqual(["u2", "u3"]);
+    const p2 = await b.loadPlatform();
+    expect(p2.projects.map((p) => p.id)).toEqual(["p2"]);
+    expect(Object.keys(p2.notes!).sort()).toEqual(["u1", "u9"]);
+    expect(p2.threads).toHaveLength(1);
+  });
+});
