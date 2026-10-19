@@ -72,6 +72,41 @@ export function registerPlatformRoutes(c: Ctx) {
     return dir.authorOf(me) ?? null;
   });
 
+  /** Проверка анкеты: возвращает текст ошибки или null. */
+  const authorError = (b: z.infer<typeof authorBody>): string | null => {
+    const wantLen = b.legalStatus === "org" ? 10 : 12;
+    if (b.inn.length !== wantLen) return wantLen === 10 ? "У организации ИНН из 10 цифр" : "У физлица, самозанятого и ИП ИНН из 12 цифр";
+    if (!validInn(b.inn)) return "ИНН не прошел проверку: проверьте цифры";
+    if ((b.legalStatus === "org" || b.legalStatus === "ip") && !b.orgName) return b.legalStatus === "org" ? "Укажите название организации" : "Укажите, как записаны в ЕГРИП";
+    return null;
+  };
+
+  // ───────── подтверждение данных профессионального аккаунта ─────────
+
+  app.get("/me/verification", async (req, reply) => {
+    const me = c.authed(req, reply);
+    if (!me) return;
+    const v = platform.verificationOf(me);
+    return v ? { status: v.status, at: v.at, decidedAt: v.decidedAt, comment: v.comment, legalStatus: v.legalStatus, inn: v.inn, orgName: v.orgName } : { status: "none" };
+  });
+
+  app.post("/me/verification", async (req, reply) => {
+    const me = c.authed(req, reply);
+    if (!me) return;
+    if (dir.get(me)?.kind !== "executor") return reply.code(403).send({ error: "Подтверждение доступно в профессиональном аккаунте. Переключитесь на него в профиле" });
+    const b = authorBody.parse(req.body);
+    const bad = authorError(b);
+    if (bad) return reply.code(400).send({ error: bad });
+    const author: AuthorProfile = { legalStatus: b.legalStatus, inn: b.inn, orgName: b.orgName || undefined, email: b.email || undefined };
+    author.fns = await c.fns(author);
+    await dir.setAuthor(me, author);
+    const v = await platform.submitVerification({ userId: me, legalStatus: author.legalStatus, inn: author.inn, orgName: author.orgName, email: author.email });
+    const admins = dir.allIds().filter((id) => dir.isAdmin(id));
+    c.hub.send(admins, "notify", { dealId: "", text: `Новая заявка на подтверждение: ${c.brief(me).name}` });
+    c.hub.send([me, ...admins], "changed", {});
+    return { ok: true, status: v.status, fns: author.fns };
+  });
+
   app.post("/me/author", async (req, reply) => {
     const me = c.authed(req, reply);
     if (!me) return;

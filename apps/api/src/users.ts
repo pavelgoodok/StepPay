@@ -218,6 +218,15 @@ export class Directory {
     return this.demo ? DEMO_USERS.map(({ id, name, role }) => ({ id, name, role })) : [];
   }
 
+  /** Список аккаунтов для панели администратора: телефон маскируется. */
+  accounts() {
+    return this.allIds().map((id) => {
+      const a = this.get(id)!;
+      const r = this.registered.get(id);
+      return { id, name: a.name, role: a.role, kind: a.kind, grantor: !!a.grantor, arbiter: !!a.arbiter, phone: r ? maskPhone(r.phone) : undefined, createdAt: r?.createdAt, demo: !r };
+    });
+  }
+
   allIds(): string[] {
     return [...(this.demo ? DEMO_USERS.map((u) => u.id) : []), ...this.registered.keys()];
   }

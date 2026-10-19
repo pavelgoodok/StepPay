@@ -108,6 +108,25 @@ export interface PlatformData {
   notesSeen?: Record<string, number>;
   /** отзывы по завершенным сделкам */
   reviews?: Review[];
+  /** заявки на подтверждение компании или предпринимателя */
+  verifications?: Verification[];
+}
+
+export type VerificationStatus = "pending" | "approved" | "rejected";
+
+/** Заявка профессионального аккаунта на подтверждение данных. Данные анкеты копируются в заявку, чтобы решение опиралось на то, что видел администратор. */
+export interface Verification {
+  id: string;
+  userId: string;
+  legalStatus: "person" | "selfemployed" | "ip" | "org";
+  inn: string;
+  orgName?: string;
+  email?: string;
+  status: VerificationStatus;
+  at: number;
+  decidedAt?: number;
+  decidedBy?: string;
+  comment?: string;
 }
 
 export interface Review {
@@ -207,6 +226,41 @@ export class Platform {
     list.push(rev);
     await this.save();
     return rev;
+  }
+
+  verifications(): Verification[] {
+    return this.data.verifications ?? [];
+  }
+
+  /** Последняя заявка пользователя. */
+  verificationOf(userId: string): Verification | undefined {
+    return [...this.verifications()].reverse().find((v) => v.userId === userId);
+  }
+
+  isVerified(userId: string): boolean {
+    return this.verificationOf(userId)?.status === "approved";
+  }
+
+  async submitVerification(v: Omit<Verification, "id" | "status" | "at">): Promise<Verification> {
+    const last = this.verificationOf(v.userId);
+    if (last?.status === "pending") fail("Заявка уже на рассмотрении");
+    if (last?.status === "approved") fail("Данные уже подтверждены");
+    const rec: Verification = { id: this.id("v"), status: "pending", at: this.now(), ...v };
+    (this.data.verifications ??= []).push(rec);
+    await this.save();
+    return rec;
+  }
+
+  async decideVerification(id: string, by: string, action: "approve" | "reject", comment?: string): Promise<Verification> {
+    const v = this.verifications().find((x) => x.id === id) ?? fail("Заявка не найдена");
+    if (v.status !== "pending") fail("По заявке уже принято решение");
+    if (action === "reject" && !comment?.trim()) fail("Укажите причину отказа");
+    v.status = action === "approve" ? "approved" : "rejected";
+    v.decidedAt = this.now();
+    v.decidedBy = by;
+    v.comment = comment?.trim() || undefined;
+    await this.save();
+    return v;
   }
 
   async addNotes(userIds: string[], text: string, dealId: string) {

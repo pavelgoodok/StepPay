@@ -37,6 +37,7 @@ import { DEMO_SCRIPT, freshDemoPlatform, freshDemoState, prepareDemoStep, purgeD
 import { DEMO_USERS } from "./users";
 import { executorStats, receiptsFor } from "./stats";
 import { stageCounts, summary } from "./summary";
+import { registerAdminRoutes } from "./routes-admin";
 import { StaleError, type Store } from "./store";
 import { TEMPLATES, stagesFromTemplate } from "./templates";
 import { demoDelivery, OtpService, type OtpDelivery } from "./otp";
@@ -477,7 +478,7 @@ export async function buildApp(opts: AppOptions) {
   /** Краткие данные участника: имя и аватарка, чтобы клиенту не искать их самому. */
   const brief = (id: string) => {
     const a = dir.get(id);
-    return { id, name: a?.name ?? "Участник", avatar: a?.avatar, ...platform.ratingOf(id) };
+    return { id, name: a?.name ?? "Участник", avatar: a?.avatar, ...(platform.isVerified(id) ? { verified: true } : {}), ...platform.ratingOf(id) };
   };
   const sum = (d: Deal) => ({ ...summary(d), executor: brief(d.executorId), owner: d.ownerId ? brief(d.ownerId) : undefined });
 
@@ -487,6 +488,7 @@ export async function buildApp(opts: AppOptions) {
     return check(a, now());
   };
   registerPlatformRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief, signIfNeeded, fns });
+  registerAdminRoutes({ app, authed, dir, platform, hub, now, getState: () => state, transact, brief, signIfNeeded, fns });
 
   // ── личное ──
   app.get("/me", async (req, reply) => {
