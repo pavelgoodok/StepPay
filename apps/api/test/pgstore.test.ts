@@ -198,3 +198,43 @@ describe("несколько экземпляров API на одной базе
     expect((await (await mk(db)).load()).wallets.a).toBe(3);
   });
 });
+
+describe("сообщения чата отдельными строками", () => {
+  const open = async (db: PGlite) => {
+    const st = new PgStore("postgres://pglite", asPool(db));
+    await st.init();
+    return st;
+  };
+  const thread = (messages: unknown[]) => ({ id: "c1", serviceId: "s", customerId: "a", executorId: "b", messages, read: {}, createdAt: 1, updatedAt: 1 });
+  const msg = (id: string, at: number) => ({ id, by: "a", text: id, at, kind: "text" as const });
+
+  it("сообщения, записанные двумя экземплярами в один чат, не затирают друг друга", async () => {
+    const db = new PGlite();
+    const a = await open(db);
+    const b = await open(db);
+    await a.savePlatform({ projects: [], services: [], threads: [thread([msg("m0", 1)])] } as never);
+    const pa = await a.loadPlatform();
+    const pb = await b.loadPlatform();
+    pa.threads[0]!.messages.push(msg("m1", 2));
+    pb.threads[0]!.messages.push(msg("m2", 3));
+    await a.savePlatform(pa);
+    await b.savePlatform(pb);
+    const fresh = await (await open(db)).loadPlatform();
+    expect(fresh.threads[0]!.messages.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
+  });
+
+  it("прежний формат (сообщения внутри чата) читается и переносится в строки", async () => {
+    const db = new PGlite();
+    await db.query("create table app_state (id int primary key, state jsonb not null, updated_at timestamptz not null default now())");
+    await db.query("insert into app_state (id, state) values (3, $1)", [JSON.stringify({ projects: [], services: [], threads: [thread([msg("m0", 1), msg("m1", 2)])] })]);
+    const a = await open(db);
+    const p = await a.loadPlatform();
+    expect(p.threads[0]!.messages).toHaveLength(2);
+    p.threads[0]!.messages.push(msg("m2", 3));
+    await a.savePlatform(p);
+    const rows = await db.query("select count(*)::int as n from docs where coll = 'messages'");
+    expect((rows.rows[0] as { n: number }).n).toBe(3);
+    const after = await (await open(db)).loadPlatform();
+    expect(after.threads[0]!.messages.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
+  });
+});

@@ -1,6 +1,6 @@
 import pg from "pg";
 import { createState, type State } from "@steppay/engine";
-import type { Note, PlatformData } from "./platform";
+import type { ChatMessage, Note, PlatformData, Thread } from "./platform";
 import type { RegisteredUser } from "./users";
 
 /** Хранилище целиком держит состояние движка. Для MVP (один инстанс) этого достаточно. */
@@ -100,7 +100,7 @@ export class MemoryStore implements Store {
   }
 }
 
-const PLATFORM_COLLS = ["projects", "services", "threads", "reviews", "verifications", "anchors", "audit", "notes", "meta"];
+const PLATFORM_COLLS = ["projects", "services", "threads", "messages", "reviews", "verifications", "anchors", "audit", "notes", "meta"];
 
 export class PgStore implements Store {
   private pool: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>;
@@ -338,7 +338,20 @@ export class PgStore implements Store {
     const list = <T>(coll: string) => rows.filter((r) => r.coll === coll).map((r) => r.data as T);
     const notes: Record<string, Note[]> = {};
     for (const r of rows) if (r.coll === "notes") notes[r.key] = r.data as Note[];
-    const out: PlatformData = { projects: list("projects"), services: list("services"), threads: list("threads"), audit: list("audit"), anchors: list("anchors"), reviews: list("reviews"), verifications: list("verifications"), notes };
+    // сообщения чатов лежат отдельными строками: два экземпляра, пишущих в один чат, не затирают друг друга
+    const byThread = new Map<string, ChatMessage[]>();
+    for (const r of rows) {
+      if (r.coll !== "messages") continue;
+      const tid = r.key.slice(0, r.key.indexOf(":"));
+      (byThread.get(tid) ?? byThread.set(tid, []).get(tid)!).push(r.data as ChatMessage);
+    }
+    const threads = list<Thread>("threads").map((th) => {
+      const all = [...(th.messages ?? []), ...(byThread.get(th.id) ?? [])];
+      const seen = new Set<string>();
+      const messages = all.filter((m) => !seen.has(m.id) && !!seen.add(m.id)).sort((a, b) => a.at - b.at);
+      return { ...th, messages };
+    });
+    const out: PlatformData = { projects: list("projects"), services: list("services"), threads, audit: list("audit"), anchors: list("anchors"), reviews: list("reviews"), verifications: list("verifications"), notes };
     for (const k of ["notesSeen", "anchorPubs", "mirror"] as const) {
       const v = rows.find((r) => r.coll === "meta" && r.key === k)?.data;
       if (v !== undefined) (out as unknown as Record<string, unknown>)[k] = v;
@@ -350,7 +363,8 @@ export class PgStore implements Store {
     const arr = (coll: string, items: unknown[] | undefined, key: (x: any, i: number) => string) => (items ?? []).forEach((x, i) => rows.push({ coll, key: key(x, i), ord: i, data: x }));
     arr("projects", data.projects, (x) => x.id);
     arr("services", data.services, (x) => x.id);
-    arr("threads", data.threads, (x) => x.id);
+    arr("threads", data.threads.map(({ messages: _m, ...th }) => th), (x) => x.id);
+    for (const th of data.threads) for (const m of th.messages ?? []) rows.push({ coll: "messages", key: `${th.id}:${m.id}`, ord: 0, data: m });
     arr("reviews", data.reviews, (x) => x.id);
     arr("verifications", data.verifications, (x) => x.id);
     arr("anchors", data.anchors, (x) => String(x.n));
