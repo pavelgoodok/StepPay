@@ -3,9 +3,17 @@ import type { APIRequestContext, Page } from "@playwright/test";
 export const API = "http://localhost:4000";
 
 /** Токен демо-пользователя: как после входа через экран демо-аккаунтов. */
+const tokens = new Map<string, string>();
 export async function tokenOf(request: APIRequestContext, userId: string): Promise<string> {
-  const r = await request.post(`${API}/auth/demo`, { data: { userId } });
-  return (await r.json()).token as string;
+  // токен действует долго; запрашиваем один раз, иначе упираемся в ограничение частоты запросов к /auth
+  let t = tokens.get(userId);
+  if (!t) {
+    const r = await request.post(`${API}/auth/demo`, { data: { userId } });
+    t = (await r.json()).token as string;
+    if (!t) throw new Error(`Не удалось войти как ${userId}: ${r.status()}`);
+    tokens.set(userId, t);
+  }
+  return t;
 }
 
 /** Вход под демо-пользователем: токен кладется туда же, куда его кладет приложение. */

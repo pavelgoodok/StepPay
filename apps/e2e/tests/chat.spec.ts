@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginAs, resetDemo } from "./helpers";
+import { loginAs, resetDemo, tokenOf } from "./helpers";
 
 test.beforeEach(async ({ request }) => resetDemo(request));
 
@@ -57,8 +57,7 @@ test("чат: сообщение исполнителю, ответ, прави�
 
 test("чужой чат недоступен", async ({ page, request }) => {
   await resetDemo(request, 1);
-  const anna = await (await request.post("http://localhost:4000/auth/demo", { data: { userId: "anna" } })).json();
-  const chats = await (await request.get("http://localhost:4000/chats", { headers: { authorization: `Bearer ${anna.token}` } })).json();
+  const chats = await (await request.get("http://localhost:4000/chats", { headers: { authorization: `Bearer ${await tokenOf(request, "anna")}` } })).json();
   const id = (chats.items ?? chats)[0].id as string;
   await loginAs(page, request, "olga");
   await page.goto(`/chats/${id}`);
