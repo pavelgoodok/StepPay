@@ -238,3 +238,40 @@ describe("сообщения чата отдельными строками", ()
     expect(after.threads[0]!.messages.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
   });
 });
+
+describe("журнал действий отдельными строками", () => {
+  const open = async (db: PGlite) => {
+    const st = new PgStore("postgres://pglite", asPool(db));
+    await st.init();
+    return st;
+  };
+  const base = { projects: [], services: [], threads: [] };
+
+  it("записи, добавленные двумя экземплярами одновременно, не сливаются", async () => {
+    const db = new PGlite();
+    const a = await open(db);
+    const b = await open(db);
+    await a.savePlatform({ ...base, audit: [{ id: "a0", at: 1, by: "x", action: "старая" }] });
+    const pa = await a.loadPlatform();
+    const pb = await b.loadPlatform();
+    pa.audit!.push({ id: "a1", at: 2, by: "x", action: "первая" });
+    pb.audit!.push({ id: "a2", at: 3, by: "y", action: "вторая" });
+    await a.savePlatform(pa);
+    await b.savePlatform(pb);
+    const fresh = await (await open(db)).loadPlatform();
+    expect(fresh.audit!.map((e) => e.action)).toEqual(["старая", "первая", "вторая"]);
+  });
+
+  it("старые записи без номера читаются по порядку и получают номер", async () => {
+    const db = new PGlite();
+    await db.query("create table app_state (id int primary key, state jsonb not null, updated_at timestamptz not null default now())");
+    await db.query("insert into app_state (id, state) values (3, $1)", [JSON.stringify({ ...base, audit: [{ at: 5, by: "x", action: "б" }, { at: 1, by: "x", action: "а" }] })]);
+    const a = await open(db);
+    const p = await a.loadPlatform();
+    expect(p.audit!.map((e) => e.action)).toEqual(["а", "б"]);
+    expect(p.audit!.every((e) => !!e.id)).toBe(true);
+    p.audit!.push({ id: "n1", at: 9, by: "x", action: "в" });
+    await a.savePlatform(p);
+    expect((await (await open(db)).loadPlatform()).audit!.map((e) => e.action)).toEqual(["а", "б", "в"]);
+  });
+});

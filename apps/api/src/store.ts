@@ -1,6 +1,6 @@
 import pg from "pg";
 import { createState, type State } from "@steppay/engine";
-import type { ChatMessage, Note, PlatformData, Thread } from "./platform";
+import type { AuditEvent, ChatMessage, Note, PlatformData, Thread } from "./platform";
 import type { RegisteredUser } from "./users";
 
 /** Хранилище целиком держит состояние движка. Для MVP (один инстанс) этого достаточно. */
@@ -351,7 +351,7 @@ export class PgStore implements Store {
       const messages = all.filter((m) => !seen.has(m.id) && !!seen.add(m.id)).sort((a, b) => a.at - b.at);
       return { ...th, messages };
     });
-    const out: PlatformData = { projects: list("projects"), services: list("services"), threads, audit: list("audit"), anchors: list("anchors"), reviews: list("reviews"), verifications: list("verifications"), notes };
+    const out: PlatformData = { projects: list("projects"), services: list("services"), threads, audit: list<AuditEvent>("audit").sort((a, b) => a.at - b.at).map((e, i) => ({ ...e, id: e.id ?? `legacy-${String(i).padStart(9, "0")}` })), anchors: list("anchors"), reviews: list("reviews"), verifications: list("verifications"), notes };
     for (const k of ["notesSeen", "anchorPubs", "mirror"] as const) {
       const v = rows.find((r) => r.coll === "meta" && r.key === k)?.data;
       if (v !== undefined) (out as unknown as Record<string, unknown>)[k] = v;
@@ -368,7 +368,7 @@ export class PgStore implements Store {
     arr("reviews", data.reviews, (x) => x.id);
     arr("verifications", data.verifications, (x) => x.id);
     arr("anchors", data.anchors, (x) => String(x.n));
-    arr("audit", data.audit, (_x, i) => String(i).padStart(9, "0"));
+    arr("audit", data.audit, (x, i) => x.id ?? `legacy-${String(i).padStart(9, "0")}`);
     for (const [u, n] of Object.entries(data.notes ?? {})) rows.push({ coll: "notes", key: u, ord: 0, data: n });
     for (const k of ["notesSeen", "anchorPubs", "mirror"] as const) if (data[k] !== undefined) rows.push({ coll: "meta", key: k, ord: 0, data: data[k] });
     await this.syncDocs(PLATFORM_COLLS, rows);

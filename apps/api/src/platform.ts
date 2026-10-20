@@ -85,6 +85,8 @@ export interface Thread {
 }
 
 export interface AuditEvent {
+  /** уникальный номер записи: ключ строки в базе (у старых записей присваивается при чтении) */
+  id?: string;
   at: number;
   by: string;
   action: string;
@@ -313,7 +315,7 @@ export class Platform {
   /** Записывает действие администратора или доступ к закрытым данным. Хранятся последние 1000 записей. */
   async logAudit(by: string, action: string, target?: string, detail?: string) {
     const list = (this.data.audit ??= []);
-    list.push({ at: this.now(), by, action, ...(target ? { target } : {}), ...(detail ? { detail: detail.slice(0, 200) } : {}) });
+    list.push({ id: this.id("a"), at: this.now(), by, action, ...(target ? { target } : {}), ...(detail ? { detail: detail.slice(0, 200) } : {}) });
     if (list.length > 1000) list.splice(0, list.length - 1000);
     await this.save();
   }
