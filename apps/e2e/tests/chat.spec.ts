@@ -47,6 +47,7 @@ test("чат: сообщение исполнителю, ответ, прави�
   await expect(submit).toBeDisabled(); // без согласованной суммы нельзя
   await ivan.getByPlaceholder("Согласованная сумма, ₽").fill("50000");
   await submit.click();
+  await expect(ivan.getByPlaceholder("Название задачи")).toBeHidden(); // форма закрылась: задача зарегистрирована, идет переход
 
   await ivan.goto("/deals");
   await expect(ivan.locator("body")).toContainText("Ремонт кухни");

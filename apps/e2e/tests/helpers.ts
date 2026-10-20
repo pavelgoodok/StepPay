@@ -34,7 +34,7 @@ export async function callApi<T = unknown>(request: APIRequestContext, token: st
 /** Чистое демо-состояние и первые шаги сценария: чат, задача, этапы и отправка условий (шаг 3). */
 export async function resetDemo(request: APIRequestContext, steps = 0): Promise<void> {
   // ключи подписи демо-аккаунтов переживают сброс сделок: отзываем, чтобы сценарии не зависели друг от друга
-  for (const user of ["anna", "ivan", "olga", "max"]) {
+  for (const user of ["anna", "ivan", "olga", "max", "fond", "games"]) {
     const token = await tokenOf(request, user);
     const keys = await callApi<{ id: string; active: boolean }[]>(request, token, "GET", "/me/keys");
     for (const k of keys.filter((x) => x.active)) await callApi(request, token, "POST", `/me/keys/${k.id}/revoke`, {});
