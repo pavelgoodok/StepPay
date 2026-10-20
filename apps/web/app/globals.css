@@ -689,7 +689,7 @@ a.tile { display: block; }
 .adm-count { margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--red); color: #fff; font-size: 12px; text-align: center; }
 .adm-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 2px; }
 .adm-foot > .small { padding: 0 12px 8px; }
-.adm-main { padding: 32px 40px 56px; max-width: 1240px; width: 100%; }
+.adm-main { padding: 32px 40px 56px; max-width: 1240px; width: 100%; min-width: 0; }
 .adm-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .adm-denied { min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
 .adm-queue { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -729,7 +729,7 @@ a.tile { display: block; }
   .adm-kpis { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 860px) {
-  .adm { grid-template-columns: 1fr; }
+  .adm { grid-template-columns: minmax(0, 1fr); }
   .adm-side { position: static; height: auto; flex-direction: column; padding: 14px 12px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
   .adm-nav { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 6px; }
   .adm-nav .adm-link { width: auto; white-space: nowrap; }
