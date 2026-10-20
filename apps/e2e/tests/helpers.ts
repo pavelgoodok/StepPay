@@ -34,3 +34,11 @@ export async function resetDemo(request: APIRequestContext, steps = 0): Promise<
   await request.post(`${API}/demo/reset`, { data: {} });
   for (let i = 1; i <= steps; i++) await request.post(`${API}/demo/step`, { data: { step: i } });
 }
+
+export async function demoStep(request: APIRequestContext, step: number): Promise<void> {
+  await request.post(`${API}/demo/step`, { data: { step } });
+}
+
+export async function walletOf(request: APIRequestContext, user: string): Promise<{ free: number; reserved: number }> {
+  return (await callApi<{ wallet: { free: number; reserved: number } }>(request, await tokenOf(request, user), "GET", "/me")).wallet;
+}
