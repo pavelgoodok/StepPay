@@ -30,7 +30,8 @@ export default defineConfig({
       url: "http://localhost:4000/health",
       reuseExistingServer: !ci,
       timeout: 60_000,
-      env: { PORT: "4000", DEMO_MODE: "on", AUTH_SECRET: "e2e-secret" },
+      // тесты и открытые страницы шлют много запросов с одного адреса: пределы поднимаем
+      env: { PORT: "4000", DEMO_MODE: "on", AUTH_SECRET: "e2e-secret", RATE_LIMIT_GENERAL: "20000", RATE_LIMIT_AUTH: "5000" },
     },
     {
       // сборка веб-части выполняется заранее (pnpm --filter @steppay/web build с NEXT_PUBLIC_API_URL=http://localhost:4000)
