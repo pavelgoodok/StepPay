@@ -275,3 +275,22 @@ describe("журнал действий отдельными строками", 
     expect((await (await open(db)).loadPlatform()).audit!.map((e) => e.action)).toEqual(["а", "б", "в"]);
   });
 });
+
+describe("аренда фоновых задач", () => {
+  it("задачу выполняет один экземпляр, аренда истекает и переходит к другому", async () => {
+    const db = new PGlite();
+    const mk = async () => {
+      const st = new PgStore("postgres://pglite", asPool(db));
+      await st.init();
+      return st;
+    };
+    const a = await mk();
+    const b = await mk();
+    expect(await a.tryLease("background", 80, "a")).toBe(true);
+    expect(await b.tryLease("background", 80, "b")).toBe(false);
+    expect(await a.tryLease("other", 80, "a")).toBe(true); // другая задача независима
+    await new Promise((r) => setTimeout(r, 120));
+    expect(await b.tryLease("background", 80, "b")).toBe(true);
+    expect(await a.tryLease("background", 80, "a")).toBe(false);
+  });
+});

@@ -33,6 +33,8 @@ export interface Store {
   /** обмен короткими сообщениями между экземплярами (события для открытых соединений) */
   publish(msg: string): Promise<void>;
   subscribe(cb: (msg: string) => void): Promise<void>;
+  /** Аренда фоновой задачи: true, если этот экземпляр теперь ее выполняет (другие экземпляры в это время пропускают). */
+  tryLease(name: string, ttlMs: number, owner: string): Promise<boolean>;
   /** коды входа общие для всех экземпляров */
   otpGet(phone: string): Promise<unknown>;
   otpSet(phone: string, value: unknown): Promise<void>;
@@ -88,6 +90,9 @@ export class MemoryStore implements Store {
   }
   async publish() {}
   async subscribe() {}
+  async tryLease() {
+    return true;
+  }
   private otp = new Map<string, unknown>();
   async otpGet(phone: string) {
     return this.otp.get(phone);
@@ -168,6 +173,17 @@ export class PgStore implements Store {
     const users = await this.loadUsers();
     const platform = await this.loadPlatform();
     return { users, platform };
+  }
+  /** Время берется из базы, поэтому расхождение часов экземпляров не влияет. Аренда сама истекает, если исполнитель завис или упал. */
+  async tryLease(name: string, ttlMs: number, owner: string) {
+    const r = await this.pool.query(
+      `insert into docs (coll, key, data) values ('lease', $1, jsonb_build_object('until', (extract(epoch from clock_timestamp()) * 1000)::bigint + $2::bigint, 'owner', $3::text))
+       on conflict (coll, key) do update set data = excluded.data
+       where (docs.data->>'until')::bigint < (extract(epoch from clock_timestamp()) * 1000)::bigint
+       returning 1`,
+      [name, ttlMs, owner],
+    );
+    return r.rows.length > 0;
   }
   async publish(msg: string) {
     await this.pool.query("select pg_notify('steppay', $1)", [msg]);

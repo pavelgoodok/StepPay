@@ -1079,7 +1079,17 @@ export async function buildApp(opts: AppOptions) {
     return { anchored: !!a, anchor: a ? publicAnchor(a) : null };
   });
 
-  const timer = setInterval(() => void runTick().then(anchorTick).catch(() => undefined), 60_000);
+  // при нескольких экземплярах проверку сроков и якоря ведет тот, кто взял аренду на эту минуту; остальные пропускают
+  const timer = setInterval(
+    () =>
+      void (async () => {
+        if (!(await opts.store.tryLease("background", 55_000, instanceId))) return;
+        await refreshAll(true);
+        await runTick();
+        await anchorTick();
+      })().catch(() => undefined),
+    60_000,
+  );
   const beat = setInterval(() => hub.heartbeat(), 25_000);
   timer.unref();
   beat.unref();
