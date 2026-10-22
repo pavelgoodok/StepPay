@@ -7,7 +7,7 @@ SRC = ROOT / "docs/cbr/StepPay_resume.md"
 ORG = "Проект StepPay"
 SYS = "Платформа StepPay. Оплата по шагам в цифровых рублях"
 KIND = "Резюме проекта"
-AUTHOR = "Гудков Павел Алексеевич\npavlusha220@yandex.ru\n+7 995 540-71-20"
+AUTHOR = ""
 DESIG = "STEPPAY.00003-01 90 01"
 
 

@@ -5,7 +5,7 @@ from gostdoc import Doc, build, AL
 ORG = "Проект StepPay"
 SYS = "Платформа StepPay. Смарт-контракты StepEscrow и StepAnchor"
 KIND = "Описание программы"
-AUTHOR = "Гудков Павел Алексеевич\npavlusha220@yandex.ru\n+7 995 540-71-20"
+AUTHOR = ""
 DESIG = "STEPPAY.00001-01 13 01"
 
 

@@ -6,7 +6,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 ORG = "Проект StepPay"
 SYS = "Платформа StepPay. Оплата по шагам в цифровых рублях"
 KIND = "Функциональное описание"
-AUTHOR = "Гудков Павел Алексеевич\npavlusha220@yandex.ru\n+7 995 540-71-20"
+AUTHOR = ""
 DESIG = "STEPPAY.00002-01 13 01"
 
 
