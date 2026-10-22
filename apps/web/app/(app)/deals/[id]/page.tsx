@@ -9,7 +9,7 @@ import { PhotoGrid, PhotoPicker } from "@/components/photos";
 import { useChangedIds } from "@/components/motion";
 import { StageEditor, rowsToStages, rowsTotal, stagesToRows, type Row } from "@/components/stage-editor";
 import { ReviewCard } from "@/components/review-card";
-import { IMG, Icon, Money, MoneyInput, SegBar, Sheet } from "@/components/ui";
+import { IMG, Icon, Money, MoneyInput, SegBar, Sheet, Switch } from "@/components/ui";
 import { api, type DealFull } from "@/lib/api";
 import { deviceKeysAvailable, ensureDeviceKey, signContractOnDevice } from "@/lib/keys";
 import { dayLabel, rub, timeLeft, toKopecks } from "@/lib/format";
@@ -38,6 +38,8 @@ export default function DealPage() {
   const [busy, setBusy] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[] | null>(null);
+  // неустойка за просрочку этапа в процентах суммы этапа: ставка за сутки и предел; null - еще не трогали
+  const [pen, setPen] = useState<{ on: boolean; rate: string; cap: string } | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -187,16 +189,36 @@ export default function DealPage() {
 
       {draft && isExec && (() => {
         const cur = rows ?? stagesToRows(d.stages.map((x) => ({ title: x.title, amount: x.amount, criteria: x.criteria })));
-        const ready = rowsToStages(cur).length > 0;
+        // по умолчанию неустойка включена у новых условий: 0,5 % в сутки, не больше 10 %
+        const p = pen ?? (d.penaltyBpsPerDay ? { on: true, rate: String(d.penaltyBpsPerDay / 100).replace(".", ","), cap: String((d.penaltyCapBps ?? 0) / 100).replace(".", ",") } : { on: d.stages.length === 0, rate: "0,5", cap: "10" });
+        const pct = (v: string) => Math.round(Number(v.replace(",", ".")) * 100);
+        const penOk = !p.on || (pct(p.rate) > 0 && pct(p.cap) > 0 && pct(p.rate) <= pct(p.cap) && pct(p.cap) <= 5000);
+        const terms = () => ({ stages: rowsToStages(cur), penalty: p.on && d.stageDeadlineMs ? { bpsPerDay: pct(p.rate), capBps: pct(p.cap) } : null });
+        const ready = rowsToStages(cur).length > 0 && penOk;
         return (
           <div className="card stack">
             <div className="title">Условия для заказчика</div>
             <div className="sub">Разбейте работу на этапы и укажите стоимость каждого. Заказчик увидит их, проверит и зарезервирует деньги.</div>
             <StageEditor rows={cur} onChange={setRows} mode="own" initialBudget={d.meta?.agreed ? String(Math.round(d.meta.agreed / 100)) : ""} seedText={[d.title, d.meta?.description].filter(Boolean).join(". ")} />
+            {d.stageDeadlineMs ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="row between">
+                  <div><b>Неустойка за просрочку этапа</b><div className="small muted">Срок каждого этапа {Math.round(d.stageDeadlineMs / 86_400_000)} дн. Неустойка удерживается из оплаты этапа и возвращается заказчику</div></div>
+                  <Switch on={p.on} onChange={(on) => setPen({ ...p, on })} label="Неустойка за просрочку этапа" />
+                </div>
+                {p.on && (
+                  <div className="row" style={{ gap: 10 }}>
+                    <label className="field grow"><span className="small muted">% этапа за сутки</span><input className="input" inputMode="decimal" value={p.rate} onChange={(e) => setPen({ ...p, rate: e.target.value })} /></label>
+                    <label className="field grow"><span className="small muted">Не больше, % этапа</span><input className="input" inputMode="decimal" value={p.cap} onChange={(e) => setPen({ ...p, cap: e.target.value })} /></label>
+                  </div>
+                )}
+                {!penOk && <div className="small" style={{ color: "var(--red)" }}>Ставка за сутки должна быть не больше предела, предел не больше 50 %</div>}
+              </div>
+            ) : null}
             <div className="btns">
-              <button className="btn soft" disabled={busy || !ready} onClick={() => run("/terms", { stages: rowsToStages(cur) }, "Сохранено")}>Сохранить</button>
+              <button className="btn soft" disabled={busy || !ready} onClick={() => run("/terms", terms(), "Сохранено")}>Сохранить</button>
               <button className="btn" disabled={busy || !ready} onClick={async () => {
-                if (!(await run("/terms", { stages: rowsToStages(cur) }))) return;
+                if (!(await run("/terms", terms()))) return;
                 await prepareKey();
                 const r = await run("/propose", {}, `Условия на ${rub(toKopecks(rowsTotal(cur)))} отправлены заказчику`);
                 if (r?.deal.contract && !r.deal.signatures?.[me]) await signNow(r.deal.contract.hash, "Контракт подписан");
@@ -284,6 +306,7 @@ export default function DealPage() {
                   <b className="mono">{rub(s.amount)}</b>
                 </div>
                 <div className="small muted" style={{ marginTop: 2 }}>{STAGE_LABEL[s.status]}</div>
+                {!!s.penalty && <div className="note warn" style={{ marginTop: 8 }}>Этап сдан с опозданием: неустойка {rub(s.penalty)} {s.status === "accepted" ? "возвращена заказчику" : "будет удержана из оплаты и возвращена заказчику"}</div>}
                 {s.criteria.length > 0 && <ul className="crit">{s.criteria.map((c) => <li key={c}>{c}</li>)}</ul>}
                 {(!!s.evidence?.note || (s.evidence?.photos?.length ?? 0) > 0) && (
                   <div className="note">

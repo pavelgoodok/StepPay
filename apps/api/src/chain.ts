@@ -13,6 +13,7 @@ import type { Deal, JournalEntry, State } from "@steppay/engine";
 
 export const ESCROW_ABI = [
   "function createDealFull(uint8 mode, address executor, address owner, address arbiter, uint128[] stageAmounts, uint64 autoAcceptSecs, uint16 feeBps, bytes32 contractHash, tuple(uint64 fundingSecs, uint64 stageSecs, uint64 disputeSecs) deadlines, address backupArbiter) returns (uint256)",
+  "function createDealWith(tuple(uint8 mode, address executor, address owner, address arbiter, uint64 autoAcceptSecs, uint16 feeBps, bytes32 contractHash, tuple(uint64 fundingSecs, uint64 stageSecs, uint64 disputeSecs) deadlines, address backupArbiter, tuple(uint16 bpsPerDay, uint16 capBps) penalty) p, uint128[] stageAmounts) returns (uint256)",
   "function sign(uint256 dealId)",
   "function fund(uint256 dealId, uint256 amount)",
   "function submitStage(uint256 dealId, uint256 stage, bytes32 evidence)",
@@ -65,6 +66,8 @@ export interface CreateArgs {
   fundingSecs: number;
   stageSecs: number;
   disputeSecs: number;
+  /** неустойка за просрочку этапа; не задана: сделка создается прежней функцией createDealFull */
+  penalty?: { bpsPerDay: number; capBps: number };
 }
 
 export interface ChainSnapshot {
@@ -187,7 +190,24 @@ export class EthersChain implements ChainPort {
     const addr = (x?: string) => (x ? this.addressOf(x) : zero);
     try {
       const c = this.escrow(this.deployer);
-      const tx = await c.createDealFull!(
+      // неустойка есть только в новой версии контракта (createDealWith); без нее вызов прежний и работает со старым адресом
+      const tx = a.penalty
+        ? await c.createDealWith!(
+            {
+              mode: MODES[a.mode],
+              executor: this.addressOf(a.executor),
+              owner: addr(a.owner),
+              arbiter: addr(a.arbiter),
+              autoAcceptSecs: a.autoAcceptSecs,
+              feeBps: a.feeBps,
+              contractHash: a.contractHash,
+              deadlines: { fundingSecs: a.fundingSecs, stageSecs: a.stageSecs, disputeSecs: a.disputeSecs },
+              backupArbiter: addr(a.backupArbiter),
+              penalty: a.penalty,
+            },
+            a.stages.map(BigInt),
+          )
+        : await c.createDealFull!(
         MODES[a.mode],
         this.addressOf(a.executor),
         addr(a.owner),
@@ -280,6 +300,8 @@ export interface MirrorTx {
 export interface MirrorDeal {
   /** номер сделки в контракте */
   id?: number;
+  /** адрес контракта, в котором создана сделка: после перехода на новую версию контракта старые сделки туда не переносятся */
+  contract?: string;
   /** сколько записей журнала уже перенесено */
   cursor: number;
   txs: MirrorTx[];
@@ -291,6 +313,8 @@ export interface MirrorData {
   /** сделки, созданные раньше этого момента, не зеркалятся */
   since: number;
   deals: Record<string, MirrorDeal>;
+  /** адрес контракта, с которым работало зеркало: сделки без своего адреса относятся к нему */
+  escrow?: string;
 }
 
 export type MirrorState = "syncing" | "synced" | "failed";
@@ -389,17 +413,27 @@ export class ChainMirror {
     const m = this.o.data.deals[dealId];
     if (!m || m.id === undefined) return undefined;
     const i = this.o.chain.info();
-    return { network: i.network, chainId: i.chainId, contract: i.contract, dealId: m.id, explorer: i.explorer, txs: m.txs };
+    return { network: i.network, chainId: i.chainId, contract: m.contract ?? i.contract, dealId: m.id, explorer: i.explorer, txs: m.txs };
   }
 
   private async sync() {
     const state = this.latest;
     if (!state) return;
     let retry = false;
+    // переход на новый адрес контракта: сделки, уже созданные в прежнем, остаются за ним и дальше не переносятся
+    const current = this.o.chain.info().contract.toLowerCase();
+    const previous = (this.o.data.escrow ?? current).toLowerCase();
+    for (const m of Object.values(this.o.data.deals)) if (m.id !== undefined && !m.contract) m.contract = previous;
+    this.o.data.escrow = current;
     for (const d of Object.values(state.deals)) {
       if (!this.o.eligible(d) || d.createdAt < this.o.data.since) continue;
       const m = (this.o.data.deals[d.id] ??= { cursor: 0, txs: [] });
       if (m.failed) continue;
+      if (m.contract && m.contract.toLowerCase() !== current) {
+        m.failed = "Сделка создана в прежней версии контракта, новые действия переносятся только в сделки новой версии";
+        await this.o.persist();
+        continue;
+      }
       const journal = d.journal ?? [];
       while (m.cursor < journal.length) {
         const entry = journal[m.cursor]!;
@@ -448,8 +482,10 @@ export class ChainMirror {
       fundingSecs: secs(d.fundingDeadlineMs),
       stageSecs: secs(d.stageDeadlineMs),
       disputeSecs: d.mode === "own" ? secs(d.disputeMs) : 0,
+      penalty: d.penaltyBpsPerDay && d.penaltyCapBps ? { bpsPerDay: d.penaltyBpsPerDay, capBps: d.penaltyCapBps } : undefined,
     });
     m.id = out.dealId;
+    m.contract = c.info().contract;
     m.txs.push({ label: "Создание сделки", hash: out.hash, at: Math.floor(this.o.now() / 1000) });
   }
 

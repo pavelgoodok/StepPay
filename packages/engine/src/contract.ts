@@ -37,6 +37,9 @@ export interface ContractTerms {
   fundingDeadlineMs?: number;
   stageDeadlineMs?: number;
   disputeMs?: number;
+  /** неустойка: поля есть, только если задана */
+  penaltyBpsPerDay?: number;
+  penaltyCapBps?: number;
   /** кто должен подписать контракт; поля нет у сделок без подписей */
   signers?: UserId[];
 }
@@ -77,6 +80,8 @@ export function contractTerms(d: Deal): ContractTerms {
     fundingDeadlineMs: d.fundingDeadlineMs || undefined,
     stageDeadlineMs: d.stageDeadlineMs || undefined,
     disputeMs: d.disputeMs || undefined,
+    penaltyBpsPerDay: d.penaltyBpsPerDay || undefined,
+    penaltyCapBps: d.penaltyCapBps || undefined,
     signers: requiredSigners(d),
   };
 }

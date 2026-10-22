@@ -481,3 +481,56 @@ describe("StepEscrow: отказ токена, токены с комиссие�
     assert.equal(await escrow.totalOwed(), 0n);
   });
 });
+
+describe("StepEscrow: неустойка за просрочку этапа", () => {
+  const params = (a, over = {}) => ({
+    mode: Mode.Own,
+    executor: a.executor.address,
+    owner: a.owner.address,
+    arbiter: a.arbiter.address,
+    autoAcceptSecs: 3 * DAY,
+    feeBps: 0,
+    contractHash: hash("t"),
+    deadlines: { fundingSecs: 0, stageSecs: 10 * DAY, disputeSecs: 0 },
+    backupArbiter: ZERO,
+    penalty: { bpsPerDay: 50, capBps: 1000 },
+    ...over,
+  });
+  async function setup() {
+    const { token, escrow, signers, escrowAddress } = await deploy();
+    const [, executor, owner, arbiter, stranger] = signers;
+    await giveTokens(token, escrowAddress, owner, 1_000n * R);
+    return { token, escrow, executor, owner, arbiter, stranger };
+  }
+
+  it("условия неустойки проверяются при создании", async () => {
+    const a = await setup();
+    const bad = (over) => reverts(a.escrow.createDealWith(params(a, over), [100n * R]), "BadInput");
+    await bad({ mode: Mode.Grant, arbiter: ZERO, autoAcceptSecs: 0 }); // только своя сделка
+    await bad({ deadlines: { fundingSecs: 0, stageSecs: 0, disputeSecs: 0 } }); // нужен срок этапа
+    await bad({ penalty: { bpsPerDay: 0, capBps: 1000 } });
+    await bad({ penalty: { bpsPerDay: 50, capBps: 0 } });
+    await bad({ penalty: { bpsPerDay: 600, capBps: 500 } }); // ставка больше предела
+    await bad({ penalty: { bpsPerDay: 100, capBps: 5001 } }); // предел больше половины этапа
+    await a.escrow.createDealWith(params(a), [100n * R]);
+    await a.escrow.createDealWith(params(a, { penalty: { bpsPerDay: 0, capBps: 0 } }), [100n * R]); // без неустойки
+    assert.deepEqual([...(await a.escrow.getPenalty(1, 0))], [50n, 1000n, 0n]);
+  });
+
+  it("сдача с опозданием: неустойка удерживается из выплаты и возвращается заказчику событием PenaltyPaid", async () => {
+    const a = await setup();
+    await a.escrow.createDealWith(params(a), [1_000n * R]);
+    await a.escrow.connect(a.owner).fund(1, 1_000n * R);
+    await a.escrow.connect(a.owner).sign(1);
+    await a.escrow.connect(a.executor).sign(1);
+    await increaseTime(12 * DAY + 3600); // третьи сутки просрочки: 1,5 %
+    await a.escrow.connect(a.executor).submitStage(1, 0, hash("x"));
+    assert.equal((await a.escrow.getPenalty(1, 0))[2], 15n * R);
+    const r = await (await a.escrow.connect(a.owner).approveStage(1, 0)).wait();
+    const ev = r.logs.map((l) => a.escrow.interface.parseLog(l)).find((x) => x?.name === "PenaltyPaid");
+    assert.equal(ev.args.amount, 15n * R);
+    assert.equal(await a.token.balanceOf(a.executor.address), 985n * R);
+    assert.equal(await a.token.balanceOf(a.owner.address), 15n * R);
+    assert.equal(await a.escrow.totalLocked(), 0n);
+  });
+});

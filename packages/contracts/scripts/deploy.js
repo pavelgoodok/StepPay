@@ -3,6 +3,9 @@
  *
  *   SEPOLIA_RPC_URL=... DEPLOYER_PRIVATE_KEY=0x... npx hardhat run scripts/deploy.js --network sepolia
  *
+ * Обновление контракта: REUSE_TOKEN=<адрес CHAIN_TOKEN> разворачивает только новый StepEscrow с прежним токеном,
+ * балансы участников сохраняются. Адрес контракта при этом новый: код по старому адресу заменить нельзя.
+ *
  * Адрес с ключом DEPLOYER_PRIVATE_KEY становится получателем комиссии и платит газ за всех участников. Нужен тестовый эфир:
  * на каждого участника уходит около 0.003 ETH, на 10 участников хватит 0.1 ETH.
  */
@@ -23,8 +26,12 @@ async function main() {
   console.log(`Счет: ${deployer.address}, баланс ${ethers.formatEther(balance)} ETH`);
   if (balance < ethers.parseEther("0.02") && hre.network.name !== "hardhat") throw new Error("На счете меньше 0.02 ETH: пополните его из крана тестовой сети");
 
-  const token = await (await ethers.getContractFactory("TestRub")).deploy();
+  const reuse = process.env.REUSE_TOKEN;
+  if (reuse && !ethers.isAddress(reuse)) throw new Error("REUSE_TOKEN должен быть адресом токена");
+  if (reuse && (await ethers.provider.getCode(reuse)) === "0x") throw new Error("По адресу REUSE_TOKEN нет контракта в этой сети");
+  const token = reuse ? await ethers.getContractAt("TestRub", reuse) : await (await ethers.getContractFactory("TestRub")).deploy();
   await token.waitForDeployment();
+  if (reuse) console.log(`Токен прежний: ${reuse}`);
   const escrow = await (await ethers.getContractFactory("StepEscrow")).deploy(await token.getAddress(), deployer.address);
   await escrow.waitForDeployment();
   const out = { network: KNOWN[chainId] ?? hre.network.name, chainId, token: await token.getAddress(), escrow: await escrow.getAddress(), deployer: deployer.address, at: new Date().toISOString() };

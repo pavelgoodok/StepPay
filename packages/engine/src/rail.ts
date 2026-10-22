@@ -74,6 +74,9 @@ export interface DealSpec {
   fundingDeadlineDays?: number;
   stageDeadlineDays?: number;
   disputeDays?: number;
+  /** неустойка за начатые сутки просрочки этапа и ее предел, базисные пункты суммы этапа */
+  penaltyBpsPerDay?: number;
+  penaltyCapBps?: number;
 }
 
 export type StepKind = "expire" | "sign" | "reserve" | "submit" | "approve" | "reject" | "vote" | "dispute" | "resolve" | "autoAccept" | "cancel" | "wait";
@@ -173,6 +176,8 @@ export class EmulatedRail implements MoneyRail {
       fundingDeadlineDays: spec.fundingDeadlineDays,
       stageDeadlineDays: spec.stageDeadlineDays,
       disputeDays: spec.disputeDays,
+      penaltyBpsPerDay: spec.penaltyBpsPerDay,
+      penaltyCapBps: spec.penaltyCapBps,
       at: this.now,
     });
   }

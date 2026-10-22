@@ -103,7 +103,7 @@ export default function WalletPage() {
           <div className="small muted">{day}</div>
           <div className="card" style={{ padding: "4px 14px", marginTop: 6 }}>
             {items.map((h) => {
-              const plus = h.type === "topup" || h.type === "refund" || h.type === "payout" || h.type === "fee";
+              const plus = h.type === "topup" || h.type === "refund" || h.type === "payout" || h.type === "fee" || h.type === "penalty";
               return (
                 <div key={h.id} className="hist">
                   <div className="ic"><Icon name={ICON[h.type] ?? "check"} size={20} /></div>

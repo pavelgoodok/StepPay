@@ -31,6 +31,7 @@ function describe(e: JournalEntry, d: DealFull): string {
     case "dispute_opened": return `${who} открыл(а) спор по этапу${st}`;
     case "dispute_reply": return `${who} ответил(а) в споре`;
     case "payout": return `Исполнителю выплачено ${money}`;
+    case "penalty": return `Неустойка за просрочку ${money} возвращена заказчику`;
     case "refund": return `Возврат ${money} ${typeof data.to === "string" ? `участнику ${d.people[data.to]?.name ?? ""}` : ""}`.trim();
     case "completed": return "Сделка завершена";
     case "cancelled": return `${who} отменил(а) сделку`;

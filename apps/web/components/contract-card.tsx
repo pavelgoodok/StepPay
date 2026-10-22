@@ -14,7 +14,11 @@ const daysOf = (ms: number) => Math.round(ms / DAY);
 function deadlines(t: ContractTerms) {
   const out: string[] = [];
   if (t.fundingDeadlineMs) out.push(`Если сумма не собрана за ${daysOf(t.fundingDeadlineMs)} дн., сделка закрывается и взносы возвращаются.`);
-  if (t.stageDeadlineMs) out.push(`Если исполнитель не сдал этап за ${daysOf(t.stageDeadlineMs)} дн., остаток возвращается.`);
+  if (t.stageDeadlineMs && t.penaltyBpsPerDay && t.penaltyCapBps) {
+    const pct = (bps: number) => String(bps / 100).replace(".", ",");
+    const grace = Math.ceil(t.penaltyCapBps / t.penaltyBpsPerDay);
+    out.push(`Срок каждого этапа ${daysOf(t.stageDeadlineMs)} дн. За каждые начатые сутки просрочки из оплаты этапа удерживается неустойка ${pct(t.penaltyBpsPerDay)} % его суммы, но не больше ${pct(t.penaltyCapBps)} %, неустойка возвращается заказчику. Если этап не сдан и через ${grace} дн. после срока, остаток возвращается заказчику.`);
+  } else if (t.stageDeadlineMs) out.push(`Если исполнитель не сдал этап за ${daysOf(t.stageDeadlineMs)} дн., остаток возвращается.`);
   if (t.disputeMs) out.push(`${t.backupArbiterId ? `Если основной приемщик молчит ${daysOf(t.disputeMs / 2)} дн., спор может решить запасной. ` : ""}Если спор не решен за ${daysOf(t.disputeMs)} дн., остаток возвращается заказчику.`);
   return out.join(" ");
 }

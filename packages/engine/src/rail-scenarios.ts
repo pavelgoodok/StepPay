@@ -211,4 +211,42 @@ export const RAIL_SCENARIOS: Scenario[] = [
     ],
     expect: { balances: { anna: START - 100_000 * R, ivan: 100_000 * R, platform: 0 }, status: "completed", stages: ["accepted"] },
   },
+  {
+    name: "неустойка: этап сдан на 6 дней позже, исполнитель получает сумму этапа без 3 процентов, неустойка возвращается заказчику",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [90_000 * R, 10_000 * R], autoAcceptDays: 3, feeBps: 0, stageDeadlineDays: 10, penaltyBpsPerDay: 50, penaltyCapBps: 1000 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      // срок 10 дней, сдача через 15 дней 1 час: начато 6-е сутки просрочки, 6 × 0,5 % = 3 %
+      { do: "wait", seconds: 15 * 86_400 + 3600 }, bad({ do: "expire", what: "stage", stage: 0 }), // неустойка еще не дошла до предела
+      submit("ivan", 0), approve("anna", 0),
+      submit("ivan", 1), approve("anna", 1), // второй этап в срок, без неустойки
+    ],
+    expect: { balances: { anna: START - 100_000 * R + 2_700 * R, ivan: 87_300 * R + 10_000 * R, platform: 0 }, status: "completed", stages: ["accepted", "accepted"] },
+  },
+  {
+    name: "неустойка: сдача ровно в момент срока уже считается первыми сутками просрочки, комиссия берется после неустойки",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [100_000 * R], autoAcceptDays: 3, feeBps: 100, stageDeadlineDays: 5, penaltyBpsPerDay: 100, penaltyCapBps: 500 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      { do: "wait", seconds: 5 * 86_400 }, submit("ivan", 0),
+      { do: "dispute", by: "ivan", stage: 0 }, { do: "resolve", by: "expert", stage: 0, pay: true }, // неустойка сохраняется и при решении спора
+    ],
+    // неустойка 1 % = 1 000, комиссия 1 % с 99 000 = 990
+    expect: { balances: { anna: START - 100_000 * R + 1_000 * R, ivan: 98_010 * R, platform: 990 * R }, status: "completed", stages: ["accepted"] },
+  },
+  {
+    name: "неустойка: после предела этап не сдан, любой возвращает остаток заказчику",
+    balances: { anna: START },
+    deal: { mode: "own", executor: "ivan", owner: "anna", arbiter: "expert", stages: [100_000 * R], autoAcceptDays: 3, feeBps: 0, stageDeadlineDays: 10, penaltyBpsPerDay: 50, penaltyCapBps: 1000 },
+    steps: [
+      reserve("anna", 100_000 * R), sign("ivan"), sign("anna"),
+      // предел 10 % при 0,5 % в сутки: еще 20 суток после срока
+      { do: "wait", seconds: 29 * 86_400 }, bad({ do: "expire", what: "stage", stage: 0 }),
+      { do: "wait", seconds: 2 * 86_400 }, { do: "expire", what: "stage", stage: 0, by: "stranger" },
+      bad(submit("ivan", 0)),
+    ],
+    expect: { balances: { anna: START, ivan: 0, platform: 0 }, status: "cancelled", stages: ["failed"] },
+  },
 ];

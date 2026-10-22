@@ -152,4 +152,29 @@ describe("зеркало контракта: сделка в ядре повто
     assert.equal(ctx.chain.addressOf("anna"), before.address, "адрес стабилен");
     assert.notEqual(ctx.chain.addressOf("ivan"), before.address);
   });
+
+  it("новый адрес контракта: прежние сделки за ним не переносятся, новые создаются в новом контракте", async () => {
+    const ctx = await setup();
+    let s = E.topUp(E.createState(), "anna", 5000 * R, T);
+    s = await run(ctx, s, (x) => E.createDeal(x, base({ mode: "own", executorId: "ivan", ownerId: "anna", arbiterId: "expert", autoAcceptDays: 3 })));
+    s = await run(ctx, s, (x) => E.signContract(x, "d1", "ivan", tick(), "sig"));
+    assert.equal(ctx.mirror.link("d1").contract, await ctx.escrow.getAddress());
+    // развернута новая версия: тот же токен и та же история зеркала, другой адрес
+    const [deployer] = await ethers.getSigners();
+    const escrow2 = await (await ethers.getContractFactory("StepEscrow")).deploy(await ctx.token.getAddress(), deployer.address);
+    const chain2 = new EthersChain({ provider: ethers.provider, network: "Hardhat", chainId: 31337, escrow: await escrow2.getAddress(), token: await ctx.token.getAddress(), deployerKey: DEPLOYER_KEY, seed: "test-seed" });
+    const mirror2 = new ChainMirror({ chain: chain2, data: ctx.data, persist: async () => {}, now: () => T, eligible: () => true, retryMs: 3_600_000 });
+    s = E.createDeal(s, { ...base({ mode: "own", executorId: "ivan", ownerId: "anna", arbiterId: "expert", autoAcceptDays: 3, stageDeadlineDays: 10, penaltyBpsPerDay: 50, penaltyCapBps: 1000 }), id: "d2", at: tick() });
+    s = E.signContract(s, "d1", "anna", tick(), "sig");
+    s = E.signContract(s, "d2", "ivan", tick(), "sig"); // сделка попадает в контракт с первой подписью
+    mirror2.notify(s);
+    await mirror2.idle();
+    assert.equal(mirror2.state("d1").state, "failed"); // старая сделка осталась в прежнем контракте
+    assert.equal(mirror2.link("d1").contract, await ctx.escrow.getAddress());
+    assert.equal(mirror2.state("d2").state, "synced", mirror2.state("d2").error);
+    assert.equal(mirror2.link("d2").contract, await escrow2.getAddress());
+    assert.equal(mirror2.link("d2").dealId, 1);
+    assert.deepEqual([...(await escrow2.getPenalty(1, 0))].slice(0, 2), [50n, 1000n]); // неустойка перенесена в контракт
+    assert.equal(Number((await ctx.escrow.getDeal(1))[1]), 0); // в старом контракте сделка не тронута
+  });
 });

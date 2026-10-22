@@ -33,6 +33,8 @@ export interface Stage {
   activeSince?: number;
   /** когда открыт спор (для срока решения) */
   disputedAt?: number;
+  /** неустойка за просрочку: считается при сдаче, удерживается из выплаты и возвращается заказчику */
+  penalty?: Money;
   resolution?: { by: "owner" | "votes" | "auto" | "arbiter" | "expired"; decision: "accepted" | "failed"; comment?: string; at: number };
 }
 
@@ -116,6 +118,10 @@ export interface Deal {
   stageDeadlineMs?: number;
   /** срок решения спора приемщиком; по истечении деньги возвращаются плательщику */
   disputeMs?: number;
+  /** неустойка за каждые начатые сутки просрочки этапа, в базисных пунктах суммы этапа (только своя сделка со сроком этапа) */
+  penaltyBpsPerDay?: number;
+  /** предел неустойки, в базисных пунктах суммы этапа */
+  penaltyCapBps?: number;
   feeBps: number;
   createdAt: number;
   /** связи с платформой: услуга, проект, описание задачи. Движок их не использует */
@@ -132,7 +138,7 @@ export interface Deal {
   meta?: { serviceId?: string; projectId?: string; chatId?: string; description?: string; agreed?: Money };
 }
 
-export type LedgerType = "topup" | "reserve" | "payout" | "refund" | "fee";
+export type LedgerType = "topup" | "reserve" | "payout" | "refund" | "fee" | "penalty";
 
 export interface LedgerEntry {
   id: number;

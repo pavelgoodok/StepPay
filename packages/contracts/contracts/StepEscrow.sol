@@ -12,7 +12,8 @@ interface IERC20 {
  * @title StepEscrow
  * @notice Эталонный контракт StepPay: деньги резервируются и уходят исполнителю по принятым этапам.
  * Логика повторяет ядро сделок из packages/engine: три режима (своя сделка, краудфандинг, грант),
- * подписи сторон, голосование спонсоров, спор с приемщиком, автоприемка, пропорциональные выплаты и возвраты.
+ * подписи сторон, голосование спонсоров, спор с приемщиком, автоприемка, пропорциональные выплаты и возвраты,
+ * неустойка за просрочку этапа в пользу заказчика.
  * Контракт хранит хеш условий (SHA-256 от канонической записи, как в шаге 1), поэтому условия сделки
  * в ядре и в контракте можно сверить.
  *
@@ -32,6 +33,7 @@ contract StepEscrow {
         bytes32 evidence; // хеш материалов сдачи (описание и фото лежат вне цепочки)
         uint64 activeSince; // когда этап пошел в работу: от этого считается срок этапа
         uint64 disputedAt; // когда начался спор: от этого считается срок решения
+        uint128 penalty; // неустойка за просрочку: считается при сдаче, удерживается из выплаты и возвращается заказчику
     }
 
     /// @dev Сроки в секундах, ноль значит «без срока». Нужны для аварийного выхода, если сторона пропала.
@@ -39,6 +41,14 @@ contract StepEscrow {
         uint64 fundingSecs; // сбор денег, от создания сделки
         uint64 stageSecs; // выполнение этапа, от начала работы над ним
         uint64 disputeSecs; // решение спора приемщиком, от открытия спора
+    }
+
+    /// @dev Неустойка за просрочку этапа (только своя сделка, нужен срок этапа). Ноль: без неустойки.
+    /// За каждые начатые сутки после срока удерживается bpsPerDay суммы этапа, но не больше capBps.
+    /// Пока неустойка не дошла до предела, этап можно сдать; после этого срабатывает выход по сроку.
+    struct Penalty {
+        uint16 bpsPerDay;
+        uint16 capBps;
     }
 
     struct Params {
@@ -51,6 +61,7 @@ contract StepEscrow {
         bytes32 contractHash;
         Deadlines deadlines;
         address backupArbiter;
+        Penalty penalty;
     }
 
     struct Deal {
@@ -66,6 +77,7 @@ contract StepEscrow {
         uint64 autoAcceptSecs;
         uint64 createdAt;
         Deadlines deadlines;
+        Penalty penalty;
         bytes32 contractHash;
         uint256 target;
         uint256 totalReserved;
@@ -77,6 +89,7 @@ contract StepEscrow {
     uint256 public constant MAX_STAGES = 32;
     uint256 public constant MAX_FUNDERS = 64;
     uint16 public constant MAX_FEE_BPS = 1000;
+    uint16 public constant MAX_PENALTY_BPS = 5000;
 
     IERC20 public immutable token;
     address public immutable feeRecipient;
@@ -108,6 +121,8 @@ contract StepEscrow {
     event Voted(uint256 indexed dealId, uint256 indexed stage, address indexed voter, bool accept);
     event DisputeOpened(uint256 indexed dealId, uint256 indexed stage, address indexed by, bytes32 reason);
     event Payout(uint256 indexed dealId, uint256 indexed stage, address indexed executor, uint256 amount, uint256 fee);
+    /// @notice неустойка за просрочку этапа удержана из выплаты и возвращена заказчику
+    event PenaltyPaid(uint256 indexed dealId, uint256 indexed stage, address indexed owner, uint256 amount);
     event Refund(uint256 indexed dealId, address indexed to, uint256 amount);
     event Completed(uint256 indexed dealId);
     event Cancelled(uint256 indexed dealId, address indexed by);
@@ -149,7 +164,7 @@ contract StepEscrow {
         uint16 feeBps,
         bytes32 contractHash
     ) external returns (uint256) {
-        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, Deadlines(0, 0, 0), address(0)), stageAmounts);
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, Deadlines(0, 0, 0), address(0), Penalty(0, 0)), stageAmounts);
     }
 
     /// @notice То же, что createDeal, плюс сроки аварийного выхода (ноль: без срока).
@@ -164,7 +179,7 @@ contract StepEscrow {
         bytes32 contractHash,
         Deadlines calldata deadlines
     ) external returns (uint256) {
-        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, address(0)), stageAmounts);
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, address(0), Penalty(0, 0)), stageAmounts);
     }
 
     /// @notice То же, что createDealEx, плюс запасной приемщик (нужен срок на спор, решать он может со второй половины срока).
@@ -180,7 +195,13 @@ contract StepEscrow {
         Deadlines calldata deadlines,
         address backupArbiter
     ) external returns (uint256) {
-        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, backupArbiter), stageAmounts);
+        return _create(Params(mode, executor, owner, arbiter, autoAcceptSecs, feeBps, contractHash, deadlines, backupArbiter, Penalty(0, 0)), stageAmounts);
+    }
+
+    /// @notice Создание сделки со всеми условиями одной структурой, включая неустойку за просрочку этапа
+    /// (своя сделка, нужен срок этапа). Поля те же, что у createDealFull.
+    function createDealWith(Params calldata p, uint128[] calldata stageAmounts) external returns (uint256) {
+        return _create(p, stageAmounts);
     }
 
     function _create(Params memory p, uint128[] calldata stageAmounts) private returns (uint256 dealId) {
@@ -195,6 +216,11 @@ contract StepEscrow {
         if (p.arbiter == p.executor || (p.arbiter != address(0) && p.arbiter == p.owner)) revert BadInput();
         if (p.mode != Mode.Grant && p.autoAcceptSecs == 0) revert BadInput();
         if (p.mode != Mode.Own && p.deadlines.disputeSecs != 0) revert BadInput(); // споры по приемщику только в своей сделке
+        if (p.penalty.bpsPerDay != 0 || p.penalty.capBps != 0) {
+            // неустойка: только своя сделка со сроком этапа, ставка не больше предела, предел не больше половины этапа
+            if (p.mode != Mode.Own || p.deadlines.stageSecs == 0) revert BadInput();
+            if (p.penalty.bpsPerDay == 0 || p.penalty.capBps == 0 || p.penalty.bpsPerDay > p.penalty.capBps || p.penalty.capBps > MAX_PENALTY_BPS) revert BadInput();
+        }
         if (p.backupArbiter != address(0)) {
             // запасной приемщик: только в своей сделке, при сроке на спор и независимый от сторон и основного
             if (p.mode != Mode.Own || p.deadlines.disputeSecs == 0) revert BadInput();
@@ -212,11 +238,12 @@ contract StepEscrow {
         d.autoAcceptSecs = p.autoAcceptSecs;
         d.createdAt = uint64(block.timestamp);
         d.deadlines = p.deadlines;
+        d.penalty = p.penalty;
         d.contractHash = p.contractHash;
         uint256 sum;
         for (uint256 i = 0; i < stageAmounts.length; i++) {
             if (stageAmounts[i] == 0) revert BadInput();
-            d.stages.push(Stage({amount: stageAmounts[i], status: StageStatus.Pending, submittedAt: 0, evidence: bytes32(0), activeSince: 0, disputedAt: 0}));
+            d.stages.push(Stage({amount: stageAmounts[i], status: StageStatus.Pending, submittedAt: 0, evidence: bytes32(0), activeSince: 0, disputedAt: 0, penalty: 0}));
             sum += stageAmounts[i];
         }
         d.target = sum;
@@ -293,6 +320,7 @@ contract StepEscrow {
         st.status = StageStatus.Submitted;
         st.submittedAt = uint64(block.timestamp);
         st.evidence = evidence;
+        st.penalty = uint128(_penaltyAt(d, st, block.timestamp));
         emit StageSubmitted(dealId, stage, evidence);
     }
 
@@ -415,7 +443,7 @@ contract StepEscrow {
         Deal storage d = _deal(dealId);
         Stage storage st = _stage(d, stage);
         if (d.status != DealStatus.Active || st.status != StageStatus.Active || d.deadlines.stageSecs == 0) revert BadState();
-        if (block.timestamp < uint256(st.activeSince) + d.deadlines.stageSecs) revert BadState();
+        if (block.timestamp < uint256(st.activeSince) + d.deadlines.stageSecs + _graceSecs(d)) revert BadState();
         _fail(dealId, d, stage, "expired");
     }
 
@@ -428,11 +456,30 @@ contract StepEscrow {
         _fail(dealId, d, stage, "expired");
     }
 
+    // ───────────────────────── неустойка ─────────────────────────
+
+    /// @dev Сутки после срока, за которые неустойка доходит до предела: столько этап еще можно сдать.
+    function _graceSecs(Deal storage d) private view returns (uint256) {
+        if (d.penalty.bpsPerDay == 0) return 0;
+        return ((uint256(d.penalty.capBps) + d.penalty.bpsPerDay - 1) / d.penalty.bpsPerDay) * 1 days;
+    }
+
+    /// @dev Неустойка при сдаче в момент at: сдача в момент срока и позже считается просрочкой
+    /// с первых суток, далее за каждые начатые сутки; не больше предела.
+    function _penaltyAt(Deal storage d, Stage storage st, uint256 at) private view returns (uint256) {
+        if (d.penalty.bpsPerDay == 0) return 0;
+        uint256 due = uint256(st.activeSince) + d.deadlines.stageSecs;
+        if (at < due) return 0;
+        uint256 bps = ((at - due) / 1 days + 1) * d.penalty.bpsPerDay;
+        if (bps > d.penalty.capBps) bps = d.penalty.capBps;
+        return (uint256(st.amount) * bps) / 10_000;
+    }
+
     // ───────────────────────── движение денег ─────────────────────────
 
     function _accept(uint256 dealId, Deal storage d, uint256 stage, string memory closedBy) private {
         Stage storage st = d.stages[stage];
-        _payout(dealId, d, stage, st.amount);
+        _payout(dealId, d, stage, st.amount, st.penalty);
         st.status = StageStatus.Accepted;
         emit StageAccepted(dealId, stage, closedBy);
         if (stage + 1 < d.stages.length) {
@@ -452,8 +499,9 @@ contract StepEscrow {
         _refundAll(dealId, d);
     }
 
-    /// @dev Сумма этапа списывается с резервов пропорционально, исполнитель получает ее за вычетом комиссии.
-    function _payout(uint256 dealId, Deal storage d, uint256 stage, uint256 amount) private {
+    /// @dev Сумма этапа списывается с резервов пропорционально. Неустойка возвращается заказчику,
+    /// исполнитель получает остаток за вычетом комиссии (комиссия считается с суммы после неустойки).
+    function _payout(uint256 dealId, Deal storage d, uint256 stage, uint256 amount, uint256 penalty) private {
         uint256[] memory parts = _split(dealId, d, amount);
         uint256 paid;
         for (uint256 i = 0; i < parts.length; i++) {
@@ -464,10 +512,15 @@ contract StepEscrow {
         if (paid != amount) revert BadState();
         d.totalReserved -= amount;
         totalLocked -= amount;
-        uint256 fee = (amount * d.feeBps) / 10_000;
-        emit Payout(dealId, stage, d.executor, amount - fee, fee);
-        _push(d.executor, amount - fee);
+        uint256 net = amount - penalty;
+        uint256 fee = (net * d.feeBps) / 10_000;
+        emit Payout(dealId, stage, d.executor, net - fee, fee);
+        _push(d.executor, net - fee);
         if (fee > 0) _push(feeRecipient, fee);
+        if (penalty > 0) {
+            emit PenaltyPaid(dealId, stage, d.owner, penalty);
+            _push(d.owner, penalty);
+        }
     }
 
     function _refundAll(uint256 dealId, Deal storage d) private {
@@ -582,6 +635,12 @@ contract StepEscrow {
     function getDeadlines(uint256 dealId) external view returns (uint64 createdAt, uint64 fundingSecs, uint64 stageSecs, uint64 disputeSecs) {
         Deal storage d = _deal(dealId);
         return (d.createdAt, d.deadlines.fundingSecs, d.deadlines.stageSecs, d.deadlines.disputeSecs);
+    }
+
+    /// @notice Неустойка: ставка и предел сделки, начисленная по этапу сумма.
+    function getPenalty(uint256 dealId, uint256 stage) external view returns (uint16 bpsPerDay, uint16 capBps, uint128 penalty) {
+        Deal storage d = _deal(dealId);
+        return (d.penalty.bpsPerDay, d.penalty.capBps, _stage(d, stage).penalty);
     }
 
     function getStageTimes(uint256 dealId, uint256 stage) external view returns (uint64 activeSince, uint64 disputedAt) {

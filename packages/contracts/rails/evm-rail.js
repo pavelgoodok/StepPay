@@ -29,18 +29,22 @@ class EvmRail {
   async open(spec) {
     const zero = ethers.ZeroAddress;
     const day = 86_400;
+    // все условия одной структурой, включая неустойку (createDealWith)
     await (
-      await this.escrow.createDealFull(
-        MODE[spec.mode],
-        this.who[spec.executor].address,
-        spec.owner ? this.who[spec.owner].address : zero,
-        spec.arbiter ? this.who[spec.arbiter].address : zero,
+      await this.escrow.createDealWith(
+        {
+          mode: MODE[spec.mode],
+          executor: this.who[spec.executor].address,
+          owner: spec.owner ? this.who[spec.owner].address : zero,
+          arbiter: spec.arbiter ? this.who[spec.arbiter].address : zero,
+          autoAcceptSecs: spec.autoAcceptDays * 86_400,
+          feeBps: spec.feeBps,
+          contractHash: ethers.id("rail-deal"),
+          deadlines: { fundingSecs: (spec.fundingDeadlineDays ?? 0) * day, stageSecs: (spec.stageDeadlineDays ?? 0) * day, disputeSecs: (spec.disputeDays ?? 0) * day },
+          backupArbiter: spec.backupArbiter ? this.who[spec.backupArbiter].address : zero,
+          penalty: { bpsPerDay: spec.penaltyBpsPerDay ?? 0, capBps: spec.penaltyCapBps ?? 0 },
+        },
         spec.stages.map(BigInt),
-        spec.autoAcceptDays * 86_400,
-        spec.feeBps,
-        ethers.id("rail-deal"),
-        [(spec.fundingDeadlineDays ?? 0) * day, (spec.stageDeadlineDays ?? 0) * day, (spec.disputeDays ?? 0) * day],
-        spec.backupArbiter ? this.who[spec.backupArbiter].address : zero,
       )
     ).wait();
   }

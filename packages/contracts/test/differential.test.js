@@ -44,6 +44,8 @@ function stagePlan(mode, c, stage) {
       waitArb.map((w) => [submit, { do: "wait", seconds: w }, { do: "autoAccept", by: "stranger", stage }]),
       waitArb.map((w) => [submit, { do: "dispute", by: c.owner, stage }, { do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "dispute", stage }, { do: "resolve", by: c.arbiter, stage, pay: true }]),
       waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "expire", by: "stranger", what: "stage", stage }, submit, { do: "approve", by: c.owner, stage }]),
+      // сдача с опозданием: при неустойке часть суммы возвращается заказчику, решение через спор
+      waitArb.map((w) => [{ do: "wait", seconds: w }, { do: "wait", seconds: w }, submit, { do: "dispute", by: c.owner, stage }, { do: "resolve", by: c.arbiter, stage, pay: true }]),
       // запасной приемщик пробует решить спор через w после его открытия
       waitArb.map((w) => [submit, { do: "dispute", by: c.owner, stage }, { do: "wait", seconds: w }, { do: "resolve", by: c.backup, stage, pay: true }]),
     );
@@ -76,6 +78,8 @@ const scenarioArb = fc.constantFrom("own", "crowdfunding", "grant").chain((mode)
       // пауза перед резервом: сбор может истечь до того, как деньги внесены
       gap: waitArb,
       withBackup: fc.boolean(),
+      // неустойка: ставка за сутки и предел в базисных пунктах (только своя сделка со сроком этапа)
+      penalty: fc.constantFrom(undefined, undefined, [50, 1000], [100, 300], [200, 200]),
       // взносы: заказчик вносит всю сумму, спонсоры произвольные доли (в копейках, неровные)
       shares: fc.array(fc.integer({ min: 1, max: 100_000_00 }), { minLength: 3, maxLength: 3 }),
       order: fc.shuffledSubarray(["sign-a", "sign-b", "reserve"], { minLength: 3, maxLength: 3 }),
@@ -119,7 +123,7 @@ function build({ mode, c, base, stageAmounts, total, plans }) {
   return {
     name: "случайный",
     balances,
-    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee, fundingDeadlineDays: base.fundingDays, stageDeadlineDays: base.stageDays, disputeDays: mode === "own" ? base.disputeDays : undefined, backupArbiter: mode === "own" && base.disputeDays && base.withBackup ? c.backup : undefined },
+    deal: { mode, executor: c.executor, owner: c.owner, arbiter: c.arbiter, stages: stageAmounts, autoAcceptDays: mode === "grant" ? 0 : base.days, feeBps: base.fee, fundingDeadlineDays: base.fundingDays, stageDeadlineDays: base.stageDays, disputeDays: mode === "own" ? base.disputeDays : undefined, backupArbiter: mode === "own" && base.disputeDays && base.withBackup ? c.backup : undefined, ...(mode === "own" && base.stageDays && base.penalty ? { penaltyBpsPerDay: base.penalty[0], penaltyCapBps: base.penalty[1] } : {}) },
     steps,
     expect: { balances: { ...balances, platform: 0 }, status: "funding", stages: [] },
   };

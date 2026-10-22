@@ -107,6 +107,9 @@ export interface CreateDealInput {
   fundingDeadlineDays?: number;
   stageDeadlineDays?: number;
   disputeDays?: number;
+  /** неустойка за каждые начатые сутки просрочки этапа и ее предел, в базисных пунктах суммы этапа; нужен срок этапа */
+  penaltyBpsPerDay?: number;
+  penaltyCapBps?: number;
   feeBps?: number;
   /** draft: условия согласует исполнитель (только «Свой проект»); по умолчанию funding */
   status?: "draft" | "funding";
@@ -130,6 +133,8 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     if (!input.disputeDays) fail("Запасной приемщик работает вместе со сроком на спор");
     if ([input.arbiterId, input.executorId, input.ownerId].includes(input.backupArbiterId)) fail("Запасной приемщик должен быть независимым от сторон и основного приемщика");
   }
+
+  checkPenalty(input.mode, input.stageDeadlineDays, input.penaltyBpsPerDay, input.penaltyCapBps);
 
   const stages: Stage[] = input.stages.map((x, i) => ({
     id: x.id ?? `s${i + 1}`,
@@ -156,6 +161,8 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
     fundingDeadlineMs: input.fundingDeadlineDays ? input.fundingDeadlineDays * DAY_MS : undefined,
     stageDeadlineMs: input.stageDeadlineDays ? input.stageDeadlineDays * DAY_MS : undefined,
     disputeMs: input.disputeDays ? input.disputeDays * DAY_MS : undefined,
+    penaltyBpsPerDay: input.penaltyBpsPerDay || undefined,
+    penaltyCapBps: input.penaltyCapBps || undefined,
     feeBps: input.feeBps ?? 0,
     createdAt: input.at,
     signing: input.signed ? true : undefined,
@@ -166,6 +173,33 @@ export const createDeal = mutate((s, input: CreateDealInput) => {
   record(nd, input.at, "created", "system", { mode: nd.mode, target: nd.target, status: nd.status, contract: nd.contract?.hash });
 });
 
+export const MAX_PENALTY_BPS = 5000;
+
+/** Неустойка: только своя сделка со сроком этапа, ставка не больше предела, предел не больше половины этапа. Как в StepEscrow. */
+function checkPenalty(mode: Mode, stageDeadlineDays: number | undefined, rate: number | undefined, cap: number | undefined) {
+  if (!rate && !cap) return;
+  if (mode !== "own") fail("Неустойка бывает только в личной сделке");
+  if (!stageDeadlineDays) fail("Для неустойки нужен срок этапа");
+  if (!Number.isInteger(rate) || !Number.isInteger(cap) || !rate || !cap || rate <= 0 || cap <= 0) fail("Укажите ставку неустойки и ее предел");
+  if (rate! > cap!) fail("Ставка неустойки за сутки не может быть больше предела");
+  if (cap! > MAX_PENALTY_BPS) fail("Предел неустойки не больше 50 % суммы этапа");
+}
+
+/** Сколько этап еще можно сдать после срока: пока неустойка не дошла до предела. */
+export function penaltyGraceMs(d: Pick<Deal, "penaltyBpsPerDay" | "penaltyCapBps">): number {
+  if (!d.penaltyBpsPerDay || !d.penaltyCapBps) return 0;
+  return Math.ceil(d.penaltyCapBps / d.penaltyBpsPerDay) * DAY_MS;
+}
+
+/** Неустойка при сдаче в момент at: сдача в момент срока и позже считается просрочкой с первых суток, далее за каждые начатые сутки. */
+export function penaltyAt(d: Deal, st: Stage, at: number): Money {
+  if (!d.penaltyBpsPerDay || !d.penaltyCapBps || !d.stageDeadlineMs || st.activeSince === undefined) return 0;
+  const due = st.activeSince + d.stageDeadlineMs;
+  if (at < due) return 0;
+  const bps = Math.min((Math.floor((at - due) / DAY_MS) + 1) * d.penaltyBpsPerDay, d.penaltyCapBps);
+  return Math.floor((st.amount * bps) / 10000);
+}
+
 function toStages(items: NonNullable<CreateDealInput["stages"]>): Stage[] {
   if (items.length === 0) fail("Нужен хотя бы один этап");
   if (items.some((x) => !x.title.trim() || !Number.isInteger(x.amount) || x.amount <= 0)) fail("У каждого этапа нужны название и сумма");
@@ -174,7 +208,7 @@ function toStages(items: NonNullable<CreateDealInput["stages"]>): Stage[] {
 
 /** Согласование: исполнитель правит название, описание и этапы, пока условия не отправлены заказчику. */
 export const updateTerms = mutate(
-  (s, dealId: string, userId: UserId, patch: { title?: string; description?: string; stages?: CreateDealInput["stages"] }) => {
+  (s, dealId: string, userId: UserId, patch: { title?: string; description?: string; stages?: CreateDealInput["stages"]; penalty?: { bpsPerDay: number; capBps: number } | null }) => {
     const d = getDeal(s, dealId);
     if (d.status !== "draft") fail("Условия уже отправлены, чтобы изменить их, верните сделку на согласование");
     if (userId !== d.executorId) fail("Условия правит исполнитель");
@@ -186,6 +220,12 @@ export const updateTerms = mutate(
     if (patch.stages) {
       d.stages = toStages(patch.stages);
       d.target = d.stages.reduce((a, x) => a + x.amount, 0);
+    }
+    if (patch.penalty !== undefined) {
+      const p = patch.penalty;
+      checkPenalty(d.mode, d.stageDeadlineMs ? d.stageDeadlineMs / DAY_MS : undefined, p?.bpsPerDay, p?.capBps);
+      d.penaltyBpsPerDay = p?.bpsPerDay || undefined;
+      d.penaltyCapBps = p?.capBps || undefined;
     }
   },
 );
@@ -295,13 +335,21 @@ function payout(s: State, d: Deal, stage: Stage, at: number) {
     paid += part;
   }
   if (paid !== stage.amount) fail("Нарушен инвариант резерва");
-  const fee = Math.floor((stage.amount * d.feeBps) / 10000);
-  s.wallets[d.executorId] = (s.wallets[d.executorId] ?? 0) + stage.amount - fee;
-  log(s, at, "payout", d.executorId, stage.amount - fee, { dealId: d.id, stageId: stage.id });
-  record(d, at, "payout", "system", { amount: stage.amount - fee, fee }, stage.id);
+  // неустойка за просрочку возвращается заказчику, комиссия считается с суммы после неустойки
+  const penalty = d.ownerId ? stage.penalty ?? 0 : 0;
+  const net = stage.amount - penalty;
+  const fee = Math.floor((net * d.feeBps) / 10000);
+  s.wallets[d.executorId] = (s.wallets[d.executorId] ?? 0) + net - fee;
+  log(s, at, "payout", d.executorId, net - fee, { dealId: d.id, stageId: stage.id });
+  record(d, at, "payout", "system", { amount: net - fee, fee, ...(penalty ? { penalty } : {}) }, stage.id);
   if (fee > 0) {
     s.wallets[PLATFORM_ID] = (s.wallets[PLATFORM_ID] ?? 0) + fee;
     log(s, at, "fee", PLATFORM_ID, fee, { dealId: d.id, stageId: stage.id });
+  }
+  if (penalty > 0) {
+    s.wallets[d.ownerId!] = (s.wallets[d.ownerId!] ?? 0) + penalty;
+    log(s, at, "penalty", d.ownerId!, penalty, { dealId: d.id, stageId: stage.id, note: "Неустойка за просрочку этапа" });
+    record(d, at, "penalty", "system", { to: d.ownerId, amount: penalty }, stage.id);
   }
 }
 
@@ -363,7 +411,9 @@ export const submitStage = mutate(
     st.submittedAt = at;
     st.evidence = evidence;
     st.votes = {};
-    record(d, at, "stage_submitted", userId, { note: evidence.note, photos: evidence.photos?.length ? evidence.photos : undefined }, st.id);
+    const penalty = penaltyAt(d, st, at);
+    st.penalty = penalty || undefined;
+    record(d, at, "stage_submitted", userId, { note: evidence.note, photos: evidence.photos?.length ? evidence.photos : undefined, ...(penalty ? { penalty } : {}) }, st.id);
   },
 );
 
@@ -525,7 +575,7 @@ export const expireStage = mutate((s, dealId: string, stageId: string, at: numbe
   const d = getDeal(s, dealId);
   const st = getStage(d, stageId);
   if (d.status !== "active" || st.status !== "active") fail("Этап сейчас не в работе");
-  if (!d.stageDeadlineMs || st.activeSince === undefined || at < st.activeSince + d.stageDeadlineMs) fail("Срок этапа еще не истек");
+  if (!d.stageDeadlineMs || st.activeSince === undefined || at < st.activeSince + d.stageDeadlineMs + penaltyGraceMs(d)) fail("Срок этапа еще не истек");
   failDeal(s, d, st, at, "Срок этапа истек", "expired");
 });
 
@@ -549,7 +599,7 @@ export const tick = mutate((s, now: number) => {
       continue;
     }
     if (d.status !== "active") continue;
-    const overdue = d.stages.find((st) => (st.status === "active" && d.stageDeadlineMs && st.activeSince !== undefined && now >= st.activeSince + d.stageDeadlineMs) || (st.status === "disputed" && d.disputeMs && st.disputedAt !== undefined && now >= st.disputedAt + d.disputeMs));
+    const overdue = d.stages.find((st) => (st.status === "active" && d.stageDeadlineMs && st.activeSince !== undefined && now >= st.activeSince + d.stageDeadlineMs + penaltyGraceMs(d)) || (st.status === "disputed" && d.disputeMs && st.disputedAt !== undefined && now >= st.disputedAt + d.disputeMs));
     if (overdue) {
       failDeal(s, d, overdue, now, overdue.status === "disputed" ? "Спор не решен в срок" : "Срок этапа истек", "expired");
       continue;

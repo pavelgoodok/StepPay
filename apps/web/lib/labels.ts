@@ -32,6 +32,7 @@ export const LEDGER_LABEL: Record<string, string> = {
   payout: "Выплата за этап",
   refund: "Возврат по сделке",
   fee: "Комиссия сервиса",
+  penalty: "Неустойка по сделке",
 };
 
 export const PROJECT_STATUS: Record<string, { text: string; tone: string }> = {

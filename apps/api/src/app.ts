@@ -808,6 +808,8 @@ export async function buildApp(opts: AppOptions) {
       title: z.string().trim().min(1).max(120).optional(),
       description: z.string().trim().max(2000).optional(),
       stages: z.array(z.object({ title: z.string().trim().min(1).max(120), amount: money, criteria: z.array(z.string().trim().max(200)).max(6).optional() })).max(8).optional(),
+      // неустойка за просрочку этапа: базисные пункты суммы этапа за начатые сутки и предел; null убирает
+      penalty: z.object({ bpsPerDay: z.number().int().min(1).max(5000), capBps: z.number().int().min(1).max(5000) }).nullable().optional(),
     }),
     (s, p, me, b) => updateTerms(s, p.id, me, b),
     "terms",

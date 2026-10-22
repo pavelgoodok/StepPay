@@ -75,7 +75,7 @@ export function registerAdminRoutes(c: Ctx) {
     if (!adminOnly(req, reply)) return;
     const q = z
       .object({
-        type: z.enum(["topup", "reserve", "payout", "refund", "fee"]).optional(),
+        type: z.enum(["topup", "reserve", "payout", "refund", "fee", "penalty"]).optional(),
         userId: z.string().max(60).optional(),
         dealId: z.string().max(80).optional(),
         q: z.string().trim().max(80).optional(),
