@@ -32,10 +32,30 @@ const keyIdOf = async (spkiB64: string) => {
   return Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, "0")).join("").slice(0, 16);
 };
 
+/** Браузер или система не умеет создавать passkey: старый браузер, нет блокировки экрана или сервисов Google, встроенный браузер приложения. */
+const unsupported = (e: unknown) => {
+  const n = (e as { name?: string })?.name;
+  const m = (e as Error)?.message ?? "";
+  return n === "NotSupportedError" || /not (implemented|supported)/i.test(m);
+};
+
+export const UNSUPPORTED =
+  "Этот браузер не поддерживает passkey. Откройте StepPay в Chrome, Safari или Samsung Internet последней версии, включите блокировку экрана (PIN, отпечаток или лицо) и войдите в аккаунт Google или Apple на устройстве. Пока можно создать ключ подписи браузера.";
+
+/** Есть ли на устройстве встроенный способ подтверждения (отпечаток, лицо, PIN). Если нет, браузер может предложить телефон или ключ безопасности. */
+export async function platformPasskeyAvailable(): Promise<boolean> {
+  try {
+    return passkeysAvailable() && (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  } catch {
+    return false;
+  }
+}
+
 const asMessage = (e: unknown) => {
   const n = (e as { name?: string })?.name;
   if (n === "NotAllowedError") return "Подтверждение отменено или не удалось. Попробуйте еще раз.";
   if (n === "InvalidStateError") return "Этот passkey уже есть на устройстве";
+  if (unsupported(e)) return UNSUPPORTED;
   return (e as Error)?.message || "Не удалось выполнить действие с passkey";
 };
 
@@ -44,17 +64,27 @@ export async function createPasskey(userId: string, name: string, label = "Passk
   try {
     const at = Date.now();
     const challenge = await sha256(JSON.stringify({ v: 1, kind: "steppay.passkey", userId, at }));
-    const cred = (await navigator.credentials.create({
-      publicKey: {
-        challenge,
-        rp: { name: "StepPay", id: location.hostname },
-        user: { id: new TextEncoder().encode(userId), name, displayName: name },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-        authenticatorSelection: { residentKey: "required", userVerification: "required" },
-        attestation: "none",
-        timeout: 60_000,
-      },
-    })) as PublicKeyCredential | null;
+    // способ (это устройство, телефон по QR-коду, ключ безопасности) предлагает сам браузер, поэтому тип устройства не ограничиваем
+    const create = (residentKey: ResidentKeyRequirement) =>
+      navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: "StepPay", id: location.hostname },
+          user: { id: new TextEncoder().encode(userId), name, displayName: name },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { residentKey, userVerification: "required" },
+          attestation: "none",
+          timeout: 60_000,
+        },
+      }) as Promise<PublicKeyCredential | null>;
+    let cred: PublicKeyCredential | null;
+    try {
+      cred = await create("required");
+    } catch (e) {
+      // старые Android не умеют обнаруживаемые ключи: такой passkey подписывает контракты, но для входа без СМС может не подойти
+      if (!unsupported(e)) throw e;
+      cred = await create("preferred");
+    }
     if (!cred) throw new Error("Passkey не создан");
     const r = cred.response as AuthenticatorAttestationResponse;
     const spki = r.getPublicKey?.();

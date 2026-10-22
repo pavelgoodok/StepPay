@@ -10,7 +10,7 @@ import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/ap
 import { rub } from "@/lib/format";
 import { PROJECT_STATUS } from "@/lib/labels";
 import { createDeviceKey, deviceKeysAvailable, forgetStoredKey, getStoredKey } from "@/lib/keys";
-import { createPasskey, passkeysAvailable } from "@/lib/passkeys";
+import { createPasskey, passkeysAvailable, platformPasskeyAvailable } from "@/lib/passkeys";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
@@ -29,12 +29,16 @@ export default function Profile() {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [platformPk, setPlatformPk] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user && deviceKeysAvailable()) void getStoredKey(user.id).then((k) => setLocalKey(k?.id ?? null)).catch(() => setLocalKey(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, keys.data]);
+  useEffect(() => {
+    void platformPasskeyAvailable().then(setPlatformPk);
+  }, []);
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
     if (typeof Notification !== "undefined") setNotif(Notification.permission === "granted");
@@ -231,6 +235,7 @@ export default function Profile() {
               </div>
             ))}
             {passkeysAvailable() && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newPasskey()}>Добавить passkey</button>}
+            {passkeysAvailable() && !platformPk && <div className="small muted">На этом устройстве не включена блокировка экрана или браузер не может хранить passkey. Браузер предложит сохранить ключ на телефоне по QR-коду или на ключе безопасности.</div>}
             {!localKey && !(keys.data ?? []).some((k) => k.kind === "passkey" && k.active) && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
           </>
         )}
