@@ -41,7 +41,7 @@ await step("заголовки", async () => {
   h("referrer-policy") ? pass("referrer-policy") : warn("referrer-policy", "нет");
   (h("content-security-policy") ?? "").includes("default-src 'none'") ? pass("CSP у ответов API") : fail("CSP у ответов API", "нет");
   if (api.startsWith("https://")) h("strict-transport-security") ? pass("HSTS") : fail("HSTS", "нет (NODE_ENV=production не задан?)");
-  else if (!/^http:\/\/localhost[:/]/.test(api)) warn("HTTPS", "API открыт не по https: passkey с сайта по https не заработает");
+  else if (!/^http:\/\/localhost[:/]/.test(api)) warn("HTTPS", "API открыт не по https: ключи приложения (WebCrypto) по http не работают");
   if (h("x-powered-by")) warn("x-powered-by", h("x-powered-by"));
 });
 
@@ -49,7 +49,7 @@ if (web) {
   await step("CORS", async () => {
     const origin = new URL(web).origin;
     const ok = await t(api + "/me", { method: "OPTIONS", headers: { origin, "access-control-request-method": "GET", "access-control-request-headers": "authorization" } });
-    ok.headers.get("access-control-allow-origin") === origin ? pass("CORS пускает сайт", origin) : fail("CORS пускает сайт", `ответ: ${ok.headers.get("access-control-allow-origin") ?? "нет заголовка"}. Проверьте CORS_ORIGIN, без него не работают вход и passkey`);
+    ok.headers.get("access-control-allow-origin") === origin ? pass("CORS пускает сайт", origin) : fail("CORS пускает сайт", `ответ: ${ok.headers.get("access-control-allow-origin") ?? "нет заголовка"}. Проверьте CORS_ORIGIN, без него не работает вход`);
     const bad = await t(api + "/me", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "GET" } });
     const v = bad.headers.get("access-control-allow-origin");
     v && v !== "null" ? fail("CORS не пускает чужой сайт", `разрешил ${v}`) : pass("CORS не пускает чужой сайт");
@@ -61,7 +61,7 @@ if (web) {
     csp ? (csp.includes("frame-ancestors") ? pass("CSP сайта") : warn("CSP сайта", "без frame-ancestors")) : warn("CSP сайта", "нет (проверьте сборку production)");
     if (csp && !csp.includes(new URL(api).origin)) fail("CSP сайта разрешает запросы к API", `в connect-src нет ${new URL(api).origin}: проверьте NEXT_PUBLIC_API_URL при сборке`);
     else if (csp) pass("CSP сайта разрешает запросы к API");
-    web.startsWith("https://") || web.startsWith("http://localhost") ? pass("сайт по https") : warn("сайт по https", "passkey работает только по https или на localhost");
+    web.startsWith("https://") || web.startsWith("http://localhost") ? pass("сайт по https") : warn("сайт по https", "ключи приложения работают только по https или на localhost");
   });
 }
 
@@ -85,8 +85,12 @@ await step("режим демо", async () => {
   list.length === 0 ? (d.status === 404 || d.status === 400 ? pass("вход под демо-администратором закрыт") : fail("вход под демо-администратором закрыт", `статус ${d.status}`)) : warn("вход под демо-администратором", "доступен, пока включено демо");
 });
 
-await step("passkey", async () => {
-  const c = await t(api + "/auth/passkey/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+await step("вход администратора", async () => {
+  const c = await t(api + "/auth/admin/enter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: "AAAA-AAAA" }) });
+  c.status === 401 ? pass("вход администратора по коду закрыт без входа") : fail("вход администратора по коду закрыт без входа", `статус ${c.status}`);
+  const p = await t(api + "/auth/passkey/challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  p.status === 404 ? pass("passkey выключены") : warn("passkey выключены", `статус ${p.status}: включены переменной PASSKEYS=1`);
+});
   const j = c.ok ? await c.json() : {};
   j.challenge ? pass("passkey: запрос на вход выдается") : fail("passkey: запрос на вход выдается", `статус ${c.status}`);
   const bad = await t(api + "/auth/passkey/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ challenge: "x", credentialId: "x", userHandle: "eA==", authenticatorData: "x", clientDataJSON: "x", signature: "x" }) });

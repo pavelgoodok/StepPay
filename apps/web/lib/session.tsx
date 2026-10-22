@@ -22,8 +22,10 @@ interface Session {
   completeLogin(token: string): Promise<void>;
   logout(): void;
   toast(text: string, tone?: "ok" | "err"): void;
-  /** администратор в сессии без passkey: доступно только управление ключами */
-  adminLocked: boolean;
+  /** номер администратора вошел без кода доступа: виден обычный профиль и кнопка входа администратора */
+  adminEntry: { codeSet: boolean } | null;
+  /** открывает права администратора кодом доступа */
+  enterAdmin(code: string): Promise<void>;
 }
 
 /** Шина обновлений: SSE-сигнал «сделка изменилась» будит экраны, которые показывают данные. */
@@ -52,7 +54,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "ok" | "err" }[]>([]);
-  const [adminLocked, setAdminLocked] = useState(false);
+  const [adminEntry, setAdminEntry] = useState<{ codeSet: boolean } | null>(null);
   const lastFree = useRef<number | null>(null);
 
   // оболочка приложения рисуется сразу из сохраненного профиля, без пустого экрана и прыжков; свежие данные приходят следом
@@ -78,10 +80,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; chatUnread?: number; features?: { topup: boolean; chain?: boolean }; adminLocked?: boolean }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; chatUnread?: number; features?: { topup: boolean; chain?: boolean }; adminEntry?: { codeSet: boolean } }>("/me");
       setUnread(me.unread ?? 0);
       setChatUnread(me.chatUnread ?? 0);
-      setAdminLocked(!!me.adminLocked);
+      setAdminEntry(me.adminEntry ?? null);
       setUser(me.user);
       if (me.features) setFeatures(me.features);
       setWallet(me.wallet);
@@ -99,6 +101,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [toast]);
+
+  // вход администратора: код доступа обменивается на сессию с правами администратора
+  const enterAdmin = useCallback(
+    async (code: string) => {
+      const r = await api<{ token: string }>("/auth/admin/enter", { method: "POST", body: { code } });
+      setToken(r.token);
+      await refresh();
+    },
+    [refresh],
+  );
 
   const setMode = useCallback(async (kind: "customer" | "executor") => {
     await api("/me/mode", { method: "POST", body: { kind } });
@@ -186,7 +198,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ user, wallet, unread, chatUnread, features, users, ready, refresh, setMode, login, completeLogin, logout, toast, adminLocked }}>
+    <Ctx.Provider value={{ user, wallet, unread, chatUnread, features, users, ready, refresh, setMode, login, completeLogin, logout, toast, adminEntry, enterAdmin }}>
       {children}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (

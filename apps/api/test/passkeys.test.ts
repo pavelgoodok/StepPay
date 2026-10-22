@@ -46,7 +46,7 @@ function authenticator(opts: { host?: string; flags?: { create?: number; get?: n
 
 async function setup(corsOrigin?: string, signaturePolicy?: "any" | "device" | "passkey", adminRequirePasskey?: boolean) {
   const now = Date.now();
-  const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => now, corsOrigin, signaturePolicy, adminRequirePasskey });
+  const app = await buildApp({ store: new MemoryStore(), secret: "s", now: () => now, corsOrigin, signaturePolicy, adminRequireKey: adminRequirePasskey, passkeys: true });
   const tokens: Record<string, string> = {};
   for (const id of ["anna", "ivan", "admin"]) tokens[id] = (await app.inject({ method: "POST", url: "/auth/demo", payload: { userId: id } })).json().token;
   const call = async (who: string, method: "GET" | "POST", url: string, payload?: unknown) => {
@@ -185,14 +185,15 @@ describe("passkeys (WebAuthn)", () => {
     expect((await call("ivan", "POST", `/deals/${id}/sign`, { proof: a.get(signMessage(id, hash, "ivan", now)) })).status).toBe(200);
   });
 
-  it("администратор при включенном требовании работает только в сессии по passkey", async () => {
+  it("администратор при включенном требовании работает только в сессии, подтвержденной ключом (passkey)", async () => {
     const { app, call, now, post } = await setup(undefined, undefined, true);
     // сессия по СМС или демо: можно управлять ключами, остальное закрыто
     expect((await call("admin", "GET", "/admin/projects")).status).toBe(403);
-    expect((await call("admin", "GET", "/deals")).status).toBe(403);
+    expect((await call("admin", "GET", "/deals")).status).toBe(200); // как обычный участник
     const me = await call("admin", "GET", "/me");
     expect(me.status).toBe(200);
-    expect(me.body.adminLocked).toBe(true);
+    expect(me.body.adminEntry).toBeDefined();
+    expect(me.body.user.role).toBe("user");
     const a = authenticator();
     expect((await call("admin", "POST", "/me/passkeys", a.create("admin", now))).status).toBe(200);
     expect((await call("admin", "GET", "/me/keys")).status).toBe(200);
@@ -203,7 +204,7 @@ describe("passkeys (WebAuthn)", () => {
     const h = { authorization: `Bearer ${login.body.token}` };
     expect(login.body.token).toMatch(/^p2\./);
     expect((await app.inject({ method: "GET", url: "/admin/projects", headers: h })).statusCode).toBe(200);
-    expect((await app.inject({ method: "GET", url: "/me", headers: h })).json().adminLocked).toBeUndefined();
+    expect((await app.inject({ method: "GET", url: "/me", headers: h })).json().adminEntry).toBeUndefined();
   });
 
   it("у обычных пользователей и в демо без требования ничего не меняется", async () => {

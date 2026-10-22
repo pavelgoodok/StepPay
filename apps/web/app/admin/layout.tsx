@@ -19,7 +19,7 @@ const NAV = [
 ] as const;
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { user, ready, logout, adminLocked } = useSession();
+  const { user, ready, logout } = useSession();
   const router = useRouter();
   const path = usePathname();
   const isAdmin = user?.role === "admin";
@@ -66,11 +66,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="adm-main">
-        {adminLocked && (
-          <div className="note warn" style={{ marginBottom: 16 }}>
-            Администратору нужен вход по passkey. <Link href="/profile" style={{ fontWeight: 700 }}>Добавьте passkey в профиле</Link> и войдите с ним.
-          </div>
-        )}
         {children}
       </main>
     </div>

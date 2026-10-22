@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 
 /**
  * Токен входа: v2.<пользователь>.<время выдачи>.<подпись>. Живет 30 дней, и его можно отозвать:
@@ -30,9 +30,9 @@ function open(secret: string, kind: "v2" | "p2" | "t", token: string | undefined
   return { userId: unb64(parts[1]!), at };
 }
 
-export type LoginMethod = "sms" | "passkey";
-/** Токен помнит способ входа: p2 выдается только после входа по passkey, v2 после СМС или демо-входа. */
-export const makeToken = (secret: string, userId: string, now: number, method: LoginMethod = "sms") => seal(secret, method === "passkey" ? "p2" : "v2", userId, now);
+export type LoginMethod = "sms" | "key";
+/** Токен помнит способ входа: p2 выдается после ввода кода доступа администратора (или passkey), v2 после СМС или демо-входа. */
+export const makeToken = (secret: string, userId: string, now: number, method: LoginMethod = "sms") => seal(secret, method === "key" ? "p2" : "v2", userId, now);
 export const makeTicket = (secret: string, userId: string, now: number) => seal(secret, "t", userId, now);
 
 /** validAfter: момент, раньше которого выданные токены пользователя отозваны. */
@@ -48,7 +48,7 @@ export function verifyTicket(secret: string, ticket: string | undefined, now: nu
 }
 
 /**
- * Запрос для входа по passkey: c.<время>.<случайное>.<подпись>. Сервер ничего не хранит до ответа,
+ * Запрос для подтверждения входа (ключ приложения или passkey): c.<время>.<случайное>.<подпись>. Сервер ничего не хранит до ответа,
  * срок жизни 2 минуты, одноразовость обеспечивает список использованных запросов в памяти.
  */
 export function makeLoginChallenge(secret: string, now: number, nonce: string): string {
@@ -70,7 +70,26 @@ export function openLoginChallenge(secret: string, challenge: string, now: numbe
 
 /** Способ входа, с которым выдан токен (сам токен проверяется отдельно через verifyToken). */
 export function tokenMethod(secret: string, token: string | undefined): LoginMethod | null {
-  if (open(secret, "p2", token)) return "passkey";
+  if (open(secret, "p2", token)) return "key";
   if (open(secret, "v2", token)) return "sms";
   return null;
+}
+
+/** Код доступа администратора: 8 знаков без похожих букв и цифр, вида ABCD-EFGH. Создается приложением и показывается один раз. */
+const CODE_ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export function newAdminCode(): string {
+  const c = Array.from({ length: 8 }, () => CODE_ABC[randomInt(CODE_ABC.length)]).join("");
+  return `${c.slice(0, 4)}-${c.slice(4)}`;
+}
+const normCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+export function hashAdminCode(code: string): string {
+  const salt = randomBytes(16);
+  return `s1$${salt.toString("base64url")}$${scryptSync(normCode(code), salt, 32).toString("base64url")}`;
+}
+export function checkAdminCode(code: string, stored: string | undefined): boolean {
+  const [v, salt, hash] = (stored ?? "").split("$");
+  if (v !== "s1" || !salt || !hash) return false;
+  const a = scryptSync(normCode(code), Buffer.from(salt, "base64url"), 32);
+  const b = Buffer.from(hash, "base64url");
+  return a.length === b.length && timingSafeEqual(a, b);
 }

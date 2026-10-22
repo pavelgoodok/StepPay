@@ -55,7 +55,7 @@ describe("ключи подписи на устройстве", () => {
     expect((await call("anna", "GET", "/me/keys")).body).toEqual([]); // чужие ключи не видны
     expect((await call("anna", "POST", `/me/keys/${d.id}/revoke`)).status).toBe(404);
     expect((await call("ivan", "POST", `/me/keys/${d.id}/revoke`)).status).toBe(200);
-    expect((await call("ivan", "GET", "/me/keys")).body[0]).toMatchObject({ active: false });
+    expect((await call("ivan", "GET", "/me/keys")).body).toEqual([]); // отозванный ключ в списке не показывается
     for (let i = 0; i < 5; i++) expect((await register("olga")).status).toBe(200);
     expect((await register("olga")).status).toBe(400); // не больше пяти активных
   });

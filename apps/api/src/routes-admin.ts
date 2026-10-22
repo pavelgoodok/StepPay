@@ -215,4 +215,31 @@ export function registerAdminRoutes(c: Ctx) {
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       .slice(0, q.limit);
   });
+
+  // сброс ключей приложения: участник или администратор потерял устройство и создаст новый ключ при следующем входе
+  app.post("/admin/users/:id/keys/reset", async (req, reply) => {
+    const me = adminOnly(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string().max(80) }).parse(req.params);
+    if (!dir.get(id)) return reply.code(404).send({ error: "Участник не найден" });
+    if (id === me) return reply.code(400).send({ error: "Свои ключи отзываются в профиле" });
+    const active = dir.keysOf(id).filter((k) => !k.revokedAt);
+    for (const k of active) await dir.revokeKey(id, k.id, Date.now());
+    await dir.revokeSessions(id, Date.now());
+    await platform.logAudit(me, "Сброс ключей приложения", id, `ключей: ${active.length}`);
+    return { revoked: active.length };
+  });
+
+  // сброс кода доступа администратора: код утерян, при следующем входе администратор создаст новый
+  app.post("/admin/users/:id/admin-code/reset", async (req, reply) => {
+    const me = adminOnly(req, reply);
+    if (!me) return;
+    const { id } = z.object({ id: z.string().max(80) }).parse(req.params);
+    if (!dir.get(id)) return reply.code(404).send({ error: "Участник не найден" });
+    if (id === me) return reply.code(400).send({ error: "Свой код сбрасывает другой администратор" });
+    await dir.setAdminCode(id, undefined);
+    await dir.revokeSessions(id, Date.now());
+    await platform.logAudit(me, "Сброс кода доступа администратора", id);
+    return { ok: true };
+  });
 }

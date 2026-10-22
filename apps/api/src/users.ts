@@ -53,6 +53,8 @@ export interface RegisteredUser {
   sessionsFrom?: number;
   /** ключи подписи на устройствах */
   keys?: DeviceKey[];
+  /** код доступа администратора: соль и хеш scrypt, сам код не хранится */
+  adminCode?: string;
   /** ссылка вида /uploads/... на аватарку */
   avatar?: string;
   /** кем человек зарегистрировался: ищет исполнителя или сам исполнитель; права это не меняет */
@@ -132,6 +134,22 @@ export class Directory {
       r.sessionsFrom = at;
       await this.persist([...this.registered.values()]);
     } else this.demoSessionsFrom.set(id, at);
+  }
+
+  /** Код доступа администратора (хеш). У демо-аккаунтов хранится в памяти. */
+  private demoAdminCodes = new Map<string, string>();
+
+  adminCodeOf(id: string): string | undefined {
+    return this.registered.get(id)?.adminCode ?? this.demoAdminCodes.get(id);
+  }
+
+  async setAdminCode(id: string, hash: string | undefined) {
+    const r = this.registered.get(id);
+    if (r) {
+      r.adminCode = hash;
+      await this.persist([...this.registered.values()]);
+    } else if (hash) this.demoAdminCodes.set(id, hash);
+    else this.demoAdminCodes.delete(id);
   }
 
   /** Ключи подписи. У демо-аккаунтов хранятся в памяти и пропадают при перезапуске. */

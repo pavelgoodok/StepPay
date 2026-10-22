@@ -23,7 +23,7 @@ const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Панель", icon: "shiel
 const decoOf = (p: string) => (/^\/(deals|wallet|chats)/.test(p) ? "ring" : "s");
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, ready, adminLocked, unread, chatUnread } = useSession();
+  const { user, ready, unread, chatUnread } = useSession();
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
@@ -51,11 +51,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell">
-      {adminLocked && (
-        <div className="note warn" style={{ margin: "12px 16px 0" }}>
-          Администратору нужен вход по passkey. <Link href="/profile" style={{ fontWeight: 700 }}>Добавьте passkey в профиле</Link> и войдите с ним.
-        </div>
-      )}
       <div className={`deco deco-${decoOf(path)}`} aria-hidden />
       {user ? children : <div className="page"><div className="skeleton" /></div>}
       {demo && (

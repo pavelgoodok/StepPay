@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHmac, randomBytes } from "node:crypto";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
@@ -26,7 +27,7 @@ import {
   type Deal,
   type State, canonicalJson, contractTerms, sealContract, signContract, signatureStatus, verifyContract, verifyJournal, linkChain } from "@steppay/engine";
 import { createPlanner, type Planner } from "./ai";
-import { makeLoginChallenge, makeTicket, makeToken, openLoginChallenge, tokenMethod, verifyTicket, verifyToken } from "./auth";
+import { checkAdminCode, hashAdminCode, makeLoginChallenge, makeTicket, makeToken, newAdminCode, openLoginChallenge, tokenMethod, verifyTicket, verifyToken } from "./auth";
 import { Hub } from "./hub";
 import { DEMO_DOC, DEMO_DOC_ID, DEMO_PHOTO, DEMO_PHOTO_ID } from "./demo-photo";
 import { ANCHOR_GENESIS, buildAnchor, changedSince, checkAgainstAnchors, verifyAnchorChain, verifyMoney, type Anchor } from "@steppay/engine";
@@ -83,8 +84,12 @@ export interface AppOptions {
   fnsCheck?: ((a: AuthorProfile, now: number) => Promise<FnsCheck>) | false;
   /** ключ шифрования закрытых файлов (32 байта, hex или base64); без него выводится из секрета */
   fileKey?: string;
-  /** администратор работает только в сессии, начатой входом по passkey; по умолчанию включено вне демо */
+  /** права администратора только в сессии, открытой кодом доступа; по умолчанию включено вне демо */
+  adminRequireKey?: boolean;
+  /** @deprecated старое имя adminRequireKey */
   adminRequirePasskey?: boolean;
+  /** passkey (WebAuthn): вход и подпись; по умолчанию выключено */
+  passkeys?: boolean;
   /** как часто фиксировать якорь истории (мс), по умолчанию час */
   anchorEveryMs?: number;
   /** публикация якоря вне сервера: внешний журнал, сеть, свидетель. Без нее якоря только хранятся и отдаются по /anchors */
@@ -181,12 +186,15 @@ export async function buildApp(opts: AppOptions) {
     if (sg.proof) return checkSignProof(sg.proof, { dealId: d.id, contract: sg.hash, userId }, undefined, origins) === null;
     return sg.sig === signFor(d.id, sg.hash, userId);
   };
+  /** Действующие ключи пользователя; passkey учитываются, только если они включены. */
+  const usableKeys = (id: string) => dir.keysOf(id).filter((k) => !k.revokedAt && (opts.passkeys || k.kind !== "passkey"));
+  const hasKey = (id: string) => usableKeys(id).length > 0;
   /** Подписывает за пользователя, если он сторона контракта и еще не подписал. */
   const signIfNeeded = (s: State, dealId: string, userId: string, at: number): State => {
     const d = s.deals[dealId];
     if (!d?.signing || !d.contract || d.status !== "funding") return s;
     // у пользователя есть ключ или включена строгая политика: подписывает он сам, ключом устройства
-    if (opts.signaturePolicy === "device" || opts.signaturePolicy === "passkey" || dir.hasActiveKey(userId)) return s;
+    if (opts.signaturePolicy === "device" || opts.signaturePolicy === "passkey" || hasKey(userId)) return s;
     const st = signatureStatus(d);
     if (!st.required.includes(userId) || st.signed.includes(userId)) return s;
     return signContract(s, dealId, userId, at, signFor(dealId, d.contract.hash, userId));
@@ -353,9 +361,19 @@ export async function buildApp(opts: AppOptions) {
     return payload;
   });
 
-  const adminRequirePasskey = opts.adminRequirePasskey ?? !demoOn;
-  /** Сессия администратора без passkey при включенном требовании. */
-  const adminLocked = (id: string, raw: string | undefined) => adminRequirePasskey && dir.isAdmin(id) && tokenMethod(opts.secret, raw) !== "passkey";
+  const adminRequireKey = opts.adminRequireKey ?? opts.adminRequirePasskey ?? !demoOn;
+  /** Номер администратора вошел по СМС без кода доступа: в этом запросе он обычный участник. */
+  const adminLocked = (id: string, raw: string | undefined) => adminRequireKey && rawIsAdmin(id) && tokenMethod(opts.secret, raw) !== "key";
+  // права администратора зависят от сессии, поэтому проверка isAdmin учитывает текущий запрос
+  const reqCtx = new AsyncLocalStorage<{ limited?: string }>();
+  const rawIsAdmin = dir.isAdmin.bind(dir);
+  dir.isAdmin = (id: string) => rawIsAdmin(id) && reqCtx.getStore()?.limited !== id;
+  app.addHook("onRequest", (req, _reply, done) => {
+    const h = req.headers.authorization;
+    const raw = h?.startsWith("Bearer ") ? h.slice(7) : undefined;
+    const id = raw ? verifyToken(opts.secret, raw, Date.now(), (u) => dir.sessionsFrom(u)) : null;
+    reqCtx.run({ limited: id && adminLocked(id, raw) ? id : undefined }, done);
+  });
 
   const authed = (req: FastifyRequest, reply: FastifyReply): string | null => {
     const h = req.headers.authorization;
@@ -363,11 +381,6 @@ export async function buildApp(opts: AppOptions) {
     const id = verifyToken(opts.secret, raw, Date.now(), (u) => dir.sessionsFrom(u));
     if (!id || !dir.get(id)) {
       reply.code(401).send({ error: "Требуется вход" });
-      return null;
-    }
-    // администратор, вошедший по СМС, может только управлять ключами: остальное требует passkey
-    if (adminLocked(id, raw) && !/^\/(me|me\/keys|me\/passkeys|auth\/logout-all)(\/|\?|$)/.test(req.url)) {
-      reply.code(403).send({ error: "Администратору нужен вход по passkey: добавьте его в профиле и войдите с ним" });
       return null;
     }
     return id;
@@ -416,10 +429,52 @@ export async function buildApp(opts: AppOptions) {
     return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const, kind: dir.get(user.id)?.kind } };
   });
 
-  // вход по passkey: без кода из СМС, подтверждение отпечатком, лицом или PIN
   const usedChallenges = new Map<string, number>();
-  app.post("/auth/passkey/challenge", async () => ({ challenge: makeLoginChallenge(opts.secret, now(), randomBytes(16).toString("base64url")) }));
-  app.post("/auth/passkey/login", async (req, reply) => {
+  /** Запрос подтверждения входа одноразовый: повторно использованный отклоняется. */
+  const takeChallenge = (challenge: string) => {
+    const t = now();
+    for (const [k, at] of usedChallenges) if (t - at > 5 * 60_000) usedChallenges.delete(k);
+    const ch = openLoginChallenge(opts.secret, challenge, t);
+    if (!ch || usedChallenges.has(ch.nonce)) return false;
+    usedChallenges.set(ch.nonce, t);
+    return true;
+  };
+
+  // вход администратора: номер из ADMIN_PHONES входит по СМС как обычный участник, права открывает код доступа.
+  // Код создается приложением при первом входе, показывается один раз, на сервере хранится только хеш.
+  const codeFails = new Map<string, number[]>();
+  app.post("/auth/admin/code", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    if (!rawIsAdmin(me)) return reply.code(403).send({ error: "Вход администратора недоступен для этого номера" });
+    if (dir.adminCodeOf(me)) return reply.code(409).send({ error: "Код доступа уже создан. Если он утерян, его сбрасывает другой администратор" });
+    const code = newAdminCode();
+    await dir.setAdminCode(me, hashAdminCode(code));
+    await platform.logAudit(me, "Создан код доступа администратора", me);
+    return { code };
+  });
+  app.post("/auth/admin/enter", async (req, reply) => {
+    const me = authed(req, reply);
+    if (!me) return;
+    const { code } = z.object({ code: z.string().max(40) }).parse(req.body);
+    if (!rawIsAdmin(me)) return reply.code(403).send({ error: "Вход администратора недоступен для этого номера" });
+    const t = now();
+    const fails = (codeFails.get(me) ?? []).filter((x) => t - x < 15 * 60_000);
+    if (fails.length >= 5) return reply.code(429).send({ error: "Слишком много неверных попыток, повторите через 15 минут" });
+    if (!checkAdminCode(code, dir.adminCodeOf(me))) {
+      codeFails.set(me, [...fails, t]);
+      if (fails.length + 1 >= 5) await platform.logAudit(me, "Вход администратора заблокирован после неверных кодов", me);
+      return reply.code(401).send({ error: "Неверный код доступа" });
+    }
+    codeFails.delete(me);
+    await platform.logAudit(me, "Вход администратора по коду доступа", me);
+    const user = dir.get(me)!;
+    return { token: makeToken(opts.secret, me, Date.now(), "key"), user: { id: user.id, name: user.name, role: user.role } };
+  });
+
+  // вход по passkey: без кода из СМС, подтверждение отпечатком, лицом или PIN (выключен, пока opts.passkeys не задан)
+  if (opts.passkeys) app.post("/auth/passkey/challenge", async () => ({ challenge: makeLoginChallenge(opts.secret, now(), randomBytes(16).toString("base64url")) }));
+  if (opts.passkeys) app.post("/auth/passkey/login", async (req, reply) => {
     const b = z
       .object({
         challenge: z.string().max(200),
@@ -431,18 +486,14 @@ export async function buildApp(opts: AppOptions) {
       })
       .parse(req.body);
     const fail = () => reply.code(401).send({ error: "Не удалось войти по passkey" });
-    const t = now();
-    for (const [k, at] of usedChallenges) if (t - at > 5 * 60_000) usedChallenges.delete(k);
-    const ch = openLoginChallenge(opts.secret, b.challenge, t);
-    if (!ch || usedChallenges.has(ch.nonce)) return fail();
-    usedChallenges.set(ch.nonce, t);
+    if (!takeChallenge(b.challenge)) return fail();
     const userId = Buffer.from(b.userHandle, "base64").toString("utf8");
     const user = dir.get(userId);
     const key = dir.keysOf(userId).find((k) => k.kind === "passkey" && !k.revokedAt && k.credentialId === b.credentialId);
     if (!user || !key) return fail();
     if (checkLoginAssertion(key.publicKey, b, b.challenge, origins) !== null) return fail();
     if (user.role === "admin") await platform.logAudit(userId, "Вход администратора по passkey", key.id);
-    return { token: makeToken(opts.secret, userId, Date.now(), "passkey"), user: { id: user.id, name: user.name, role: user.role } };
+    return { token: makeToken(opts.secret, userId, Date.now(), "key"), user: { id: user.id, name: user.name, role: user.role } };
   });
 
   // поиск исполнителя при создании сделки: точный номер или имя от 3 букв
@@ -498,7 +549,8 @@ export async function buildApp(opts: AppOptions) {
     const phone = dir.phoneOf(id);
     const h = req.headers.authorization;
     const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
-    return { user: { ...u, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, chatUnread: platform.threadsOf(id).reduce((n, th) => n + platform.unread(th, id), 0), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminLocked: true } : {}) };
+    // без кода доступа номер администратора видит обычный профиль и кнопку входа администратора
+    return { user: { ...u, role: locked ? ("user" as const) : u.role, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, chatUnread: platform.threadsOf(id).reduce((n, th) => n + platform.unread(th, id), 0), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminEntry: { codeSet: !!dir.adminCodeOf(id) } } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {
@@ -778,7 +830,7 @@ export async function buildApp(opts: AppOptions) {
       if (!d?.contract) return signContract(s, p.id, me, now(), "", undefined); // движок вернет понятную ошибку
       if (b.proof) {
         const key = dir.activeKey(me, b.proof.keyId);
-        if (!key) throw new EngineError("Ключ не найден или отозван: создайте новый в профиле");
+        if (!key || (key.kind === "passkey" && !opts.passkeys)) throw new EngineError("Ключ не найден или отозван: создайте новый в профиле");
         if (opts.signaturePolicy === "passkey" && key.kind !== "passkey") throw new EngineError("Подписывать можно только passkey: добавьте его в профиле");
         if ((key.kind === "passkey") !== !!b.proof.webauthn) throw new EngineError(key.kind === "passkey" ? "Этот ключ подписывает только через passkey" : "Для этого ключа нужна обычная подпись");
         const proof = { alg: "ES256" as const, keyId: key.id, publicKey: key.publicKey, message: b.proof.message, signature: b.proof.signature, webauthn: b.proof.webauthn };
@@ -786,7 +838,7 @@ export async function buildApp(opts: AppOptions) {
         if (bad) throw new EngineError(bad);
         return signContract(s, p.id, me, now(), `es256:${key.id}`, proof);
       }
-      if (dir.hasActiveKey(me)) throw new EngineError("Подпишите контракт ключом устройства");
+      if (hasKey(me)) throw new EngineError("Подпишите контракт ключом устройства");
       if (opts.signaturePolicy === "passkey") throw new EngineError("Добавьте passkey в профиле: подписывать можно только им");
       if (opts.signaturePolicy === "device") throw new EngineError("Создайте ключ подписи в профиле: серверная подпись отключена");
       return signContract(s, p.id, me, now(), signFor(p.id, d.contract.hash, me));
@@ -798,7 +850,8 @@ export async function buildApp(opts: AppOptions) {
   app.get("/me/keys", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
-    return dir.keysOf(me).map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt, revokedAt: k.revokedAt, active: !k.revokedAt, kind: k.kind ?? "device", credentialId: k.credentialId }));
+    // отозванные ключи в списке не показываются: запись об отзыве остается только на сервере, чтобы ключ нельзя было добавить повторно
+    return usableKeys(me).map((k) => ({ id: k.id, label: k.label, createdAt: k.createdAt, active: true, kind: k.kind ?? "device", credentialId: k.credentialId }));
   });
 
   app.post("/me/keys", async (req, reply) => {
@@ -815,7 +868,7 @@ export async function buildApp(opts: AppOptions) {
   });
 
   // passkeys (WebAuthn): ключ в защищенном чипе устройства, подтверждение отпечатком, лицом или PIN
-  app.post("/me/passkeys", async (req, reply) => {
+  if (opts.passkeys) app.post("/me/passkeys", async (req, reply) => {
     const me = authed(req, reply);
     if (!me) return;
     const b = z

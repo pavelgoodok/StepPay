@@ -10,13 +10,12 @@ import { api, uploadDataUrl, type ProjectItem, type ServiceItem } from "@/lib/ap
 import { rub } from "@/lib/format";
 import { PROJECT_STATUS } from "@/lib/labels";
 import { createDeviceKey, deviceKeysAvailable, forgetStoredKey, getStoredKey } from "@/lib/keys";
-import { createPasskey, passkeysAvailable, platformPasskeyAvailable } from "@/lib/passkeys";
 import { useSession, usePoll } from "@/lib/session";
 
 const ROLE: Record<string, string> = { customer: "Заказчик", executor: "Исполнитель", sponsor: "Спонсор", funder: "Грантодатель", arbiter: "Приемщик споров", admin: "Администратор", user: "Участник StepPay" };
 
 export default function Profile() {
-  const { user, users, login, logout, toast, refresh, wallet, features, unread } = useSession();
+  const { user, users, login, logout, toast, refresh, wallet, features, unread, adminEntry } = useSession();
   const router = useRouter();
   const { data } = usePoll(() => api<{ rating: number | null; reviews: number; acceptedStages: number; disputes: number }>("/me/stats"), [user?.id]);
   const mineP = usePoll(() => api<ProjectItem[]>("/my/projects"), [user?.id]);
@@ -29,16 +28,12 @@ export default function Profile() {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [platformPk, setPlatformPk] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user && deviceKeysAvailable()) void getStoredKey(user.id).then((k) => setLocalKey(k?.id ?? null)).catch(() => setLocalKey(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, keys.data]);
-  useEffect(() => {
-    void platformPasskeyAvailable().then(setPlatformPk);
-  }, []);
   useEffect(() => {
     setDark(document.documentElement.dataset.theme === "dark");
     if (typeof Notification !== "undefined") setNotif(Notification.permission === "granted");
@@ -83,18 +78,6 @@ export default function Profile() {
       await createDeviceKey(user!.id);
       await keys.reload();
       toast("Ключ подписи создан на этом устройстве");
-    } catch (e) {
-      toast((e as Error).message, "err");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function newPasskey() {
-    setBusy(true);
-    try {
-      await createPasskey(user!.id, user!.name, `Passkey от ${new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}`);
-      await keys.reload();
-      toast("Passkey добавлен: им можно входить и подписывать контракты");
     } catch (e) {
       toast((e as Error).message, "err");
     } finally {
@@ -211,16 +194,22 @@ export default function Profile() {
         </div>
       )}
 
+      {adminEntry && (
+        <Link href="/admin-entry" className="btn soft">
+          <Icon name="shield" size={18} /> Вход администратора
+        </Link>
+      )}
+
       <div className="card stack">
         <div className="feat">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="float" src={IMG.passkey} alt="" />
           <div>
             <div className="title">Подпись контрактов</div>
-            <div className="sub" style={{ marginTop: 4 }}>Подтверждение отпечатком, лицом или PIN устройства.</div>
+            <div className="sub" style={{ marginTop: 4 }}>Ключ приложения на этом устройстве.</div>
           </div>
         </div>
-        <div className="sub">Passkey хранится в защищенном чипе и переезжает вместе с вашей учетной записью Apple или Google. Ключ браузера проще, но им может воспользоваться любой, кто открыл ваш браузер.</div>
+        <div className="sub">Ключ создается в приложении и хранится только в этом браузере, на сервер передается открытая часть. Если устройство потеряно, отзовите ключ и создайте новый.</div>
         {!deviceKeysAvailable() ? (
           <div className="note warn" style={{ marginTop: 0 }}>Браузер не поддерживает ключи подписи. Откройте приложение в современном браузере по защищенному адресу.</div>
         ) : (
@@ -228,15 +217,13 @@ export default function Profile() {
             {(keys.data ?? []).map((k) => (
               <div key={k.id} className="row between">
                 <div style={{ minWidth: 0 }}>
-                  <div className="ellipsis"><b>{k.label}</b>{k.kind === "passkey" ? " · passkey" : localKey === k.id ? " · это устройство" : ""}</div>
-                  <div className="small muted mono">{k.id}{k.active ? "" : " · отозван"}</div>
+                  <div className="ellipsis"><b>{k.label}</b>{localKey === k.id ? " · это устройство" : ""}</div>
+                  <div className="small muted mono">{k.id}</div>
                 </div>
-                {k.active && <button className="btn ghost sm" onClick={() => void revokeKey(k.id)}>Отозвать</button>}
+                <button className="btn ghost sm" onClick={() => void revokeKey(k.id)}>Отозвать</button>
               </div>
             ))}
-            {passkeysAvailable() && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newPasskey()}>Добавить passkey</button>}
-            {passkeysAvailable() && !platformPk && <div className="small muted">На этом устройстве не включена блокировка экрана или браузер не может хранить passkey. Браузер предложит сохранить ключ на телефоне по QR-коду или на ключе безопасности.</div>}
-            {!localKey && !(keys.data ?? []).some((k) => k.kind === "passkey" && k.active) && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
+            {!localKey && <button className="btn soft sm" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => void newKey()}>Создать ключ на этом устройстве</button>}
           </>
         )}
       </div>

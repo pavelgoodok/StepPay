@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IMG, Icon, Initials } from "@/components/ui";
 import { api, type PublicUser } from "@/lib/api";
-import { loginWithPasskey, passkeysAvailable } from "@/lib/passkeys";
 import { useSession } from "@/lib/session";
 
 const ROLE: Record<string, string> = {
@@ -29,7 +28,7 @@ function formatPhone(raw: string) {
 type Step = "phone" | "code";
 
 export default function Login() {
-  const { users, user, login, completeLogin, toast } = useSession();
+  const { users, user, login, completeLogin, toast, adminEntry } = useSession();
   const router = useRouter();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
@@ -45,8 +44,9 @@ export default function Login() {
   // куда идти после входа: новый исполнитель создает витрину услуг, новый заказчик идет в каталог
   const after = useRef("/deals");
   useEffect(() => {
-    if (user) router.replace(user.role === "admin" ? "/admin" : after.current);
-  }, [user, router]);
+    // номер администратора без кода доступа попадает на выбор: войти администратором или продолжить участником
+    if (user) router.replace(user.role === "admin" ? "/admin" : adminEntry ? "/admin-entry" : after.current);
+  }, [user, adminEntry, router]);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -89,15 +89,6 @@ export default function Login() {
     }
   }
 
-  async function passkeyLogin() {
-    setBusy(true);
-    try {
-      await completeLogin(await loginWithPasskey());
-    } catch (e) {
-      toast((e as Error).message, "err");
-      setBusy(false);
-    }
-  }
 
   async function demoLogin(id: string) {
     setBusy(true);
@@ -144,11 +135,6 @@ export default function Login() {
               <button className="btn" style={{ marginTop: 16 }} disabled={!phoneOk || busy} onClick={requestCode}>
                 {busy ? <span className="spin" /> : "Получить код"}
               </button>
-              {passkeysAvailable() && (
-                <button className="btn soft" style={{ marginTop: 10 }} disabled={busy} onClick={passkeyLogin}>
-                  <Icon name="shield" size={18} /> Войти с passkey
-                </button>
-              )}
               <p className="small muted" style={{ marginTop: 12 }}>Продолжая, вы соглашаетесь с условиями демонстрационного сервиса. Деньги в приложении условные.</p>
             </>
           ) : (
