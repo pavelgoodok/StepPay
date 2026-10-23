@@ -55,9 +55,10 @@ h1, h2, h3, p { margin: 0; }
 
 /* каркас */
 .shell { max-width: 480px; margin: 0 auto; min-height: 100dvh; position: relative; padding-bottom: 112px; overflow-x: hidden; }
+/* планшет: приложение на всю ширину экрана, без рамки телефона; содержимое не шире 760px */
 @media (min-width: 560px) and (max-width: 1023px) {
-  .shell { margin: 24px auto; min-height: calc(100dvh - 48px); border-radius: 32px; background: var(--bg); box-shadow: 0 0 0 1px var(--line); }
-  html { background: var(--surface2); }
+  .shell { max-width: 760px; }
+  .page { padding: 24px 28px 8px; }
 }
 .page { padding: 18px 16px 8px; display: flex; flex-direction: column; gap: 16px; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
@@ -187,7 +188,7 @@ select.input { appearance: none; }
 
 /* навигация */
 .tabbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; width: min(480px, 100%); display: grid; grid-template-columns: 1fr 1fr 80px 1fr 1fr; align-items: end; padding: 8px 8px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-radius: 20px 20px 0 0; z-index: 20; }
-@media (min-width: 560px) and (max-width: 1023px) { .tabbar { bottom: 24px; border-radius: 0 0 32px 32px; } }
+@media (min-width: 560px) and (max-width: 1023px) { .tabbar { width: min(760px, 100%); } }
 .side-logo { display: none; }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 4px 0; }
 .tab .ti { width: 44px; height: 30px; border-radius: 15px; display: grid; place-items: center; transition: background .15s; }
@@ -639,7 +640,7 @@ body { background: var(--bg) var(--wash) no-repeat; background-attachment: scrol
 .deco-ring { background-image: url(/bg/deco-ring.webp); }
 .deco-s { background-image: url(/bg/deco-s.webp); }
 .shell > .page, .shell > .note { position: relative; z-index: 1; }
-@media (min-width: 560px) and (max-width: 1023px) { .deco { right: calc(50% - 240px - 110px); bottom: 40px; width: 420px; } }
+@media (min-width: 560px) and (max-width: 1023px) { .deco { right: -120px; bottom: 60px; width: 460px; } }
 @media (min-width: 1024px) { .deco { right: -150px; bottom: -170px; width: 640px; opacity: .38; } }
 :root[data-theme="dark"] .deco { opacity: .26; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .deco { opacity: .26; } }
@@ -675,7 +676,7 @@ a.tile { display: block; }
   .chat { padding-bottom: 168px; }
   .composer-wrap { position: fixed; left: 0; right: 0; margin: 0 auto; transform: none; animation: none; bottom: calc(78px + env(safe-area-inset-bottom)); width: min(480px, 100%); padding: 14px 16px 10px; background: linear-gradient(to top, var(--bg) 62%, transparent); z-index: 15; }
 }
-@media (min-width: 560px) and (max-width: 1023px) { .composer-wrap { bottom: 102px; } }
+@media (min-width: 560px) and (max-width: 1023px) { .composer-wrap { width: min(760px, 100%); padding: 14px 28px 10px; } }
 
 /* ── интерфейс администратора: широкая рабочая область с боковым меню ── */
 .adm { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100dvh; background: var(--bg); }
