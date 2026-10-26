@@ -59,7 +59,7 @@ function screenBox(key: FrameKey) {
   return { w: shot.w, h: Math.max(shot.h, (shot.w * qh) / qw) };
 }
 
-/** Устройство с меняющимся интерфейсом: новый экран въезжает справа, как переход в приложении. */
+/** Устройство с меняющимся интерфейсом: новый экран проявляется на месте прежнего. */
 const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h: number; enterDelay?: number }> = ({ frame, steps, x, y, h, enterDelay = 0 }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -72,7 +72,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const dr = Math.sin(f / 60) * 1.1;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
-  const PUSH = 14;
+  const PUSH = 12;
   // камера: внутри шага плавно от from к to, на смене шага мягкий переход от прежнего положения
   const ci = Math.max(0, starts.findIndex((st, i) => f >= st && (starts[i + 1] === undefined || f < starts[i + 1]!)));
   const cs = steps[ci]!;
@@ -91,7 +91,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
           const next = starts[i + 1];
           const out = next === undefined ? 0 : interpolate(f, [next, next + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
           return (
-            <Img key={s.src} src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill", transform: `translateX(${(1 - p) * box.w - out * box.w * 0.3}px)`, filter: out ? `brightness(${1 - out * 0.4})` : undefined, boxShadow: i > 0 ? "-30px 0 60px rgba(0,0,0,.45)" : undefined }} />
+            <Img key={s.src} src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill", opacity: p, visibility: out >= 1 ? "hidden" : "visible" }} />
           );
         })}
       </div>
@@ -159,9 +159,9 @@ const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
-      {laptop ? <Device frame="laptop" steps={steps} x={700} y={300} h={900} /> : <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
-      {laptop && <AbsoluteFill style={{ background: "linear-gradient(90deg, rgba(10,63,246,.96) 0%, rgba(10,63,246,.85) 34%, rgba(10,63,246,0) 55%)" }} />}
-      <Captions steps={steps} w={laptop ? 760 : 760} size={laptop ? 72 : 80} y={laptop ? 120 : 160} />
+      {!laptop && <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
+      <Captions steps={steps} w={laptop ? 900 : 760} size={laptop ? 72 : 80} y={laptop ? 100 : 160} />
+      {laptop && <Device frame="laptop" steps={steps} x={760} y={380} h={780} />}
     </AbsoluteFill>
   );
 };
@@ -186,9 +186,9 @@ const EXECUTOR_2: Step[] = [
   { src: "m11_deals", caption: "Остаток ждет следующих этапов", desc: "170 000 ₽ в резерве до приемки", dur: 95, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 0, 0], to: [1.4, 120, 150] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.55, 220, 220], to: [1.7, 120, 250] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.45, 180, 180], to: [1.05, 40, 30] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 0, 0], to: [1.4, 200, 230] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.5, 260, 260], to: [1.6, 200, 280] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.45, 230, 250], to: [1, 0, 0] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
