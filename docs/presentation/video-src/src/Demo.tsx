@@ -2,7 +2,6 @@ import React from "react";
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from "remotion";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
-import { slide } from "@remotion/transitions/slide";
 import { Bg, FONT, NAVY } from "./ui";
 import FRAMES from "./frames.json";
 
@@ -160,8 +159,8 @@ const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
       {!laptop && <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
-      <Captions steps={steps} w={laptop ? 900 : 760} size={laptop ? 72 : 80} y={laptop ? 100 : 160} />
-      {laptop && <Device frame="laptop" steps={steps} x={760} y={380} h={780} />}
+      <Captions steps={steps} w={laptop ? 720 : 760} size={laptop ? 60 : 80} y={laptop ? 140 : 160} />
+      {laptop && <Device frame="laptop" steps={steps} x={760} y={290} h={740} />}
     </AbsoluteFill>
   );
 };
@@ -186,9 +185,9 @@ const EXECUTOR_2: Step[] = [
   { src: "m11_deals", caption: "Остаток ждет следующих этапов", desc: "170 000 ₽ в резерве до приемки", dur: 95, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 0, 0], to: [1.4, 200, 230] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.5, 260, 260], to: [1.6, 200, 280] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.45, 230, 250], to: [1, 0, 0] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 0, 0], to: [1.1, 20, 10] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.1, 20, 10], to: [1.14, -20, 0] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.14, -20, 0], to: [1, 0, 0] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
@@ -248,7 +247,7 @@ export const StepPayDemo: React.FC = () => (
           <TransitionSeries.Sequence durationInFrames={dur}>
             <C />
           </TransitionSeries.Sequence>
-          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={i === 0 || i === SCENES.length - 2 ? fade() : slide({ direction: i % 2 ? "from-right" : "from-bottom" })} timing={linearTiming({ durationInFrames: T })} />}
+          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: T })} />}
         </React.Fragment>
       ))}
     </TransitionSeries>
