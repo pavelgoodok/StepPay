@@ -67,8 +67,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const box = screenBox(frame);
   const q = meta.quad.map(([a, b]) => [a! * k, b! * k]);
   const e = spring({ frame: f - enterDelay, fps, config: { damping: 17, stiffness: 70 } });
-  const dy = Math.sin(f / 36) * 10;
-  const dr = Math.sin(f / 60) * 1.1;
+  const dy = 0;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
   const PUSH = 12;
@@ -81,7 +80,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   let cam = lerp(cs.from ?? [1, 0, 0], cs.to ?? cs.from ?? [1, 0, 0], io(Math.min(1, Math.max(0, local / cs.dur))));
   if (ci > 0 && local < 26) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 26)); }
   return (
-    <div style={{ position: "absolute", left: x, top: y, width: meta.w * k, height: h, opacity: Math.min(1, e * 1.5), transformOrigin: "50% 50%", transform: `translate(${cam[1]}px, ${(1 - e) * 600 + dy + cam[2]}px) rotate(${dr}deg) scale(${(0.92 + 0.08 * e) * cam[0]})`, filter: "drop-shadow(0 50px 60px rgba(2,24,90,.5))" }}>
+    <div style={{ position: "absolute", left: x, top: y, width: meta.w * k, height: h, opacity: Math.min(1, e * 1.5), transformOrigin: "50% 50%", transform: `translate(${cam[1]}px, ${(1 - e) * 600 + dy + cam[2]}px) scale(${(0.92 + 0.08 * e) * cam[0]})`, filter: "drop-shadow(0 50px 60px rgba(2,24,90,.5))" }}>
       <div style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transformOrigin: "0 0", transform: matrix3d(box.w, box.h, q), overflow: "hidden", background: "#0b1020" }}>
         {steps.map((s, i) => {
           const st = starts[i]!;
@@ -159,8 +158,8 @@ const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
       {!laptop && <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
-      <Captions steps={steps} w={laptop ? 720 : 760} size={laptop ? 60 : 80} y={laptop ? 140 : 160} />
-      {laptop && <Device frame="laptop" steps={steps} x={760} y={290} h={740} />}
+      {laptop && <Device frame="laptop" steps={steps} x={720} y={230} h={840} />}
+      <Captions steps={steps} w={laptop ? 720 : 760} size={laptop ? 60 : 80} y={laptop ? 120 : 160} />
     </AbsoluteFill>
   );
 };
@@ -185,9 +184,9 @@ const EXECUTOR_2: Step[] = [
   { src: "m11_deals", caption: "Остаток ждет следующих этапов", desc: "170 000 ₽ в резерве до приемки", dur: 95, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 0, 0], to: [1.1, 20, 10] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.1, 20, 10], to: [1.14, -20, 0] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.14, -20, 0], to: [1, 0, 0] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 40, 0], to: [1.35, 200, 170] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.35, 200, 170], to: [1.45, 280, 210] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.45, 280, 210], to: [1.05, 60, 30] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
