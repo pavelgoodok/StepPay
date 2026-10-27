@@ -88,6 +88,8 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const local = f - starts[ci]!;
   let cam = lerp(cs.from ?? [1, 0, 0], cs.to ?? cs.from ?? [1, 0, 0], io(Math.min(1, Math.max(0, local / cs.dur))));
   if (ci > 0 && local < 40) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 40)); }
+  // у телефона приближение мягче: экран крупнее, но устройство остается в кадре
+  if (frame !== "laptop") cam = [1 + (cam[0] - 1) * 0.35, cam[1] * 0.4, cam[2] * 0.4];
   // пролет: экран устройства заполняет кадр
   const fly = flyAt(f, t, zin, zout);
   const qc = [(q[0]![0]! + q[1]![0]! + q[2]![0]! + q[3]![0]!) / 4, (q[0]![1]! + q[1]![1]! + q[2]![1]! + q[3]![1]!) / 4];
@@ -135,6 +137,7 @@ const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; si
           <div key={idx} style={{ position: "absolute", left: x, top: y, width: w, opacity: 1 - outE, transform: `translateY(${-outE * 40}px)` }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: center ? "center" : "flex-start", columnGap: size * 0.26, fontFamily: FONT, fontWeight: 900, fontSize: size, lineHeight: 1.04, color: "#fff", letterSpacing: -1, textTransform: "uppercase", textShadow: "0 4px 24px rgba(2,24,90,.5)" }}>
               {words.map((wd, i) => {
+                if (wd === "\n") return <div key={i} style={{ flexBasis: "100%", height: 0 }} />;
                 const e = spring({ frame: f - st0 - 10 - i * 7, fps, config: { damping: 18, stiffness: 90 } });
                 return (
                   <span key={i} style={{ display: "inline-block", overflow: "hidden" }}>
@@ -266,7 +269,7 @@ const Outro: React.FC = () => {
       <div style={{ position: "absolute", left: 960 - 300, top: 250, width: 600, height: 250, borderRadius: 36, background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card})` }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 470 }} />
       </div>
-      <Captions steps={[{ src: "", caption: "Резерв до начала работ, оплата после приемки", dur: 999 }]} x={420} y={580} w={1080} size={70} center />
+      <Captions steps={[{ src: "", caption: "Гарантия выплат \n Гарантия результата", dur: 999 }]} x={0} y={570} w={1920} size={84} center />
     </AbsoluteFill>
   );
 };
