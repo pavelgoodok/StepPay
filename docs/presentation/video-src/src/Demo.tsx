@@ -59,18 +59,27 @@ function screenBox(key: FrameKey) {
 }
 
 /** Устройство с меняющимся интерфейсом: новый экран проявляется на месте прежнего. */
-const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h: number; enterDelay?: number }> = ({ frame, steps, x, y, h, enterDelay = 0 }) => {
+/** Пролет через экран: 1 в начале сцены (камера внутри экрана) и в конце (камера влетает в экран), 0 в середине. */
+function flyAt(f: number, total: number, zin: boolean, zout: boolean) {
+  const io = Easing.inOut(Easing.cubic);
+  const a = zin ? 1 - io(Math.min(1, Math.max(0, f / FLY))) : 0;
+  const b = zout ? io(Math.min(1, Math.max(0, (f - (total - FLY)) / FLY))) : 0;
+  return Math.max(a, b);
+}
+const FLY = 36;
+
+const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h: number; enterDelay?: number; zin?: boolean; zout?: boolean }> = ({ frame, steps, x, y, h, enterDelay = 0, zin = false, zout = false }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const meta = FRAMES[frame];
   const k = h / meta.h;
   const box = screenBox(frame);
   const q = meta.quad.map(([a, b]) => [a! * k, b! * k]);
-  const e = spring({ frame: f - enterDelay, fps, config: { damping: 17, stiffness: 70 } });
+  const e = zin ? 1 : spring({ frame: f - enterDelay, fps, config: { damping: 18, stiffness: 55 } });
   const dy = 0;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
-  const PUSH = 12;
+  const PUSH = 24;
   // камера: внутри шага плавно от from к to, на смене шага мягкий переход от прежнего положения
   const ci = Math.max(0, starts.findIndex((st, i) => f >= st && (starts[i + 1] === undefined || f < starts[i + 1]!)));
   const cs = steps[ci]!;
@@ -78,9 +87,18 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const io = Easing.inOut(Easing.cubic);
   const local = f - starts[ci]!;
   let cam = lerp(cs.from ?? [1, 0, 0], cs.to ?? cs.from ?? [1, 0, 0], io(Math.min(1, Math.max(0, local / cs.dur))));
-  if (ci > 0 && local < 26) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 26)); }
+  if (ci > 0 && local < 40) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 40)); }
+  // пролет: экран устройства заполняет кадр
+  const fly = flyAt(f, t, zin, zout);
+  const qc = [(q[0]![0]! + q[1]![0]! + q[2]![0]! + q[3]![0]!) / 4, (q[0]![1]! + q[1]![1]! + q[2]![1]! + q[3]![1]!) / 4];
+  const qwPx = (Math.hypot(q[1]![0]! - q[0]![0]!, q[1]![1]! - q[0]![1]!) + Math.hypot(q[2]![0]! - q[3]![0]!, q[2]![1]! - q[3]![1]!)) / 2;
+  const qhPx = (Math.hypot(q[3]![0]! - q[0]![0]!, q[3]![1]! - q[0]![1]!) + Math.hypot(q[2]![0]! - q[1]![0]!, q[2]![1]! - q[1]![1]!)) / 2;
+  const zFill = 1.15 * Math.max(1920 / qwPx, 1080 / qhPx);
+  const sc = Math.pow(cam[0], 1 - fly) * Math.pow(zFill, fly);
+  const tx = cam[1] * (1 - fly) + (960 - (x + qc[0]!)) * fly;
+  const ty = cam[2] * (1 - fly) + (540 - (y + qc[1]!)) * fly;
   return (
-    <div style={{ position: "absolute", left: x, top: y, width: meta.w * k, height: h, opacity: Math.min(1, e * 1.5), transformOrigin: "50% 50%", transform: `translate(${cam[1]}px, ${(1 - e) * 600 + dy + cam[2]}px) scale(${(0.92 + 0.08 * e) * cam[0]})`, filter: "drop-shadow(0 50px 60px rgba(2,24,90,.5))" }}>
+    <div style={{ position: "absolute", left: x, top: y, width: meta.w * k, height: h, opacity: Math.min(1, e * 1.5), transformOrigin: `${qc[0]}px ${qc[1]}px`, transform: `translate(${tx}px, ${(1 - e) * 600 + dy + ty}px) scale(${(0.92 + 0.08 * e) * sc})`, filter: "drop-shadow(0 50px 60px rgba(2,24,90,.5))" }}>
       <div style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transformOrigin: "0 0", transform: matrix3d(box.w, box.h, q), overflow: "hidden", background: "#0b1020" }}>
         {steps.map((s, i) => {
           const st = starts[i]!;
@@ -100,7 +118,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
 };
 
 /** Надписи по шагам: белые заглавные, слова появляются по очереди, прежняя надпись уходит вверх. */
-const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; size?: number; center?: boolean }> = ({ steps, x = 100, y = 150, w = 760, size = 80, center = false }) => {
+const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; size?: number; center?: boolean; lead?: number }> = ({ steps, x = 100, y = 150, w = 760, size = 80, center = false, lead = 0 }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   let t = 0;
@@ -110,13 +128,14 @@ const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; si
         const st = t; t += s.dur;
         const end = t;
         if (f < st - 2 || f > end + 12) return null;
-        const outE = idx === steps.length - 1 ? 0 : interpolate(f, [end - 4, end + 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const outE = idx === steps.length - 1 ? 0 : interpolate(f, [end - 10, end + 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const st0 = st + (idx === 0 ? lead : 0);
         const words = s.caption.split(" ");
         return (
           <div key={idx} style={{ position: "absolute", left: x, top: y, width: w, opacity: 1 - outE, transform: `translateY(${-outE * 40}px)` }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: center ? "center" : "flex-start", columnGap: size * 0.26, fontFamily: FONT, fontWeight: 900, fontSize: size, lineHeight: 1.04, color: "#fff", letterSpacing: -1, textTransform: "uppercase", textShadow: "0 4px 24px rgba(2,24,90,.5)" }}>
               {words.map((wd, i) => {
-                const e = spring({ frame: f - st - 6 - i * 5, fps, config: { damping: 15, stiffness: 120 } });
+                const e = spring({ frame: f - st0 - 10 - i * 7, fps, config: { damping: 18, stiffness: 90 } });
                 return (
                   <span key={i} style={{ display: "inline-block", overflow: "hidden" }}>
                     <span style={{ display: "inline-block", transform: `translateY(${(1 - e) * 100}%)`, opacity: e }}>{wd}</span>
@@ -124,8 +143,8 @@ const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; si
                 );
               })}
             </div>
-            {s.desc && <Desc text={s.desc} delay={st + 16 + words.length * 5} size={Math.round(size * 0.42)} />}
-            {s.amount !== undefined && <Amount to={s.amount} delay={st + 24} />}
+            {s.desc && <Desc text={s.desc} delay={st0 + 24 + words.length * 7} size={Math.round(size * 0.42)} center={center} />}
+            {s.amount !== undefined && <Amount to={s.amount} delay={st0 + 34} />}
           </div>
         );
       })}
@@ -134,18 +153,18 @@ const Captions: React.FC<{ steps: Step[]; x?: number; y?: number; w?: number; si
 };
 
 /** Пояснение под надписью: заглавные буквы помельче, появляется после надписи. */
-const Desc: React.FC<{ text: string; delay: number; size: number }> = ({ text, delay, size }) => {
+const Desc: React.FC<{ text: string; delay: number; size: number; center?: boolean }> = ({ text, delay, size, center = false }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const e = spring({ frame: f - delay, fps, config: { damping: 18, stiffness: 110 } });
-  return <div style={{ marginTop: 28, maxWidth: 640, fontFamily: FONT, fontWeight: 700, fontSize: size, lineHeight: 1.3, letterSpacing: 0.5, color: "rgba(255,255,255,.88)", textTransform: "uppercase", opacity: e, transform: `translateY(${(1 - e) * 24}px)`, textShadow: "0 2px 18px rgba(2,24,90,.45)" }}>{text}</div>;
+  const e = spring({ frame: f - delay, fps, config: { damping: 20, stiffness: 80 } });
+  return <div style={{ marginTop: 28, maxWidth: center ? 1100 : 640, marginLeft: center ? "auto" : 0, marginRight: center ? "auto" : 0, textAlign: center ? "center" : "left", fontFamily: FONT, fontWeight: 700, fontSize: size, lineHeight: 1.3, letterSpacing: 0.5, color: "rgba(255,255,255,.88)", textTransform: "uppercase", opacity: e, transform: `translateY(${(1 - e) * 24}px)`, textShadow: "0 2px 18px rgba(2,24,90,.45)" }}>{text}</div>;
 };
 
 const Amount: React.FC<{ to: number; delay: number }> = ({ to, delay }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const e = spring({ frame: f - delay, fps, config: { damping: 18, stiffness: 100 } });
-  const v = Math.round(interpolate(f, [delay, delay + 40], [0, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) }));
+  const v = Math.round(interpolate(f, [delay, delay + 60], [0, to], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) }));
   return <div style={{ marginTop: 40, fontFamily: FONT, fontWeight: 900, fontSize: 120, color: "#fff", letterSpacing: -3, opacity: e, transform: `translateY(${(1 - e) * 40}px)` }}>{v.toLocaleString("ru-RU").replace(/ /g, " ")} ₽</div>;
 };
 
@@ -153,9 +172,10 @@ const sum = (s: Step[]) => s.reduce((a, b) => a + b.dur, 0);
 
 /** Стеклянные кубы на фоне: по краям кадра, за надписями и устройствами, медленно дрейфуют. */
 type Cube = [n: number, x: number, y: number, w: number, rot: number, blur?: number];
-const CUBES: Record<"phone" | "laptop" | "logo", Cube[]> = {
+const CUBES: Record<"phone" | "phoneL" | "laptop" | "logo", Cube[]> = {
+  phoneL: [[4, 1640, 760, 360, 8], [1, 1180, 880, 200, -14, 3], [2, -70, -90, 300, -10, 2], [3, -60, 800, 260, 12]],
   phone: [[3, -90, 720, 380, -8], [1, 640, 850, 210, 14, 3], [2, 1690, -90, 300, 10, 2], [4, 1700, 780, 270, -12]],
-  laptop: [[4, -100, 700, 360, 8], [1, 480, 900, 190, -10, 3], [2, 1560, -110, 320, 12, 2], [3, 1040, -60, 170, -18, 4]],
+  laptop: [[4, -100, 640, 380, 8], [1, 120, 120, 200, -10, 3], [2, 1600, 80, 320, 12, 2], [3, 1640, 720, 300, -18]],
   logo: [[2, 140, 120, 300, -12], [4, 1420, 90, 340, 10], [1, 260, 760, 260, 16, 2], [3, 1480, 700, 380, -8]],
 };
 const Cubes: React.FC<{ set: keyof typeof CUBES }> = ({ set }) => {
@@ -169,43 +189,48 @@ const Cubes: React.FC<{ set: keyof typeof CUBES }> = ({ set }) => {
   );
 };
 
-/** Сцена: синий фон, надписи слева, устройство справа. */
-const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix" }> = ({ device, steps, variant = "blue" }) => {
+/** Сцена: синий фон, устройство справа, слева или по центру, надписи на свободной стороне. Пролет через экран на входе и выходе. */
+const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix"; side?: "right" | "left" | "center"; zin?: boolean; zout?: boolean }> = ({ device, steps, variant = "blue", side = "right", zin = false, zout = false }) => {
+  const f = useCurrentFrame();
+  const total = sum(steps);
+  const fly = flyAt(f, total, zin, zout);
+  const capOpacity = Math.max(0, 1 - fly * 2);
   const laptop = device === "laptop";
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
-      <Cubes set={laptop ? "laptop" : "phone"} />
-      {!laptop && <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
-      {laptop && <Device frame="laptop" steps={steps} x={720} y={230} h={840} />}
-      <Captions steps={steps} w={laptop ? 720 : 760} size={laptop ? 60 : 80} y={laptop ? 120 : 160} />
+      <Cubes set={laptop ? "laptop" : side === "left" ? "phoneL" : "phone"} />
+      {laptop ? <Device frame="laptop" steps={steps} x={406} y={300} h={840} zin={zin} zout={zout} /> : <Device frame={device} steps={steps} x={side === "left" ? 380 : 1120} y={30} h={1020} zin={zin} zout={zout} />}
+      <div style={{ position: "absolute", inset: 0, opacity: capOpacity }}>
+        {laptop ? <Captions steps={steps} x={0} y={60} w={1920} size={60} center lead={zin ? FLY - 10 : 0} /> : <Captions steps={steps} x={side === "left" ? 1060 : 100} w={760} size={80} y={160} lead={zin ? FLY - 10 : 0} />}
+      </div>
     </AbsoluteFill>
   );
 };
 
 /* ───── сценарий ───── */
 const CUSTOMER_1: Step[] = [
-  { src: "m01_catalog", caption: "Заказчик находит исполнителя", desc: "Каталог услуг с рейтингом и проверенными исполнителями", dur: 100, from: [1, 0, 30], to: [1.3, -40, 220] },
-  { src: "m02_chat", caption: "Договорились в чате", desc: "Исполнитель регистрирует задачу на 280 000 ₽", dur: 100, from: [1.55, -30, 330], to: [1.7, -40, 120] },
+  { src: "m01_catalog", caption: "Заказчик находит исполнителя", desc: "Каталог услуг с рейтингом и проверенными исполнителями", dur: 135, from: [1, 0, 30], to: [1.3, -40, 220] },
+  { src: "m02_chat", caption: "Договорились в чате", desc: "Исполнитель регистрирует задачу на 280 000 ₽", dur: 130, from: [1.55, -30, 330], to: [1.7, -40, 120] },
 ];
-const EXECUTOR_1: Step[] = [{ src: "m03_terms", caption: "Этапы, суммы и неустойка", desc: "Три этапа с критериями приемки, неустойка 0,5 % в сутки", dur: 120, from: [1.15, 0, 330], to: [1.75, -40, -160] }];
+const EXECUTOR_1: Step[] = [{ src: "m03_terms", caption: "Этапы, суммы и неустойка", desc: "Три этапа с критериями приемки, неустойка 0,5 % в сутки", dur: 165, from: [1.15, 0, 330], to: [1.75, 40, -160] }];
 const CUSTOMER_2: Step[] = [
-  { src: "m04_review", caption: "Контракт подписан", desc: "Хеш условий записан, изменить их нельзя", dur: 95, from: [1.1, 0, 80], to: [1.55, -20, 300] },
-  { src: "m06_reserved", caption: "Вся сумма в резерве", desc: "Деньги в эскроу-кошельке сделки", dur: 105, amount: 280000, from: [1.7, 0, 470], to: [1.85, -10, 420] },
+  { src: "m04_review", caption: "Контракт подписан", desc: "Хеш условий записан, изменить их нельзя", dur: 130, from: [1.1, 0, 80], to: [1.55, -20, 300] },
+  { src: "m06_reserved", caption: "Вся сумма в резерве", desc: "Деньги в эскроу-кошельке сделки", dur: 140, amount: 280000, from: [1.7, 0, 470], to: [1.85, -10, 420] },
 ];
 const CUSTOMER_3: Step[] = [
-  { src: "m07_submitted", caption: "Этап сдан", desc: "Исполнитель прикладывает результат, заказчик проверяет", dur: 95, from: [1.3, 0, -60], to: [1.65, 0, -330] },
-  { src: "m08_progress", caption: "Этап принят и оплачен", desc: "110 000 ₽ сразу переведены исполнителю", dur: 95, from: [1.7, 0, -260], to: [1.35, 0, 20] },
-  { src: "m09_journal", caption: "Журнал без изменений", desc: "Каждое действие записано в цепочку хешей", dur: 90, from: [1.2, 0, 160], to: [1.55, 0, 260] },
+  { src: "m07_submitted", caption: "Этап сдан", desc: "Исполнитель прикладывает результат, заказчик проверяет", dur: 125, from: [1.3, 0, -60], to: [1.65, 0, -330] },
+  { src: "m08_progress", caption: "Этап принят и оплачен", desc: "110 000 ₽ сразу переведены исполнителю", dur: 125, from: [1.7, 0, -260], to: [1.35, 0, 20] },
+  { src: "m09_journal", caption: "История сделки под защитой", desc: "Каждое действие записано, любую подмену видно сразу", dur: 125, from: [1.2, 0, 160], to: [1.55, 0, 260] },
 ];
 const EXECUTOR_2: Step[] = [
-  { src: "m10_wallet", caption: "Оплата получена", desc: "Выплата сразу в кошельке исполнителя", dur: 100, amount: 110000, from: [1, 0, 0], to: [1.7, 0, 430] },
-  { src: "m11_deals", caption: "Остаток ждет следующих этапов", desc: "170 000 ₽ в резерве до приемки", dur: 95, from: [1.6, 0, 300], to: [1.2, 0, 0] },
+  { src: "m10_wallet", caption: "Оплата получена", desc: "Выплата сразу в кошельке исполнителя", dur: 135, amount: 110000, from: [1, 0, 0], to: [1.7, 0, 430] },
+  { src: "m11_deals", caption: "Остаток ждет следующих этапов", desc: "170 000 ₽ в резерве до приемки", dur: 125, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 100, from: [1, 40, 0], to: [1.35, 200, 170] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 95, from: [1.35, 200, 170], to: [1.45, 280, 210] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 90, from: [1.45, 280, 210], to: [1.05, 60, 30] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Резервы, выплаты и споры на одном экране", dur: 135, from: [1, 0, 20], to: [1.25, 0, 110] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Каждый резерв, выплата и неустойка", dur: 125, from: [1.25, 0, 110], to: [1.4, -60, 150] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Проекты публикуются после модерации", dur: 125, from: [1.4, -60, 150], to: [1.05, 0, 40] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
@@ -241,23 +266,22 @@ const Outro: React.FC = () => {
       <div style={{ position: "absolute", left: 960 - 300, top: 250, width: 600, height: 250, borderRadius: 36, background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card})` }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 470 }} />
       </div>
-      <Captions steps={[{ src: "", caption: "Деньги движутся только за принятый результат", dur: 999 }]} x={260} y={580} w={1400} size={70} center />
+      <Captions steps={[{ src: "", caption: "Резерв до начала работ, оплата после приемки", dur: 999 }]} x={420} y={580} w={1080} size={70} center />
     </AbsoluteFill>
   );
 };
 
-const T = 16;
-const SCENES: { C: React.FC; dur: number }[] = [
-  { C: Intro, dur: 110 },
-  { C: () => <Stage device="phone" steps={CUSTOMER_1} />, dur: sum(CUSTOMER_1) },
-  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} variant="mix" />, dur: sum(EXECUTOR_1) },
-  { C: () => <Stage device="phone" steps={CUSTOMER_2} />, dur: sum(CUSTOMER_2) },
-  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} variant="mix" />, dur: sum(CUSTOMER_3) },
-  { C: () => <Stage device="phone" steps={EXECUTOR_2} />, dur: sum(EXECUTOR_2) },
-  { C: () => <Stage device="laptop" steps={ADMIN} variant="mix" />, dur: sum(ADMIN) },
-  { C: Outro, dur: 110 },
+const SCENES: { C: React.FC; dur: number; fadeOut: number }[] = [
+  { C: Intro, dur: 140, fadeOut: 20 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_1} side="right" zout />, dur: sum(CUSTOMER_1), fadeOut: 10 },
+  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} side="left" variant="mix" zin zout />, dur: sum(EXECUTOR_1), fadeOut: 10 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" zin zout />, dur: sum(CUSTOMER_2), fadeOut: 10 },
+  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" zin zout />, dur: sum(CUSTOMER_3), fadeOut: 10 },
+  { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" zin zout />, dur: sum(EXECUTOR_2), fadeOut: 10 },
+  { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" zin />, dur: sum(ADMIN), fadeOut: 24 },
+  { C: Outro, dur: 150, fadeOut: 0 },
 ];
-export const DEMO_FRAMES = SCENES.reduce((a, s) => a + s.dur, 0) - T * (SCENES.length - 1);
+export const DEMO_FRAMES = SCENES.reduce((a, s) => a + s.dur - s.fadeOut, 0);
 
 export const StepPayDemo: React.FC = () => (
   <AbsoluteFill style={{ background: NAVY }}>
@@ -267,7 +291,7 @@ export const StepPayDemo: React.FC = () => (
           <TransitionSeries.Sequence durationInFrames={dur}>
             <C />
           </TransitionSeries.Sequence>
-          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: T })} />}
+          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: SCENES[i]!.fadeOut })} />}
         </React.Fragment>
       ))}
     </TransitionSeries>
