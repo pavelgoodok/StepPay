@@ -88,8 +88,8 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const local = f - starts[ci]!;
   let cam = lerp(cs.from ?? [1, 0, 0], cs.to ?? cs.from ?? [1, 0, 0], io(Math.min(1, Math.max(0, local / cs.dur))));
   if (ci > 0 && local < 40) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 40)); }
-  // телефон стоит на месте, приближается только экран ноутбука
-  if (frame !== "laptop") cam = [1, 0, 0];
+  // у телефона приближение легкое: устройство остается в кадре
+  if (frame !== "laptop") cam = [1 + (cam[0] - 1) * 0.2, cam[1] * 0.25, cam[2] * 0.25];
   // пролет: экран устройства заполняет кадр
   const fly = flyAt(f, t, zin, zout);
   const qc = [(q[0]![0]! + q[1]![0]! + q[2]![0]! + q[3]![0]!) / 4, (q[0]![1]! + q[1]![1]! + q[2]![1]! + q[3]![1]!) / 4];
@@ -231,9 +231,9 @@ const EXECUTOR_2: Step[] = [
   { src: "m11_deals", caption: "Остаток в резерве", desc: "До приемки следующих этапов", dur: 125, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Все сделки на одном экране", dur: 135, from: [1, 0, 0], to: [1.25, 82, 0] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Резервы, выплаты и неустойки", dur: 125, from: [1, 0, 0], to: [1.25, 82, 0] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Публикация после модерации", dur: 125, from: [1, 0, 0], to: [1.25, 82, 0] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Все сделки на одном экране", dur: 135, from: [1, 0, 0], to: [1.2, 66, 0] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Резервы, выплаты и неустойки", dur: 125, from: [1.2, 66, 0], to: [1.2, 66, 0] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Публикация после модерации", dur: 125, from: [1.2, 66, 0], to: [1, 0, 0] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
