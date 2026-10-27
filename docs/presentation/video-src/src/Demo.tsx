@@ -68,14 +68,14 @@ function flyAt(f: number, total: number, zin: boolean, zout: boolean) {
 }
 const FLY = 36;
 
-const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h: number; enterDelay?: number; zin?: boolean; zout?: boolean }> = ({ frame, steps, x, y, h, enterDelay = 0, zin = false, zout = false }) => {
+const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h: number; enterDelay?: number; enter?: boolean; zin?: boolean; zout?: boolean }> = ({ frame, steps, x, y, h, enterDelay = 0, enter = false, zin = false, zout = false }) => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
   const meta = FRAMES[frame];
   const k = h / meta.h;
   const box = screenBox(frame);
   const q = meta.quad.map(([a, b]) => [a! * k, b! * k]);
-  const e = zin ? 1 : spring({ frame: f - enterDelay, fps, config: { damping: 18, stiffness: 55 } });
+  const e = !enter ? 1 : spring({ frame: f - enterDelay, fps, config: { damping: 18, stiffness: 55 } });
   const dy = 0;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
@@ -88,8 +88,8 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const local = f - starts[ci]!;
   let cam = lerp(cs.from ?? [1, 0, 0], cs.to ?? cs.from ?? [1, 0, 0], io(Math.min(1, Math.max(0, local / cs.dur))));
   if (ci > 0 && local < 40) { const pv = steps[ci - 1]!; cam = lerp(pv.to ?? pv.from ?? [1, 0, 0], cam, io(local / 40)); }
-  // у телефона приближение мягче: экран крупнее, но устройство остается в кадре
-  if (frame !== "laptop") cam = [1 + (cam[0] - 1) * 0.35, cam[1] * 0.4, cam[2] * 0.4];
+  // телефон стоит на месте, приближается только экран ноутбука
+  if (frame !== "laptop") cam = [1, 0, 0];
   // пролет: экран устройства заполняет кадр
   const fly = flyAt(f, t, zin, zout);
   const qc = [(q[0]![0]! + q[1]![0]! + q[2]![0]! + q[3]![0]!) / 4, (q[0]![1]! + q[1]![1]! + q[2]![1]! + q[3]![1]!) / 4];
@@ -193,7 +193,7 @@ const Cubes: React.FC<{ set: keyof typeof CUBES }> = ({ set }) => {
 };
 
 /** Сцена: синий фон, устройство справа, слева или по центру, надписи на свободной стороне. Пролет через экран на входе и выходе. */
-const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix"; side?: "right" | "left" | "center"; zin?: boolean; zout?: boolean }> = ({ device, steps, variant = "blue", side = "right", zin = false, zout = false }) => {
+const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix"; side?: "right" | "left" | "center"; enter?: boolean; zin?: boolean; zout?: boolean }> = ({ device, steps, variant = "blue", side = "right", enter = false, zin = false, zout = false }) => {
   const f = useCurrentFrame();
   const total = sum(steps);
   const fly = flyAt(f, total, zin, zout);
@@ -203,7 +203,7 @@ const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
       <Cubes set={laptop ? "laptop" : side === "left" ? "phoneL" : "phone"} />
-      {laptop ? <Device frame="laptop" steps={steps} x={406} y={300} h={840} zin={zin} zout={zout} /> : <Device frame={device} steps={steps} x={side === "left" ? 380 : 1120} y={30} h={1020} zin={zin} zout={zout} />}
+      {laptop ? <Device frame="laptop" steps={steps} x={490} y={295} h={840} zin={zin} zout={zout} /> : <Device frame={device} steps={steps} x={side === "left" ? 380 : 1120} y={30} h={1020} enter={enter} zin={zin} zout={zout} />}
       <div style={{ position: "absolute", inset: 0, opacity: capOpacity }}>
         {laptop ? <Captions steps={steps} x={0} y={60} w={1920} size={60} center lead={zin ? FLY - 10 : 0} /> : <Captions steps={steps} x={side === "left" ? 1060 : 100} w={760} size={80} y={160} lead={zin ? FLY - 10 : 0} />}
       </div>
@@ -231,9 +231,9 @@ const EXECUTOR_2: Step[] = [
   { src: "m11_deals", caption: "Остаток в резерве", desc: "До приемки следующих этапов", dur: 125, from: [1.6, 0, 300], to: [1.2, 0, 0] },
 ];
 const ADMIN: Step[] = [
-  { src: "a01_dashboard", caption: "Панель администратора", desc: "Все сделки на одном экране", dur: 135, from: [1, 0, 20], to: [1.25, 0, 110] },
-  { src: "a02_transactions", caption: "Операции участников", desc: "Резервы, выплаты и неустойки", dur: 125, from: [1.25, 0, 110], to: [1.4, -60, 150] },
-  { src: "a05_projects", caption: "Проверка проектов", desc: "Публикация после модерации", dur: 125, from: [1.4, -60, 150], to: [1.05, 0, 40] },
+  { src: "a01_dashboard", caption: "Панель администратора", desc: "Все сделки на одном экране", dur: 135, from: [1, 0, 0], to: [1.25, 82, 0] },
+  { src: "a02_transactions", caption: "Операции участников", desc: "Резервы, выплаты и неустойки", dur: 125, from: [1, 0, 0], to: [1.25, 82, 0] },
+  { src: "a05_projects", caption: "Проверка проектов", desc: "Публикация после модерации", dur: 125, from: [1, 0, 0], to: [1.25, 82, 0] },
 ];
 
 /* ───── заставка и финал: логотип ───── */
@@ -276,12 +276,12 @@ const Outro: React.FC = () => {
 
 const SCENES: { C: React.FC; dur: number; fadeOut: number }[] = [
   { C: Intro, dur: 140, fadeOut: 20 },
-  { C: () => <Stage device="phone" steps={CUSTOMER_1} side="right" zout />, dur: sum(CUSTOMER_1), fadeOut: 10 },
-  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} side="left" variant="mix" zin zout />, dur: sum(EXECUTOR_1), fadeOut: 10 },
-  { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" zin zout />, dur: sum(CUSTOMER_2), fadeOut: 10 },
-  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" zin zout />, dur: sum(CUSTOMER_3), fadeOut: 10 },
-  { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" zin zout />, dur: sum(EXECUTOR_2), fadeOut: 10 },
-  { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" zin />, dur: sum(ADMIN), fadeOut: 24 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_1} side="right" enter />, dur: sum(CUSTOMER_1), fadeOut: 20 },
+  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} side="left" variant="mix" />, dur: sum(EXECUTOR_1), fadeOut: 20 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" />, dur: sum(CUSTOMER_2), fadeOut: 20 },
+  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" />, dur: sum(CUSTOMER_3), fadeOut: 20 },
+  { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" />, dur: sum(EXECUTOR_2), fadeOut: 20 },
+  { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" />, dur: sum(ADMIN), fadeOut: 24 },
   { C: Outro, dur: 150, fadeOut: 0 },
 ];
 export const DEMO_FRAMES = SCENES.reduce((a, s) => a + s.dur - s.fadeOut, 0);
