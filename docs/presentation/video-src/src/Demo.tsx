@@ -151,12 +151,31 @@ const Amount: React.FC<{ to: number; delay: number }> = ({ to, delay }) => {
 
 const sum = (s: Step[]) => s.reduce((a, b) => a + b.dur, 0);
 
+/** Стеклянные кубы на фоне: по краям кадра, за надписями и устройствами, медленно дрейфуют. */
+type Cube = [n: number, x: number, y: number, w: number, rot: number, blur?: number];
+const CUBES: Record<"phone" | "laptop" | "logo", Cube[]> = {
+  phone: [[3, -90, 720, 380, -8], [1, 640, 850, 210, 14, 3], [2, 1690, -90, 300, 10, 2], [4, 1700, 780, 270, -12]],
+  laptop: [[4, -100, 700, 360, 8], [1, 480, 900, 190, -10, 3], [2, 1560, -110, 320, 12, 2], [3, 1040, -60, 170, -18, 4]],
+  logo: [[2, 140, 120, 300, -12], [4, 1420, 90, 340, 10], [1, 260, 760, 260, 16, 2], [3, 1480, 700, 380, -8]],
+};
+const Cubes: React.FC<{ set: keyof typeof CUBES }> = ({ set }) => {
+  const f = useCurrentFrame();
+  return (
+    <>
+      {CUBES[set].map(([n, x, y, w, rot, blur = 0], i) => (
+        <Img key={i} src={staticFile(`cubes/cube${n}.png`)} style={{ position: "absolute", left: x, top: y + Math.sin((f + i * 40) / 70) * 14, width: w, transform: `rotate(${rot + Math.sin((f + i * 25) / 110) * 4}deg)`, opacity: blur ? 0.7 : 0.9, filter: `${blur ? `blur(${blur}px) ` : ""}drop-shadow(0 30px 40px rgba(2,24,90,.35))` }} />
+      ))}
+    </>
+  );
+};
+
 /** Сцена: синий фон, надписи слева, устройство справа. */
 const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix" }> = ({ device, steps, variant = "blue" }) => {
   const laptop = device === "laptop";
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant={variant} />
+      <Cubes set={laptop ? "laptop" : "phone"} />
       {!laptop && <Device frame={device} steps={steps} x={1120} y={30} h={1020} />}
       {laptop && <Device frame="laptop" steps={steps} x={720} y={230} h={840} />}
       <Captions steps={steps} w={laptop ? 720 : 760} size={laptop ? 60 : 80} y={laptop ? 120 : 160} />
@@ -200,6 +219,7 @@ const Intro: React.FC = () => {
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant="blue" />
+      <Cubes set="logo" />
       <div style={{ position: "absolute", left: 960 - 700 * burst, top: 470 - 700 * burst, width: 1400 * burst, height: 1400 * burst, borderRadius: "50%", border: `${6 * (1 - burst) + 1}px solid rgba(255,255,255,${0.6 * (1 - burst)})` }} />
       <div style={{ position: "absolute", left: 960 - 330, top: 330, width: 660, height: 280, borderRadius: 40, background: "#fff", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card}) rotate(${(1 - card) * -8}deg)`, opacity: Math.min(1, card * 2) }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 520, opacity: logo, transform: `translateY(${(1 - logo) * 40}px)` }} />
@@ -217,6 +237,7 @@ const Outro: React.FC = () => {
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Bg variant="blue" />
+      <Cubes set="logo" />
       <div style={{ position: "absolute", left: 960 - 300, top: 250, width: 600, height: 250, borderRadius: 36, background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card})` }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 470 }} />
       </div>
