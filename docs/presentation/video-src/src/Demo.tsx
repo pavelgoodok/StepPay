@@ -180,7 +180,8 @@ const sum = (s: Step[]) => s.reduce((a, b) => a + b.dur, 0);
 
 /** Стеклянные кубы на фоне: по краям кадра, за надписями и устройствами, медленно дрейфуют. */
 type Cube = [n: number, x: number, y: number, w: number, rot: number, blur?: number];
-const CUBES: Record<"phone" | "phoneL" | "laptop" | "logo", Cube[]> = {
+const CUBES: Record<"phone" | "phoneL" | "laptop" | "logo" | "all", Cube[]> = {
+  all: [[2, -80, -100, 290, -10, 2], [3, -90, 790, 300, 12], [4, 1680, -90, 280, 10, 2], [1, 1690, 800, 300, -14]],
   phoneL: [[4, 1640, 760, 360, 8], [1, 1180, 880, 200, -14, 3], [2, -70, -90, 300, -10, 2], [3, -60, 800, 260, 12]],
   phone: [[3, -90, 720, 380, -8], [1, 640, 850, 210, 14, 3], [2, 1690, -90, 300, 10, 2], [4, 1700, 780, 270, -12]],
   laptop: [[4, -100, 640, 380, 8], [1, 120, 120, 200, -10, 3], [2, 1600, 80, 320, 12, 2], [3, 1640, 720, 300, -18]],
@@ -206,8 +207,6 @@ const Stage: React.FC<{ device: FrameKey; steps: Step[]; variant?: "blue" | "mix
   const laptop = device === "laptop";
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Bg variant={variant} />
-      <Cubes set={laptop ? "laptop" : side === "left" ? "phoneL" : "phone"} />
       {laptop ? <Device frame="laptop" steps={steps} x={490} y={295} h={840} zin={zin} zout={zout} /> : <Device frame={device} steps={steps} x={side === "left" ? 380 : 1120} y={30} h={1020} enter={enter} zin={zin} zout={zout} />}
       <div style={{ position: "absolute", inset: 0, opacity: capOpacity }}>
         {laptop ? <Captions steps={steps} x={0} y={60} w={1920} size={60} center lead={zin ? FLY - 10 : 0} /> : <Captions steps={steps} x={side === "left" ? 1060 : 100} w={760} size={80} y={160} lead={zin ? FLY - 10 : 0} />}
@@ -251,8 +250,6 @@ const Intro: React.FC = () => {
   const shine = interpolate(f, [30, 62], [-40, 140], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Bg variant="blue" />
-      <Cubes set="logo" />
       <div style={{ position: "absolute", left: 960 - 700 * burst, top: 470 - 700 * burst, width: 1400 * burst, height: 1400 * burst, borderRadius: "50%", border: `${6 * (1 - burst) + 1}px solid rgba(255,255,255,${0.6 * (1 - burst)})` }} />
       <div style={{ position: "absolute", left: 960 - 330, top: 330, width: 660, height: 280, borderRadius: 40, background: "#fff", display: "grid", placeItems: "center", overflow: "hidden", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card}) rotate(${(1 - card) * -8}deg)`, opacity: Math.min(1, card * 2) }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 520, opacity: logo, transform: `translateY(${(1 - logo) * 40}px)` }} />
@@ -269,8 +266,6 @@ const Outro: React.FC = () => {
   const card = spring({ frame: f - 4, fps, config: { damping: 13, stiffness: 120 } });
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
-      <Bg variant="blue" />
-      <Cubes set="logo" />
       <div style={{ position: "absolute", left: 960 - 300, top: 250, width: 600, height: 250, borderRadius: 36, background: "#fff", display: "grid", placeItems: "center", boxShadow: "0 40px 80px rgba(2,28,100,.45)", transform: `scale(${card})` }}>
         <Img src={staticFile("img/logo.png")} style={{ width: 470 }} />
       </div>
@@ -293,6 +288,9 @@ export const DEMO_FRAMES = SCENES.reduce((a, s) => a + s.dur - s.fadeOut, 0);
 
 export const StepPayDemo: React.FC = () => (
   <AbsoluteFill style={{ background: NAVY }}>
+    {/* один общий фон на весь ролик, сцены сменяются поверх него */}
+    <Bg variant="blue" />
+    <Cubes set="all" />
     <TransitionSeries>
       {SCENES.map(({ C, dur }, i) => (
         <React.Fragment key={i}>
