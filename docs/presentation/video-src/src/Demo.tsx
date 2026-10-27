@@ -2,6 +2,7 @@ import React from "react";
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from "remotion";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
+import { slide } from "@remotion/transitions/slide";
 import { Bg, FONT, NAVY } from "./ui";
 import FRAMES from "./frames.json";
 
@@ -79,7 +80,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const dy = 0;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
-  const PUSH = 24;
+  const PUSH = 30;
   // камера: внутри шага плавно от from к to, на смене шага мягкий переход от прежнего положения
   const ci = Math.max(0, starts.findIndex((st, i) => f >= st && (starts[i + 1] === undefined || f < starts[i + 1]!)));
   const cs = steps[ci]!;
@@ -108,8 +109,12 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
           const p = i === 0 ? 1 : interpolate(f, [st, st + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
           const next = starts[i + 1];
           const out = next === undefined ? 0 : interpolate(f, [next, next + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
+          // переход как в приложении: новый экран въезжает справа поверх прежнего, прежний сдвигается влево и темнеет
           return (
-            <Img key={s.src} src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill", opacity: p, visibility: out >= 1 ? "hidden" : "visible" }} />
+            <div key={s.src} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transform: `translateX(${((1 - p) - out * 0.3) * box.w}px)`, boxShadow: p < 1 ? "-30px 0 60px rgba(0,0,0,.45)" : "none", visibility: out >= 1 ? "hidden" : "visible" }}>
+              <Img src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill" }} />
+              {out > 0 && <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${out * 0.4})` }} />}
+            </div>
           );
         })}
       </div>
@@ -275,12 +280,12 @@ const Outro: React.FC = () => {
 };
 
 const SCENES: { C: React.FC; dur: number; fadeOut: number }[] = [
-  { C: Intro, dur: 140, fadeOut: 20 },
-  { C: () => <Stage device="phone" steps={CUSTOMER_1} side="right" enter />, dur: sum(CUSTOMER_1), fadeOut: 20 },
-  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} side="left" variant="mix" />, dur: sum(EXECUTOR_1), fadeOut: 20 },
-  { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" />, dur: sum(CUSTOMER_2), fadeOut: 20 },
-  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" />, dur: sum(CUSTOMER_3), fadeOut: 20 },
-  { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" />, dur: sum(EXECUTOR_2), fadeOut: 20 },
+  { C: Intro, dur: 140, fadeOut: 30 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_1} side="right" enter />, dur: sum(CUSTOMER_1), fadeOut: 30 },
+  { C: () => <Stage device="phone_r" steps={EXECUTOR_1} side="left" variant="mix" />, dur: sum(EXECUTOR_1), fadeOut: 30 },
+  { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" />, dur: sum(CUSTOMER_2), fadeOut: 30 },
+  { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" />, dur: sum(CUSTOMER_3), fadeOut: 30 },
+  { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" />, dur: sum(EXECUTOR_2), fadeOut: 30 },
   { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" />, dur: sum(ADMIN), fadeOut: 24 },
   { C: Outro, dur: 150, fadeOut: 0 },
 ];
@@ -294,7 +299,7 @@ export const StepPayDemo: React.FC = () => (
           <TransitionSeries.Sequence durationInFrames={dur}>
             <C />
           </TransitionSeries.Sequence>
-          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: SCENES[i]!.fadeOut })} />}
+          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={i > 0 && i < SCENES.length - 2 ? slide({ direction: "from-right" }) : fade()} timing={linearTiming({ durationInFrames: SCENES[i]!.fadeOut, easing: Easing.bezier(0.6, 0, 0.2, 1) })} />}
         </React.Fragment>
       ))}
     </TransitionSeries>
