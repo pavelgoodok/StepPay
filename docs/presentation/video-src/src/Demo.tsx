@@ -85,7 +85,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const dy = 0;
   let t = 0;
   const starts = steps.map((s) => { const v = t; t += s.dur; return v; });
-  const PUSH = 30;
+  const PUSH = 42;
   // камера: внутри шага плавно от from к to, на смене шага мягкий переход от прежнего положения
   const ci = Math.max(0, starts.findIndex((st, i) => f >= st && (starts[i + 1] === undefined || f < starts[i + 1]!)));
   const cs = steps[ci]!;
@@ -114,9 +114,9 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
           if (f < st - 1 && i > 0) return null;
           const laptop = frame === "laptop";
           // на ноутбуке первый экран загорается после въезда сцены, следующие проявляются на месте прежнего
-          const p = i === 0 ? (laptop ? interpolate(f, [24, 54], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1) : interpolate(f, [st, st + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
+          const p = i === 0 ? (laptop ? interpolate(f, [24, 54], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1) : interpolate(f, [st, st + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.45, 0, 0.2, 1) });
           const next = starts[i + 1];
-          const out = next === undefined ? 0 : interpolate(f, [next, next + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
+          const out = next === undefined ? 0 : interpolate(f, [next, next + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.45, 0, 0.2, 1) });
           // переход как в приложении: новый экран въезжает справа поверх прежнего, прежний сдвигается влево и темнеет
           return (
             <div key={s.src} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transform: laptop ? "none" : `translateX(${((1 - p) - out * 0.3) * box.w}px)`, opacity: laptop ? p : 1, boxShadow: !laptop && p < 1 ? "-30px 0 60px rgba(0,0,0,.45)" : "none", visibility: out >= 1 ? "hidden" : "visible" }}>
