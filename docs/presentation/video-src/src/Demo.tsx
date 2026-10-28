@@ -76,6 +76,8 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const box = screenBox(frame);
   // экран телефона чуть шире окна и обрезан по маске окна: без зазора у рамки и без выхода за нее
   const grow = frame === "laptop" ? 0 : 0.04;
+  // интерфейс внутри экрана с небольшим полем, чтобы меню не уходило под скругления рамки
+  const inner = frame === "laptop" ? 1 : 0.94 / (1 + grow);
   const mask = frame === "laptop" ? undefined : `url(${staticFile(`frames/${frame}_mask.png`)})`;
   const mc = [meta.quad.reduce((a, p) => a + p[0]!, 0) / 4, meta.quad.reduce((a, p) => a + p[1]!, 0) / 4];
   const q = meta.quad.map(([a, b]) => [(mc[0]! + (a! - mc[0]!) * (1 + grow)) * k, (mc[1]! + (b! - mc[1]!) * (1 + grow)) * k]);
@@ -118,7 +120,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
           // переход как в приложении: новый экран въезжает справа поверх прежнего, прежний сдвигается влево и темнеет
           return (
             <div key={s.src} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transform: laptop ? "none" : `translateX(${((1 - p) - out * 0.3) * box.w}px)`, opacity: laptop ? p : 1, boxShadow: !laptop && p < 1 ? "-30px 0 60px rgba(0,0,0,.45)" : "none", visibility: out >= 1 ? "hidden" : "visible" }}>
-              <Img src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill" }} />
+              <Img src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill", transform: `scale(${inner})` }} />
               {!laptop && out > 0 && <div style={{ position: "absolute", inset: 0, background: `rgba(0,0,0,${out * 0.4})` }} />}
             </div>
           );
