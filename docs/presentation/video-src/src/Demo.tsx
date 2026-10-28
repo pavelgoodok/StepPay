@@ -74,8 +74,9 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const meta = FRAMES[frame];
   const k = h / meta.h;
   const box = screenBox(frame);
-  // экран телефона чуть шире окна, чтобы край заходил под рамку без зазора
-  const grow = frame === "laptop" ? 0 : 0.025;
+  // экран телефона чуть шире окна и обрезан по маске окна: без зазора у рамки и без выхода за нее
+  const grow = frame === "laptop" ? 0 : 0.04;
+  const mask = frame === "laptop" ? undefined : `url(${staticFile(`frames/${frame}_mask.png`)})`;
   const mc = [meta.quad.reduce((a, p) => a + p[0]!, 0) / 4, meta.quad.reduce((a, p) => a + p[1]!, 0) / 4];
   const q = meta.quad.map(([a, b]) => [(mc[0]! + (a! - mc[0]!) * (1 + grow)) * k, (mc[1]! + (b! - mc[1]!) * (1 + grow)) * k]);
   const e = !enter ? 1 : spring({ frame: f - enterDelay, fps, config: { damping: 18, stiffness: 55 } });
@@ -104,6 +105,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const ty = cam[2] * (1 - fly) + (540 - (y + qc[1]!)) * fly;
   return (
     <div style={{ position: "absolute", left: x, top: y, width: meta.w * k, height: h, opacity: Math.min(1, e * 1.5), transformOrigin: `${qc[0]}px ${qc[1]}px`, transform: `translate(${tx}px, ${(1 - e) * 600 + dy + ty}px) scale(${(0.92 + 0.08 * e) * sc})`, filter: "drop-shadow(0 50px 60px rgba(2,24,90,.5))" }}>
+      <div style={{ position: "absolute", left: 0, top: 0, width: meta.w * k, height: h, maskImage: mask, WebkitMaskImage: mask, maskSize: "100% 100%", WebkitMaskSize: "100% 100%" }}>
       <div style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transformOrigin: "0 0", transform: matrix3d(box.w, box.h, q), overflow: "hidden", background: "#0b1020" }}>
         {steps.map((s, i) => {
           const st = starts[i]!;
@@ -121,6 +123,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
             </div>
           );
         })}
+      </div>
       </div>
       <Img src={staticFile(`frames/${frame}.png`)} style={{ position: "absolute", left: 0, top: 0, width: meta.w * k, height: h }} />
       {meta.glare && <Img src={staticFile(`frames/${frame}_glare.png`)} style={{ position: "absolute", left: 0, top: 0, width: meta.w * k, height: h }} />}
