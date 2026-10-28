@@ -1,7 +1,6 @@
 import React from "react";
 import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from "remotion";
 import { TransitionSeries, linearTiming } from "@remotion/transitions";
-import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import { Bg, FONT, NAVY } from "./ui";
 import FRAMES from "./frames.json";
@@ -75,7 +74,10 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
   const meta = FRAMES[frame];
   const k = h / meta.h;
   const box = screenBox(frame);
-  const q = meta.quad.map(([a, b]) => [a! * k, b! * k]);
+  // экран телефона чуть шире окна, чтобы край заходил под рамку без зазора
+  const grow = frame === "laptop" ? 0 : 0.025;
+  const mc = [meta.quad.reduce((a, p) => a + p[0]!, 0) / 4, meta.quad.reduce((a, p) => a + p[1]!, 0) / 4];
+  const q = meta.quad.map(([a, b]) => [(mc[0]! + (a! - mc[0]!) * (1 + grow)) * k, (mc[1]! + (b! - mc[1]!) * (1 + grow)) * k]);
   const e = !enter ? 1 : spring({ frame: f - enterDelay, fps, config: { damping: 18, stiffness: 55 } });
   const dy = 0;
   let t = 0;
@@ -283,7 +285,7 @@ const SCENES: { C: React.FC; dur: number; fadeOut: number }[] = [
   { C: () => <Stage device="phone" steps={CUSTOMER_2} side="right" />, dur: sum(CUSTOMER_2), fadeOut: 30 },
   { C: () => <Stage device="phone_r" steps={CUSTOMER_3} side="left" variant="mix" />, dur: sum(CUSTOMER_3), fadeOut: 30 },
   { C: () => <Stage device="phone" steps={EXECUTOR_2} side="right" />, dur: sum(EXECUTOR_2), fadeOut: 30 },
-  { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" />, dur: sum(ADMIN), fadeOut: 24 },
+  { C: () => <Stage device="laptop" steps={ADMIN} side="center" variant="mix" />, dur: sum(ADMIN), fadeOut: 30 },
   { C: Outro, dur: 150, fadeOut: 0 },
 ];
 export const DEMO_FRAMES = SCENES.reduce((a, s) => a + s.dur - s.fadeOut, 0);
@@ -299,7 +301,7 @@ export const StepPayDemo: React.FC = () => (
           <TransitionSeries.Sequence durationInFrames={dur}>
             <C />
           </TransitionSeries.Sequence>
-          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={i < SCENES.length - 2 ? slide({ direction: "from-right" }) : fade()} timing={linearTiming({ durationInFrames: SCENES[i]!.fadeOut, easing: Easing.bezier(0.6, 0, 0.2, 1) })} />}
+          {i < SCENES.length - 1 && <TransitionSeries.Transition presentation={slide({ direction: "from-right" })} timing={linearTiming({ durationInFrames: SCENES[i]!.fadeOut, easing: Easing.bezier(0.6, 0, 0.2, 1) })} />}
         </React.Fragment>
       ))}
     </TransitionSeries>
