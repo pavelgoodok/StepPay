@@ -119,7 +119,7 @@ const Device: React.FC<{ frame: FrameKey; steps: Step[]; x: number; y: number; h
           const out = next === undefined ? 0 : interpolate(f, [next, next + PUSH], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.bezier(0.33, 0, 0.15, 1) });
           // свайп: прежний экран уходит влево, следующий идет за ним вплотную справа
           return (
-            <div key={s.src} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transform: laptop ? "none" : `translateX(${((1 - p) - out) * box.w}px)`, opacity: laptop ? p : 1, visibility: out >= 1 ? "hidden" : "visible" }}>
+            <div key={s.src} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, transform: laptop ? "none" : `translateX(${((1 - p) - out) * box.w}px)`, opacity: laptop ? p : 1, background: laptop ? undefined : "#0b1020", visibility: out >= 1 ? "hidden" : "visible" }}>
               <Img src={staticFile(`demo/${s.src}.png`)} style={{ position: "absolute", left: 0, top: 0, width: box.w, height: box.h, objectFit: "fill", transform: `scale(${inner})` }} />
                           </div>
           );
