@@ -27,10 +27,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const [create, setCreate] = useState(false);
-  const [demo, setDemo] = useState(false);
-  useEffect(() => {
-    try { setDemo(localStorage.getItem("steppay.demo") !== null); } catch { /* ignore */ }
-  }, [path]);
 
   useEffect(() => {
     if (ready && !user) router.replace("/login");
@@ -53,9 +49,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="shell">
       <div className={`deco deco-${decoOf(path)}`} aria-hidden />
       {user ? children : <div className="page"><div className="skeleton" /></div>}
-      {demo && (
-        <Link href="/demo" className="demo-pill" aria-label="Вернуться к демо-сценарию">▶ Демо</Link>
-      )}
       <nav className="tabbar">
         <div className="side-logo"><Link href="/deals" aria-label="StepPay"><Logo /></Link><span className="mode-side"><ModeSwitch compact /></span></div>
         {tabs.map((t) =>

@@ -391,7 +391,16 @@ export async function buildApp(opts: AppOptions) {
   // ── публичное ──
   app.get("/health", async () => ({ ok: true }));
   app.get("/templates", async () => TEMPLATES);
-  app.get("/auth/demo-users", async () => dir.demoUsers());
+  app.get("/auth/demo-users", async () => dir.loginUsers());
+  app.get("/auth/mode", async () => ({ demo: demoOn }));
+  // демо: вход по имени без номера телефона; то же имя возвращает в тот же аккаунт
+  app.post("/auth/name", async (req, reply) => {
+    if (!demoOn) return reply.code(404).send({ error: "Вход по имени доступен только в демо-режиме" });
+    const b = z.object({ name: z.string().trim().min(2, "Укажите имя").max(60), kind: z.enum(["customer", "executor"]).optional() }).parse(req.body);
+    const existing = dir.byDemoName(b.name);
+    const user = existing ?? (await dir.register("", b.name, now(), b.kind));
+    return { token: makeToken(opts.secret, user.id, Date.now()), isNew: !existing, user: { id: user.id, name: user.name, role: "user" as const, kind: dir.get(user.id)?.kind } };
+  });
   app.post("/auth/demo", async (req, reply) => {
     const { userId } = z.object({ userId: z.string() }).parse(req.body);
     const u = dir.demoUsers().find((x) => x.id === userId);

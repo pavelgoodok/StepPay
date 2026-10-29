@@ -3,13 +3,12 @@ import { resetDemo } from "./helpers";
 
 test.beforeEach(async ({ request }) => resetDemo(request));
 
-test("регистрация нового исполнителя по номеру телефона", async ({ page }) => {
+test("в демо новый исполнитель входит по имени, без номера телефона", async ({ page }) => {
   await page.goto("/login");
-  await page.getByPlaceholder("Номер телефона").fill("+7 999 111-22-33");
-  await page.getByRole("button", { name: "Получить код" }).click();
+  await expect(page.getByPlaceholder("Номер телефона")).toHaveCount(0);
   await page.getByRole("button", { name: /Исполнитель/ }).click();
-  await page.getByPlaceholder("Фамилия и имя").fill("Петр Сидоров");
-  await page.locator(".sms").click(); // демо-код подставляется нажатием
+  await page.getByPlaceholder("Имя").fill(`Петр ${Date.now()}`);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
   await page.waitForURL(/\/services\/new/);
   await expect(page.getByText("Услуга", { exact: false }).first()).toBeVisible();
 });

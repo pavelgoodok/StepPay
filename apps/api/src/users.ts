@@ -23,6 +23,9 @@ export const DEMO_USERS: User[] = [
   { id: "admin", name: "Администратор платформы", role: "admin", startBalance: 0 },
 ];
 
+/** Демо-аккаунты на экране входа. Остальные демо-пользователи только владельцы проектов и услуг демо-каталога. */
+export const DEMO_LOGIN = ["anna", "ivan", "admin"];
+
 /** Зарегистрированный пользователь: одна учетная запись на все роли, роль определяет сделка. */
 export type LegalStatus = "person" | "selfemployed" | "ip" | "org";
 
@@ -88,7 +91,7 @@ export class Directory {
   constructor(
     private persist: (users: RegisteredUser[]) => Promise<void>,
     initial: RegisteredUser[] = [],
-    /** при DEMO_MODE=off демо-аккаунты не входят и не ищутся, но приемщик споров нужен всегда */
+    /** без DEMO_MODE=1 демо-аккаунты не входят и не ищутся, но приемщик споров нужен всегда */
     private demo = true,
     /** телефоны администраторов (переменная ADMIN_PHONES) */
     private adminPhones: string[] = [],
@@ -236,12 +239,17 @@ export class Directory {
     return this.demo ? DEMO_USERS.map(({ id, name, role }) => ({ id, name, role })) : [];
   }
 
+  /** Демо-аккаунты для экрана входа. */
+  loginUsers(): PublicAccount[] {
+    return this.demoUsers().filter((u) => DEMO_LOGIN.includes(u.id));
+  }
+
   /** Список аккаунтов для панели администратора: телефон маскируется. */
   accounts() {
     return this.allIds().map((id) => {
       const a = this.get(id)!;
       const r = this.registered.get(id);
-      return { id, name: a.name, role: a.role, kind: a.kind, grantor: !!a.grantor, arbiter: !!a.arbiter, phone: r ? maskPhone(r.phone) : undefined, createdAt: r?.createdAt, demo: !r };
+      return { id, name: a.name, role: a.role, kind: a.kind, grantor: !!a.grantor, arbiter: !!a.arbiter, phone: r?.phone ? maskPhone(r.phone) : undefined, createdAt: r?.createdAt, demo: !r };
     });
   }
 
@@ -251,6 +259,12 @@ export class Directory {
 
   byPhone(phone: string) {
     return [...this.registered.values()].find((r) => r.phone === phone);
+  }
+
+  /** Демо-вход по имени: аккаунт без номера телефона с тем же именем. */
+  byDemoName(name: string) {
+    const n = name.trim().toLowerCase();
+    return [...this.registered.values()].find((r) => !r.phone && r.name.toLowerCase() === n);
   }
 
   phoneOf(id: string) {

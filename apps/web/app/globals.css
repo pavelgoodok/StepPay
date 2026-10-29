@@ -261,9 +261,6 @@ select.input { appearance: none; }
 .sms { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 14px; padding: 12px 14px; border-radius: 16px; text-align: left; background: var(--surface2); animation: drop .3s ease both; }
 .sms .grow { display: flex; flex-direction: column; font-size: 14px; }
 .sms-ic { width: 36px; height: 36px; border-radius: 12px; background: var(--blue); color: #fff; display: grid; place-items: center; }
-.demo-link { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border-radius: 20px; background: var(--surface); color: var(--blue); }
-.demo-link .grow { display: flex; flex-direction: column; font-size: 14px; font-weight: 700; }
-.demo-link .grow span { color: var(--muted); font-size: 12px; font-weight: 500; }
 .demo-accounts { text-align: center; }
 .login .who { background: var(--surface); border-radius: 18px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; color: var(--ink); }
 @media (min-width: 900px) {
@@ -316,7 +313,6 @@ select.input { appearance: none; }
 }
 .receipt { position: relative; }
 .receipt .stamp { display: block; margin: 10px 0 0 auto; color: var(--blue); opacity: .8; transform: rotate(-12deg); }
-.demo-pill { position: fixed; z-index: 30; right: max(14px, calc(50% - 226px)); bottom: 108px; padding: 10px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; color: #fff; background: var(--ink); }
 
 .pcard { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 26px 20px 22px; }
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -343,7 +339,6 @@ select.input { appearance: none; }
   .plus-label { display: inline; font-weight: 700; font-size: 15px; }
   .side-user { display: flex; align-items: center; gap: 12px; margin-top: auto; padding: 10px; border-radius: 16px; background: var(--surface2); }
   .toasts { left: calc(50% + 136px); }
-  .demo-pill { right: 28px; bottom: 28px; }
   .page > .top .logo { display: none; }
   .page > .top { justify-content: flex-end; }
   .hero { padding: 28px; }

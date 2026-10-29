@@ -306,6 +306,20 @@ describe("демо для жюри", () => {
     const app = await buildApp({ store: new MemoryStore(), secret: "s", demoMode: false });
     expect((await app.inject({ method: "POST", url: "/demo/reset" })).statusCode).toBe(404);
   });
+
+  it("в демо вход по имени без телефона, на экране входа только Анна, Иван и администратор", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s" });
+    expect((await app.inject({ method: "GET", url: "/auth/mode" })).json()).toEqual({ demo: true });
+    expect((await app.inject({ method: "GET", url: "/auth/demo-users" })).json().map((u: { id: string }) => u.id)).toEqual(["anna", "ivan", "admin"]);
+    const first = (await app.inject({ method: "POST", url: "/auth/name", payload: { name: "Петр", kind: "executor" } })).json();
+    expect(first.isNew).toBe(true);
+    expect(first.user.kind).toBe("executor");
+    const again = (await app.inject({ method: "POST", url: "/auth/name", payload: { name: " петр " } })).json();
+    expect(again).toMatchObject({ isNew: false, user: { id: first.user.id } });
+    const prod = await buildApp({ store: new MemoryStore(), secret: "s", demoMode: false });
+    expect((await prod.inject({ method: "GET", url: "/auth/mode" })).json()).toEqual({ demo: false });
+    expect((await prod.inject({ method: "POST", url: "/auth/name", payload: { name: "Петр" } })).statusCode).toBe(404);
+  });
 });
 
 describe("регистрация и вход по телефону", () => {

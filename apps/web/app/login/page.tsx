@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IMG, Icon, Initials } from "@/components/ui";
@@ -9,9 +8,7 @@ import { useSession } from "@/lib/session";
 const ROLE: Record<string, string> = {
   customer: "Заказчик",
   executor: "Исполнитель",
-  sponsor: "Спонсор краудфандинга",
-  funder: "Грантодатель",
-  arbiter: "Независимый приемщик споров",
+  admin: "Администратор",
 };
 
 /** +7 999 123-45-67 по мере ввода */
@@ -40,6 +37,11 @@ export default function Login() {
   const [wait, setWait] = useState(0);
   const [busy, setBusy] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  // в демо-режиме вход по имени, без номера телефона
+  const [demo, setDemo] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ demo: boolean }>("/auth/mode").then((m) => setDemo(m.demo)).catch(() => setDemo(false));
+  }, []);
 
   // куда идти после входа: новый исполнитель создает витрину услуг, новый заказчик идет в каталог
   const after = useRef("/deals");
@@ -89,6 +91,19 @@ export default function Login() {
     }
   }
 
+  async function nameLogin() {
+    if (name.trim().length < 2 || busy) return;
+    setBusy(true);
+    try {
+      const r = await api<{ token: string; isNew: boolean }>("/auth/name", { method: "POST", body: { name, kind: kind ?? "customer" } });
+      after.current = r.isNew ? (kind === "executor" ? "/services/new" : "/catalog") : "/deals";
+      await completeLogin(r.token);
+      router.replace(after.current);
+    } catch (e) {
+      toast((e as Error).message, "err");
+      setBusy(false);
+    }
+  }
 
   async function demoLogin(id: string) {
     setBusy(true);
@@ -124,7 +139,37 @@ export default function Login() {
 
       <div className="login-panel">
         <div className="auth-card">
-          {step === "phone" ? (
+          {demo === null ? (
+            <span className="spin" />
+          ) : demo ? (
+            <>
+              <h2>Вход</h2>
+              <p className="sub">Демонстрационный режим: номер телефона не нужен, достаточно имени</p>
+              <div className="field" style={{ marginTop: 14 }}>
+                <label>Вид участия</label>
+                <div className="kinds">
+                  <button type="button" className={`kind ${kind !== "executor" ? "on" : ""}`} onClick={() => setKind("customer")}>
+                    <Icon name="sprout" size={22} />
+                    <b>Заказчик</b>
+                    <span>Размещение заказов и оплата по этапам</span>
+                  </button>
+                  <button type="button" className={`kind ${kind === "executor" ? "on" : ""}`} onClick={() => setKind("executor")}>
+                    <Icon name="deals" size={22} />
+                    <b>Исполнитель</b>
+                    <span>Предоставление услуг и получение выплат</span>
+                  </button>
+                </div>
+              </div>
+              <div className="field" style={{ marginTop: 14 }}>
+                <label>Имя</label>
+                <input className="input big-input" autoComplete="name" autoFocus placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void nameLogin()} />
+              </div>
+              <button className="btn" style={{ marginTop: 16 }} disabled={busy || name.trim().length < 2} onClick={() => void nameLogin()}>
+                {busy ? <span className="spin" /> : "Войти"}
+              </button>
+              <p className="small muted" style={{ marginTop: 12 }}>С тем же именем вы вернетесь в свой аккаунт. Деньги в приложении условные.</p>
+            </>
+          ) : step === "phone" ? (
             <>
               <h2>Вход или регистрация</h2>
               <p className="sub">Укажите номер телефона, на него будет отправлен код подтверждения</p>
@@ -187,11 +232,6 @@ export default function Login() {
             </>
           )}
         </div>
-
-        <Link href="/demo" className="demo-link">
-          <span className="grow"><b>Демонстрационный сценарий</b><span>без регистрации</span></span>
-          <Icon name="arrow" size={18} />
-        </Link>
 
         {users.length > 0 && (
           <div className="demo-accounts">
