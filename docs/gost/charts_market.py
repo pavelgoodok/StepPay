@@ -24,7 +24,7 @@ ax.text(0, 0.15, "SAM  около 642 млрд руб.", ha="center", fontsize=1
 ax.text(0, -0.2, "дома, ремонт под ключ, мероприятия,\nдиджитал, гранты и сборы", ha="center", va="top", fontsize=9, color="white")
 ax.text(0, -1.9, "SOM", ha="center", va="center", fontsize=13, weight="bold", color="white")
 ax.set_xlim(-5.2, 5.6); ax.set_ylim(-3.2, 3.2)
-ax.text(3.35, -2.45, "SOM, оборот сделок в год:\nконсервативный 6,4 млрд руб.\nбазовый 32 млрд руб.\nцелевой 50 млрд руб. (5-й год)", fontsize=10.5, color=NAVY)
+ax.text(3.35, -2.45, "SOM, оборот сделок в год:\n1-й год 6,4 млрд руб.\n2-й год 32 млрд руб.\n3-й год 50 млрд руб.", fontsize=10.5, color=NAVY)
 ax.annotate("", xy=(0.95, -2.1), xytext=(3.3, -2.05), arrowprops=dict(arrowstyle="-", color=NAVY, lw=1))
 fig.tight_layout(); save(fig, "m1_tam.png")
 
