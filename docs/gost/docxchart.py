@@ -150,7 +150,7 @@ def bars(cats, values, colors, horizontal=False, value_title=None, fmt='0', vmax
     return gf
 
 
-def multi(cats, series, colors, kind, value_title=None, fmt='0', vmax=None, width_cm=15, height_cm=8, legend=True, labels=True, gap=60, overlap=None, hidden=(), texts=None):
+def multi(cats, series, colors, kind, value_title=None, fmt='0', vmax=None, width_cm=15, height_cm=8, legend=True, labels=True, gap=60, overlap=None, hidden=(), texts=None, vmin=0):
     """Несколько серий: столбцы рядом, с накоплением или линии. hidden - номера серий без заливки (основа каскада)."""
     data = CategoryChartData(number_format=fmt)
     data.categories = cats
@@ -200,7 +200,9 @@ def multi(cats, series, colors, kind, value_title=None, fmt='0', vmax=None, widt
                 idx = et.SubElement(le, "{http://schemas.openxmlformats.org/drawingml/2006/chart}idx"); idx.set("val", str(i))
                 de = et.SubElement(le, "{http://schemas.openxmlformats.org/drawingml/2006/chart}delete"); de.set("val", "1")
                 leg.remove(le); leg.insert(1, le)
-    _clean_axes(ch, value_title, vmax=vmax, value_fmt='0')
+    _clean_axes(ch, value_title, vmax=vmax, vmin=vmin, value_fmt='0')
+    if vmin is not None and vmin < 0:  # при отрицательных значениях подписи категорий под осью, а не на нуле
+        ch.category_axis.tick_label_position = XL_TICK_LABEL_POSITION.LOW
     if kind in (XL_CHART_TYPE.BAR_STACKED, XL_CHART_TYPE.BAR_CLUSTERED):
         ch.category_axis.reverse_order = True
         ch.value_axis.tick_label_position = XL_TICK_LABEL_POSITION.LOW
