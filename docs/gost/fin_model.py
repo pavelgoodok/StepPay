@@ -24,12 +24,13 @@ YEARS = [2026, 2027, 2028, 2029, 2030, 2031]  # год 0 - запуск и пи�
 # Допущения (млн руб., если не указано иное)
 SCENARIOS = {"Пониженный": [3_200, 16_000, 25_000], "Базовый": [6_400, 32_000, 50_000], "Повышенный": [9_600, 48_000, 75_000]}
 A = dict(
-    scenario=2, check_rub=300_000, fee=0.015, growth=0.10,
-    subs=[2_000, 10_000, 20_000], sub_price=490, subs_growth=0.10,
-    funds=[5, 20, 50], funds_growth=0.10,
+    scenario=2, check_rub=300_000, fee=0.015, growth=0.20,
+    subs=[2_000, 10_000, 20_000], sub_price=490, subs_growth=0.20,
+    funds=[5, 20, 50], funds_growth=0.20,
     dispute_share=0.03, dispute_rub=300, var_rub=1_000,
     fixed=[30, 60, 150, 240], fixed_growth=0.05,
     capex=[250, 50, 30, 30, 30, 30], life=5, tax=0.25,
+    terminal_growth=0.04,  # рост после 2031 года на уровне цели Банка России по инфляции
 )
 
 
@@ -73,7 +74,8 @@ def compute(a=A):
             rows[k].append(v)
     npv = rows["dcum"][-1]
     irr = _irr(rows["fcf"])
-    return rows, dict(rate=rate, npv=npv, irr=irr, payback=_payback(rows["cum"], rows["fcf"]), dpayback=_payback(rows["dcum"], rows["dcf"]))
+    tv = rows["fcf"][-1] * (1 + a["terminal_growth"]) / (rate - a["terminal_growth"])
+    return rows, dict(rate=rate, npv=npv, tv=tv, dtv=tv * rows["df"][-1], npv_total=npv + tv * rows["df"][-1], irr=irr, payback=_payback(rows["cum"], rows["fcf"]), dpayback=_payback(rows["dcum"], rows["dcf"]))
 
 
 def _payback(cum, flow):
