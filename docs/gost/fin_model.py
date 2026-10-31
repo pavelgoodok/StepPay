@@ -45,7 +45,7 @@ def roe():
 
 
 def compute(a=A):
-    rate = sum(roe()) / 3
+    rate = a.get("rate") or sum(roe()) / 3
     g = list(SCENARIOS.values())[a["scenario"] - 1]
     n = len(YEARS)
     gmv = [0.0] + g + [g[-1] * (1 + a["growth"]) ** k for k in (1, 2)]
