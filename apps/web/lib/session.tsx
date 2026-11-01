@@ -11,7 +11,7 @@ interface Session {
   /** сообщения в чатах, которые вы еще не читали */
   chatUnread: number;
   /** возможности сервера: пополнение без оплаты есть только в демо */
-  features: { topup: boolean; chain?: boolean };
+  features: { topup: boolean; chain?: boolean; demo?: boolean };
   users: PublicUser[];
   ready: boolean;
   refresh(): Promise<void>;
@@ -50,7 +50,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [unread, setUnread] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
-  const [features, setFeatures] = useState<{ topup: boolean; chain?: boolean }>({ topup: true });
+  const [features, setFeatures] = useState<{ topup: boolean; chain?: boolean; demo?: boolean }>({ topup: true });
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [ready, setReady] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "ok" | "err" }[]>([]);
@@ -63,7 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const raw = localStorage.getItem(ME_KEY);
       if (!raw) return;
-      const c = JSON.parse(raw) as { user?: PublicUser; features?: { topup: boolean; chain?: boolean } };
+      const c = JSON.parse(raw) as { user?: PublicUser; features?: { topup: boolean; chain?: boolean; demo?: boolean } };
       if (c.user?.id) setUser(c.user);
       if (c.features) setFeatures(c.features);
     } catch {
@@ -80,7 +80,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; chatUnread?: number; features?: { topup: boolean; chain?: boolean }; adminEntry?: { codeSet: boolean } }>("/me");
+      const me = await api<{ user: PublicUser; wallet: Wallet; unread?: number; chatUnread?: number; features?: { topup: boolean; chain?: boolean; demo?: boolean }; adminEntry?: { codeSet: boolean } }>("/me");
       setUnread(me.unread ?? 0);
       setChatUnread(me.chatUnread ?? 0);
       setAdminEntry(me.adminEntry ?? null);

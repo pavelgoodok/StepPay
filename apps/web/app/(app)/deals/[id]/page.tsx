@@ -29,7 +29,7 @@ const CLOSED_BY: Record<string, string> = {
 
 export default function DealPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, wallet, toast, refresh } = useSession();
+  const { user, wallet, toast, refresh, features } = useSession();
   const { data: d, error, reload } = usePoll(() => api<DealFull>(`/deals/${id}`), [id]);
   const [now, setNow] = useState(() => Date.now());
   const [ask, setAsk] = useState<Ask>(null);
@@ -144,13 +144,18 @@ export default function DealPage() {
         {paidBurst && <><i className="burst" /><i className="burst two" /></>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={d.status === "completed" ? IMG.accept : d.status === "cancelled" ? (expired ? IMG.deadline : IMG.folder) : d.status === "active" ? IMG.steps : IMG.reserve} alt="" />
-        <div className="label">Выплачено исполнителю</div>
-        <div className="big"><Money value={paid} /></div>
+        {/* пока идет сбор или резерв, главная цифра - собранная сумма, а не выплаты (их еще нет) */}
+        <div className="label">{d.status === "funding" ? (crowd ? "Собрано" : "Зарезервировано") : "Выплачено исполнителю"}</div>
+        <div className="big"><Money value={d.status === "funding" ? reservedLeft : paid} /></div>
         <div style={{ maxWidth: 190 }}>
-          <SegBar onDark count={d.stages.length} filled={d.stages.filter((x) => x.status === "accepted").length} cur={d.status === "active" ? d.stages.filter((x) => x.status === "accepted").length : undefined} label="Принятые этапы" />
+          {d.status === "funding" ? (
+            <SegBar onDark count={d.stages.length} filled={d.target ? (reservedLeft / d.target) * d.stages.length : 0} label="Сбор средств по этапам" />
+          ) : (
+            <SegBar onDark count={d.stages.length} filled={d.stages.filter((x) => x.status === "accepted").length} cur={d.status === "active" ? d.stages.filter((x) => x.status === "accepted").length : undefined} label="Принятые этапы" />
+          )}
           <div className="small" style={{ marginTop: 8, opacity: 0.9 }}>из {rub(d.target)}</div>
         </div>
-        {reservedLeft > 0 && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
+        {reservedLeft > 0 && d.status !== "funding" && <div className="pill" style={{ marginTop: 12 }}><Icon name="lock" size={15} /> {rub(reservedLeft)} в резерве</div>}
       </div>}
 
       {expired && (
@@ -159,12 +164,12 @@ export default function DealPage() {
           <img className="float" src={IMG.deadline} alt="" />
           <div>
             <div className="title">Срок истек, средства возвращены</div>
-            <div className="small muted" style={{ marginTop: 4 }}>Срок, установленный контрактом, нарушен, остаток возвращен без согласия сторон.</div>
+            <div className="small muted" style={{ marginTop: 4 }}>Срок, установленный условиями сделки, нарушен, остаток возвращен без согласия сторон.</div>
           </div>
         </div>
       )}
 
-      {(d.meta?.chatId || !draft || d.chain) && <div className="group">
+      {(d.meta?.chatId || (!features.demo && (!draft || d.chain))) && <div className="group">
         {d.meta?.chatId && (
           <Link href={`/chats/${d.meta.chatId}`} className="card tap row">
             <span className="setic"><Icon name="chat" size={20} /></span>
@@ -172,9 +177,10 @@ export default function DealPage() {
             <Icon name="arrow" size={18} />
           </Link>
         )}
-        {!draft && <ContractCard d={d} />}
-        {!draft && <JournalCard d={d} />}
-        <ChainCard d={d} />
+        {/* в демо нет ни сети, ни хешей: только условные деньги на сервере */}
+        {!draft && !features.demo && <ContractCard d={d} />}
+        {!draft && !features.demo && <JournalCard d={d} />}
+        {!features.demo && <ChainCard d={d} />}
       </div>}
       {!draft && <ReviewCard dealId={id} collapsible={d.status !== "completed"} />}
       {d.status === "completed" && (
@@ -237,7 +243,7 @@ export default function DealPage() {
       {needsMySign && !(isOwner && !crowd && !fullyReserved) && (
         <div className="card stack">
           <div className="title">Подпишите контракт</div>
-          <div className="small muted">{fullyReserved ? "Средства зарезервированы. Работа начнется после подписания контракта всеми сторонами." : "Подпись нужна до начала работы. Условия зафиксированы хешем, их уже нельзя изменить."}</div>
+          <div className="small muted">{fullyReserved ? "Средства зарезервированы. Работа начнется после подписания контракта всеми сторонами." : "Подпись нужна до начала работы. Условия зафиксированы, их уже нельзя изменить."}</div>
           <button className="btn" disabled={busy} onClick={() => signNow(d.contract!.hash, "Контракт подписан")}>Подписать контракт</button>
         </div>
       )}

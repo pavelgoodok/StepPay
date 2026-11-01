@@ -577,7 +577,7 @@ export async function buildApp(opts: AppOptions) {
     const h = req.headers.authorization;
     const locked = adminLocked(id, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
     // без кода доступа номер администратора видит обычный профиль и кнопку входа администратора
-    return { user: { ...u, role: locked ? ("user" as const) : u.role, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, chatUnread: platform.threadsOf(id).reduce((n, th) => n + platform.unread(th, id), 0), features: { topup: topupAllowed, chain: !!mirror }, ...(locked ? { adminEntry: { codeSet: !!dir.adminCodeOf(id) } } : {}) };
+    return { user: { ...u, role: locked ? ("user" as const) : u.role, phone: phone ? maskPhone(phone) : undefined }, wallet: walletOf(state, id), unread: platform.notesOf(id).unread, chatUnread: platform.threadsOf(id).reduce((n, th) => n + platform.unread(th, id), 0), features: { topup: topupAllowed, chain: !!mirror, demo: demoOn }, ...(locked ? { adminEntry: { codeSet: !!dir.adminCodeOf(id) } } : {}) };
   });
 
   app.get("/wallet", async (req, reply) => {

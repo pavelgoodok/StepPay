@@ -48,7 +48,7 @@ export default function WalletPage() {
       <div className="hero bg-wallet">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="art" src={IMG.wallet} alt="" />
-        <div className="label">{data.chain ? "Цифровой рубль · tRUB" : "Цифровой рубль"}</div>
+        <div className="label">{data.chain ? "Цифровой рубль · tRUB" : features.demo ? "Демо-кошелек" : "Цифровой рубль"}</div>
         <div className="big"><Money value={data.free} /></div>
         <div className="label" style={{ marginTop: -6, marginBottom: 12 }}>Свободно для оплаты</div>
         <span className="pill"><Icon name="lock" size={15} /> {rub(data.reserved)} в резерве</span>
@@ -92,7 +92,11 @@ export default function WalletPage() {
       {!data.chain && (
         <div className="card row" style={{ background: "var(--blue-soft)", boxShadow: "none" }}>
           <Icon name="shield" size={30} />
-          <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан - без комиссии (в демо - эмуляция)</div></div>
+          {features.demo ? (
+            <div><b>Условные деньги</b><div className="sub">Демо-версия: суммы существуют только внутри демонстрации, реальных платежей нет</div></div>
+          ) : (
+            <div><b>Хранится на платформе Банка России</b><div className="sub">Платежи и переводы для граждан без комиссии</div></div>
+          )}
         </div>
       )}
 
