@@ -24,7 +24,7 @@ if (process.env.DATABASE_URL) {
   }
   // перенос сделок в сеть ведет одно состояние (очередь транзакций кошельков): при включенной сети или SINGLE_WRITER=1
   // новая версия ждет, пока старая освободит блокировку. Без сети экземпляров может быть несколько.
-  if ((process.env.CHAIN_RPC_URL || process.env.SINGLE_WRITER === "1") && !(await pgStore.acquireLeader()))
+  if (((process.env.CHAIN_RPC_URL && process.env.DEMO_MODE !== "1") || process.env.SINGLE_WRITER === "1") && !(await pgStore.acquireLeader()))
     throw new Error("Другой экземпляр API держит блокировку базы дольше 10 минут");
   store = pgStore;
 } else {
@@ -50,7 +50,10 @@ const anchorPublish = anchorUrl
 
 let chain: ReturnType<typeof chainFromEnv>;
 try {
-  chain = chainFromEnv(process.env);
+  // в демо-режиме деньги только условные: в тестовую сеть ничего не пишется, даже если переменные CHAIN_* заданы
+  if (process.env.DEMO_MODE === "1") {
+    if (process.env.CHAIN_RPC_URL) console.log("Демо-режим: тестовая сеть не используется, операции только на сервере");
+  } else chain = chainFromEnv(process.env);
 } catch (e) {
   // ошибка в настройках сети не должна ронять приложение: работаем без переноса сделок на контракт
   console.error(`Тестовая сеть отключена, исправьте переменные CHAIN_*: ${(e as Error).message}`);
