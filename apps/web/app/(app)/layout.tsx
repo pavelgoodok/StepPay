@@ -22,6 +22,15 @@ const ADMIN_TABS: Tab[] = [{ href: "/admin", label: "Панель", icon: "shiel
 /** Стеклянная фигура в правом нижнем углу: кольцо или лента по разделам, лежит под карточками. */
 const decoOf = (p: string) => (/^\/(deals|wallet|chats)/.test(p) ? "ring" : "s");
 
+const USER_MODE = "steppay.userMode";
+const userModeChosen = () => {
+  try {
+    return sessionStorage.getItem(USER_MODE) === "1";
+  } catch {
+    return false;
+  }
+};
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, ready, unread, chatUnread } = useSession();
   const router = useRouter();
@@ -31,6 +40,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (ready && !user) router.replace("/login");
   }, [ready, user, router]);
+
+  // администратор начинает работу в панели: главная пользовательского режима открывается только по кнопке
+  // «Пользовательский режим»; карточки проектов и сделок для проверки открываются как обычно
+  const adminHere = user?.role === "admin" && path === "/deals" && !userModeChosen();
+  useEffect(() => {
+    if (ready && adminHere) router.replace("/admin");
+  }, [ready, adminHere, router]);
 
   // быстрые действия на главной открывают меню добавления
   useEffect(() => {
@@ -42,7 +58,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const active = (href: string) => path.startsWith(href) || (href === "/catalog" && (path.startsWith("/projects") || path.startsWith("/services")));
 
   // не вошли: идет переход на экран входа, оболочку не показываем
-  if (ready && !user) return null;
+  if ((ready && !user) || adminHere) return null;
   const tabs = user?.role === "admin" ? ADMIN_TABS : TABS;
 
   return (

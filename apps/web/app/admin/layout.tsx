@@ -28,6 +28,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (ready && !user) router.replace("/login");
   }, [ready, user, router]);
+  // вернулись в панель: следующий вход снова откроет панель, а не пользовательский режим
+  useEffect(() => {
+    try { sessionStorage.removeItem("steppay.userMode"); } catch { /* ignore */ }
+  }, []);
 
   if (!ready || !user) return null;
   if (!isAdmin) {
@@ -61,7 +65,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
         <div className="adm-foot">
           <div className="small muted ellipsis">{user.name}</div>
-          <Link href="/deals" className="adm-link"><Icon name="back" size={20} /><span>Пользовательский режим</span></Link>
+          <Link href="/deals" className="adm-link" onClick={() => { try { sessionStorage.setItem("steppay.userMode", "1"); } catch { /* ignore */ } }}><Icon name="back" size={20} /><span>Пользовательский режим</span></Link>
           <button className="adm-link" onClick={() => { logout(); router.replace("/login"); }}><Icon name="logout" size={20} /><span>Выйти</span></button>
         </div>
       </aside>

@@ -260,7 +260,7 @@ export default function Profile() {
           <div className="card stack" style={{ gap: 6, padding: 12 }}>
             {users.map((u) => (
               <button key={u.id} className="row" style={{ padding: 8, borderRadius: 16, textAlign: "left", background: u.id === user.id ? "var(--surface2)" : "transparent" }}
-                onClick={async () => { if (u.id === user.id) return; await login(u.id); toast(`Вы вошли как ${u.name}`); router.push("/deals"); }}>
+                onClick={async () => { if (u.id === user.id) return; await login(u.id); toast(`Вы вошли как ${u.name}`); router.push(u.role === "admin" ? "/admin" : "/deals"); }}>
                 <Initials name={u.name} />
                 <div className="grow"><b>{u.name}</b><div className="small muted">{ROLE[u.role]}</div></div>
                 {u.id === user.id && <Icon name="check" size={20} />}
