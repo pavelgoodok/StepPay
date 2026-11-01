@@ -110,14 +110,23 @@ const PLATFORM_COLLS = ["projects", "services", "threads", "messages", "reviews"
 export class PgStore implements Store {
   private pool: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>;
   private leader?: pg.PoolClient;
-  constructor(url: string, pool?: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>) {
+  /**
+   * schema - отдельная схема Postgres для данных (демо-режим хранит все в схеме demo и не видит рабочих данных).
+   * Без нее таблицы лежат в схеме public.
+   */
+  constructor(url: string, pool?: Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>, private schema?: string) {
+    if (schema !== undefined && !/^[a-z_][a-z0-9_]{0,40}$/.test(schema)) throw new Error(`Недопустимое имя схемы базы: ${schema}`);
+    this.injected = !!pool;
     this.pool =
       pool ??
       new pg.Pool({
         connectionString: url,
         ssl: url.includes("railway.internal") || url.includes("localhost") ? false : { rejectUnauthorized: false },
+        // каждое соединение пула сразу работает в своей схеме
+        ...(schema ? { options: `-c search_path=${schema}` } : {}),
       });
   }
+  private injected: boolean;
   /**
    * Единственный пишущий экземпляр: состояние держится в памяти, поэтому два процесса, пишущих в одну базу,
    * затирали бы друг друга (в том числе при выкладке новой версии, пока старая еще работает).
@@ -128,7 +137,7 @@ export class PgStore implements Store {
     const client = await this.pool.connect();
     const started = Date.now();
     for (;;) {
-      const r = await client.query("select pg_try_advisory_lock(727001) as ok");
+      const r = await client.query(`select pg_try_advisory_lock(${this.schema ? 727002 : 727001}) as ok`);
       if (r.rows[0]?.ok) {
         this.leader = client;
         return true;
@@ -141,6 +150,11 @@ export class PgStore implements Store {
     }
   }
   async init() {
+    if (this.schema) {
+      await this.pool.query(`create schema if not exists ${this.schema}`);
+      // переданный снаружи пул (испытания) создан без параметра соединения: переключаем схему запросом
+      if (this.injected) await this.pool.query(`set search_path to ${this.schema}`);
+    }
     await this.pool.query(
       "create table if not exists files (id text primary key, mime text not null, data bytea not null, created_at timestamptz not null default now())",
     );

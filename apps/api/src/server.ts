@@ -9,7 +9,10 @@ if (process.env.NODE_ENV === "production" && !process.env.CORS_ORIGIN) console.w
 
 let store: Store;
 if (process.env.DATABASE_URL) {
-  const pgStore = new PgStore(process.env.DATABASE_URL);
+  // демо хранит данные в отдельной схеме той же базы и не пересекается с рабочими данными; DB_SCHEMA задает схему явно
+  const schema = process.env.DB_SCHEMA || (process.env.DEMO_MODE === "1" ? "demo" : undefined);
+  const pgStore = new PgStore(process.env.DATABASE_URL, undefined, schema);
+  if (schema) console.log(`База данных: схема ${schema}`);
   // сразу после запуска частная сеть Railway бывает недоступна несколько секунд: повторяем подключение, а не падаем
   for (let attempt = 1; ; attempt++) {
     try {

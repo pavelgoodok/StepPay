@@ -9,6 +9,27 @@ const asPool = (db: PGlite) =>
   ({ query: async (text: string, params?: unknown[]) => ({ rows: (await db.query(text, params)).rows }) }) as unknown as Pick<pg.Pool, "query">;
 
 describe("PgStore на Postgres", () => {
+  it("демо в отдельной схеме не видит рабочие данные и не меняет их", async () => {
+    const db = new PGlite();
+    const prodStore = new PgStore("postgres://pglite", asPool(db));
+    await prodStore.init();
+    const prod = await buildApp({ store: prodStore, secret: "s", seedCatalog: true, demoMode: false });
+    await db.query("insert into docs (coll, key, data) values ('marker', 'prod', '{}'::jsonb)");
+    await prod.close();
+    const publicRows = async () => (await db.query("select (select count(*) from public.app_state) + (select count(*) from public.docs) + (select count(*) from public.files) as n")).rows[0];
+    const before = await publicRows();
+
+    const demoStore = new PgStore("postgres://pglite", asPool(db), "demo");
+    await demoStore.init();
+    const demo = await buildApp({ store: demoStore, secret: "s", seedCatalog: true, demoMode: true });
+    expect((await demo.inject({ method: "GET", url: "/auth/demo-users" })).json().length).toBe(3);
+    expect((await db.query("select count(*)::int as n from demo.docs where coll = 'marker'")).rows[0]).toEqual({ n: 0 });
+    expect((await db.query("select count(*)::int as n from public.docs where coll = 'marker'")).rows[0]).toEqual({ n: 1 });
+    expect(((await db.query("select count(*)::int as n from demo.app_state")).rows[0] as { n: number }).n).toBeGreaterThan(0);
+    expect(await publicRows()).toEqual(before); // рабочие данные не тронуты
+    await demo.close();
+  });
+
   it("сделки, кошельки и фото сохраняются между запусками API", async () => {
     const db = new PGlite();
     const open = async () => {
