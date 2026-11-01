@@ -307,6 +307,19 @@ describe("демо для жюри", () => {
     expect((await app.inject({ method: "POST", url: "/demo/reset" })).statusCode).toBe(404);
   });
 
+  it("с кодом доступа к сайту запросы без кода отклоняются", async () => {
+    const app = await buildApp({ store: new MemoryStore(), secret: "s", siteCode: "VTB2026" });
+    expect((await app.inject({ method: "GET", url: "/site/mode" })).json()).toEqual({ gate: true });
+    expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/auth/demo-users" })).statusCode).toBe(403);
+    expect((await app.inject({ method: "POST", url: "/site/check", payload: { code: "нет" } })).statusCode).toBe(403);
+    expect((await app.inject({ method: "POST", url: "/site/check", payload: { code: " VTB2026 " } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/auth/demo-users", headers: { "x-site-code": "VTB2026" } })).statusCode).toBe(200);
+    const open = await buildApp({ store: new MemoryStore(), secret: "s" });
+    expect((await open.inject({ method: "GET", url: "/site/mode" })).json()).toEqual({ gate: false });
+    expect((await open.inject({ method: "GET", url: "/auth/demo-users" })).statusCode).toBe(200);
+  });
+
   it("в демо вход по имени без телефона, на экране входа только Анна, Иван и администратор", async () => {
     const app = await buildApp({ store: new MemoryStore(), secret: "s" });
     expect((await app.inject({ method: "GET", url: "/auth/mode" })).json()).toEqual({ demo: true });

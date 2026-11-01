@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { SessionProvider } from "@/lib/session";
+import { SiteGate } from "@/components/site-gate";
 import "@fontsource-variable/exo-2";
 import "./globals.css";
 
@@ -19,7 +20,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SiteGate>
+          <SessionProvider>{children}</SessionProvider>
+        </SiteGate>
       </body>
     </html>
   );

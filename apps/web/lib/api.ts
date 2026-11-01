@@ -105,6 +105,24 @@ export const setToken = (t: string | null) => {
   }
 };
 
+/** Код доступа к сайту (переменная SITE_ACCESS_CODE на сервере): хранится в браузере и отправляется с каждым запросом. */
+const SITE_KEY = "steppay.site";
+export const getSiteCode = () => {
+  try {
+    return localStorage.getItem(SITE_KEY);
+  } catch {
+    return null;
+  }
+};
+export const setSiteCode = (c: string | null) => {
+  try {
+    if (c) localStorage.setItem(SITE_KEY, c);
+    else localStorage.removeItem(SITE_KEY);
+  } catch {
+    /* приватный режим */
+  }
+};
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -120,6 +138,7 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST"; body
       headers: {
         ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(getSiteCode() ? { "x-site-code": getSiteCode()! } : {}),
       },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
@@ -133,6 +152,11 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST"; body
   } catch {
     // не JSON: прокси или перезапуск сервера отдали свою страницу; экраны ждут данные, а не мусор
     throw new ApiError(res.ok ? "Сервер отвечает не так, как ожидалось. Попробуйте еще раз" : "Ошибка", res.status || 502);
+  }
+  if (res.status === 403 && (data as { gate?: boolean }).gate) {
+    // код сменили или не ввели: показываем экран ввода кода
+    setSiteCode(null);
+    window.dispatchEvent(new Event("steppay:gate"));
   }
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? "Ошибка", res.status);
   return data as T;

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
@@ -66,6 +66,8 @@ export interface AppOptions {
   secret: string;
   now?: () => number;
   corsOrigin?: string;
+  /** код доступа к сайту (SITE_ACCESS_CODE): без него API отвечает только на служебные запросы */
+  siteCode?: string;
   /** заполнить каталог проектов демо-данными при пустой базе */
   seedCatalog?: boolean;
   /** публичные демо-эндпоинты (сценарий для жюри и сброс данных); по умолчанию включены */
@@ -346,8 +348,24 @@ export async function buildApp(opts: AppOptions) {
     if (req.url === "/health") return;
     await refreshAll();
     const ip = req.ip;
-    const bucket = req.url.startsWith("/auth") ? ["auth", limits.auth] : req.url.startsWith("/uploads") && req.method === "POST" ? ["uploads", limits.uploads] : ["all", limits.general];
+    const bucket = req.url.startsWith("/auth") || req.url.startsWith("/site") ? ["auth", limits.auth] : req.url.startsWith("/uploads") && req.method === "POST" ? ["uploads", limits.uploads] : ["all", limits.general];
     if (over(`${bucket[0]}:${ip}`, bucket[1] as number)) return reply.code(429).header("retry-after", "30").send({ error: "Слишком много запросов, подождите минуту" });
+  });
+  // код доступа к сайту: запросы без верного заголовка x-site-code отклоняются.
+  // Не требуют кода: проверка сервера, сам вход по коду, картинки и поток событий (у них свои билеты).
+  const siteCode = opts.siteCode?.trim() || undefined;
+  const digest = (v: string) => createHash("sha256").update(v.trim()).digest();
+  const siteOk = (v: unknown) => !!siteCode && typeof v === "string" && timingSafeEqual(digest(v), digest(siteCode));
+  app.addHook("onRequest", async (req, reply) => {
+    if (!siteCode || req.method === "OPTIONS") return;
+    const path = req.url.split("?")[0]!;
+    if (path === "/health" || path.startsWith("/site/") || (req.method === "GET" && (path.startsWith("/uploads/") || path === "/events"))) return;
+    if (!siteOk(req.headers["x-site-code"])) return reply.code(403).send({ error: "Нужен код доступа к сайту", gate: true });
+  });
+  app.get("/site/mode", async () => ({ gate: !!siteCode }));
+  app.post("/site/check", async (req, reply) => {
+    const { code } = z.object({ code: z.string().max(100) }).parse(req.body);
+    return siteOk(code) ? { ok: true } : reply.code(403).send({ error: "Неверный код доступа" });
   });
   const hsts = process.env.NODE_ENV === "production";
   app.addHook("onSend", async (_req, reply, payload) => {
