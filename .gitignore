@@ -5,12 +5,6 @@ dist
 !.env.example
 *.tsbuildinfo
 
-# локальные инструменты и результат промо-ролика
-.agents/
-.claude/skills/
-skills-lock.json
-brag-output*/
-
 # контракты: сборка Hardhat
 packages/contracts/artifacts/
 packages/contracts/cache/
