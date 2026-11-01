@@ -49,6 +49,15 @@ interface DealAnchor {
   published: { target: string; ref?: string }[];
 }
 
+/** «запись» в нужной форме: 1 запись, 3 записи, 5 записей; from - после «из» (из 1 записи, из 3 записей). */
+function records(n: number, from = false) {
+  const m10 = n % 10, m100 = n % 100;
+  if (from) return m10 === 1 && m100 !== 11 ? "записи" : "записей";
+  if (m10 === 1 && m100 !== 11) return "запись";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "записи";
+  return "записей";
+}
+
 export function JournalCard({ d }: { d: DealFull }) {
   const [open, setOpen] = useState(false);
   const [local, setLocal] = useState<"ok" | "bad" | null>(null);
@@ -78,7 +87,7 @@ export function JournalCard({ d }: { d: DealFull }) {
         <span className="setic"><Icon name="clock" size={20} /></span>
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="title">Журнал</div>
-          <div className="small muted">{entries.length} записей</div>
+          <div className="small muted">{entries.length} {records(entries.length)}</div>
         </div>
         <span className={`chip ${ok ? "green" : "red"}`}>{ok ? "Цепочка цела" : "Цепочка нарушена"}</span>
       </button>
@@ -118,7 +127,7 @@ export function JournalCard({ d }: { d: DealFull }) {
                 </div>
               );
             })()}
-            {local && <div className={`note ${local === "ok" ? "" : "bad"}`} style={{ marginTop: 0 }}>{local === "ok" ? `Цепочка из ${entries.length} записей пересчитана на этом устройстве и цела.` : "Цепочка не сходится: журнал был изменен."}</div>}
+            {local && <div className={`note ${local === "ok" ? "" : "bad"}`} style={{ marginTop: 0 }}>{local === "ok" ? `Цепочка из ${entries.length} ${records(entries.length, true)} пересчитана на этом устройстве и цела.` : "Цепочка не сходится: журнал был изменен."}</div>}
             <div className="btns">
               <button className="btn soft" onClick={verify}>Проверить целостность</button>
               <button className="btn soft" onClick={download}>Скачать журнал</button>

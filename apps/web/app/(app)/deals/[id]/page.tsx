@@ -251,7 +251,7 @@ export default function DealPage() {
             <>
               <div className="row between"><b>Собрано {rub(raised)}</b><span className="muted">из {rub(d.target)}</span></div>
               <SegBar count={d.stages.length} filled={d.target ? (raised / d.target) * d.stages.length : 0} label="Сбор средств по этапам" />
-              <div className="small muted">Поддержали {d.summary.sponsors}. Не сдан этап: остаток вернется вам.</div>
+              <div className="small muted">Поддержали {d.summary.sponsors}. Если этап не будет сдан, остаток вернется спонсорам.</div>
               {!isExec && (
                 <>
                   <div className="chips">
